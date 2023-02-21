@@ -59,7 +59,7 @@ class BatchDetector(Detector):
             frame, has_next = video.read()
             batch.append(frame[None, ...])
 
-            if len(batch) > self.batch_size or not has_next:
+            if len(batch) >= self.batch_size or not has_next:
                 detections_sequence.extend(self.detect(np.concatenate(batch, axis=0)))
                 progress_bar.update(len(batch))
                 batch = []
