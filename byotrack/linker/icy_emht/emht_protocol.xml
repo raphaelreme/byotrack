@@ -1,0 +1,121 @@
+<protocol VERSION="4">
+<blocks>
+<block CommandLineID="rois" ID="1299097409" blockType="plugins.adufour.blocks.tools.input.File" className="plugins.adufour.blocks.tools.input.File" collapsed="false" definedName="File" height="61" keepsResults="true" width="136" xLocation="131" yLocation="46">
+<variables>
+<input>
+<variable ID="file" name="file" runtime="false" value="" visible="true"/>
+</input>
+<output/>
+</variables>
+</block>
+<block ID="2107663053" blockType="plugins.stef.roi.bloc.io.LoadRoisFromFile" className="plugins.stef.roi.bloc.RoiBlocks" collapsed="false" definedName="Load rois from file" height="83" keepsResults="true" width="208" xLocation="312" yLocation="46">
+<variables>
+<input>
+<variable ID="file" name="File" runtime="false" type="java.io.File" visible="true"/>
+</input>
+<output>
+<variable ID="out" name="ROI(s)" runtime="false" visible="true"/>
+</output>
+</variables>
+</block>
+<block ID="1799031507" blockType="plugins.stef.tools.ROIToDetection" className="plugins.stef.tools.ROIToDetection" collapsed="false" definedName="ROI to detection" height="134" keepsResults="true" width="413" xLocation="566" yLocation="46">
+<variables>
+<input>
+<variable ID="sequence" name="Sequence" runtime="false" value="No Sequence" visible="true"/>
+<variable ID="rois" name="ROI(s)" runtime="false" visible="true"/>
+<variable ID="exportSP" name="Export to Swimming Pool" runtime="false" value="false" visible="true"/>
+</input>
+<output>
+<variable ID="detection result" name="Detection result" runtime="false" visible="true"/>
+</output>
+</variables>
+</block>
+<block CommandLineID="directed" ID="612775020" blockType="plugins.adufour.blocks.tools.input.Boolean" className="plugins.adufour.blocks.tools.input.Boolean" collapsed="false" definedName="Boolean" height="68" keepsResults="true" width="149" xLocation="117" yLocation="241">
+<variables>
+<input>
+<variable ID="boolean" name="Boolean" runtime="false" value="false" visible="true"/>
+</input>
+<output/>
+</variables>
+</block>
+<block CommandLineID="multi" ID="634820083" blockType="plugins.adufour.blocks.tools.input.Boolean" className="plugins.adufour.blocks.tools.input.Boolean" collapsed="false" definedName="Boolean" height="68" keepsResults="true" width="149" xLocation="120" yLocation="164">
+<variables>
+<input>
+<variable ID="boolean" name="Boolean" runtime="false" value="false" visible="true"/>
+</input>
+<output/>
+</variables>
+</block>
+<block CommandLineID="" ID="192350246" blockType="plugins.adufour.blocks.tools.input.Boolean" className="plugins.adufour.blocks.tools.input.Boolean" collapsed="false" definedName="Boolean" height="68" keepsResults="true" width="149" xLocation="118" yLocation="317">
+<variables>
+<input>
+<variable ID="boolean" name="Boolean" runtime="false" value="false" visible="true"/>
+</input>
+<output/>
+</variables>
+</block>
+<block ID="1939684287" blockType="plugins.stef.particletracking.block.SpotTrackingEstimateParameters" className="plugins.stef.particletracking.block.SpotTrackingBlocks" collapsed="false" definedName="Spot tracking estimate parameters" height="177" keepsResults="true" width="325" xLocation="309" yLocation="223">
+<variables>
+<input>
+<variable ID="detections" name="Detections" runtime="false" visible="true"/>
+<variable ID="multiMotionModel" name="Multi motion model" runtime="false" visible="true"/>
+<variable ID="directedMotion" name="Directed motion" runtime="false" visible="true"/>
+<variable ID="updateMotion" name="Update motion" runtime="false" visible="true"/>
+</input>
+<output>
+<variable ID="parameterSet" name="MHT parameters" runtime="false" visible="true"/>
+</output>
+</variables>
+</block>
+<block CommandLineID="" ID="1826503900" blockType="plugins.adufour.blocks.tools.input.Boolean" className="plugins.adufour.blocks.tools.input.Boolean" collapsed="false" definedName="Boolean" height="68" keepsResults="true" width="149" xLocation="119" yLocation="392">
+<variables>
+<input>
+<variable ID="boolean" name="Boolean" runtime="false" value="true" visible="true"/>
+</input>
+<output/>
+</variables>
+</block>
+<block ID="1666056660" blockType="plugins.stef.particletracking.block.SpotTrackingDoTracking" className="plugins.stef.particletracking.block.SpotTrackingBlocks" collapsed="false" definedName="Spot tracking do tracking" height="134" keepsResults="true" width="308" xLocation="680" yLocation="313">
+<variables>
+<input>
+<variable ID="detections" name="Detections" runtime="false" visible="true"/>
+<variable ID="parameterSet" name="MHT parameters" runtime="false" visible="true"/>
+<variable ID="useLPSolver" name="Use LPSolver" runtime="false" visible="true"/>
+</input>
+<output>
+<variable ID="tracks" name="TrackGroup" runtime="false" visible="true"/>
+</output>
+</variables>
+</block>
+<block CommandLineID="tracks" ID="723059422" blockType="plugins.adufour.blocks.tools.input.File" className="plugins.adufour.blocks.tools.input.File" collapsed="false" definedName="File" height="61" keepsResults="true" width="136" xLocation="130" yLocation="471">
+<variables>
+<input>
+<variable ID="file" name="file" runtime="false" value="" visible="true"/>
+</input>
+<output/>
+</variables>
+</block>
+<block ID="1642372434" blockType="plugins.fab.trackmanager.blocks.SaveTracksToXML" className="plugins.fab.trackmanager.TrackManager" collapsed="false" definedName="Save tracks to XML" height="84" keepsResults="true" width="213" xLocation="1040" yLocation="386">
+<variables>
+<input>
+<variable ID="tracks" name="Track group" runtime="false" visible="true"/>
+<variable ID="file" name="XML file" runtime="false" type="java.io.File" visible="true"/>
+</input>
+<output/>
+</variables>
+</block>
+</blocks>
+<links>
+<link dstBlockID="2107663053" dstVarID="file" srcBlockID="1299097409" srcVarID="file"/>
+<link dstBlockID="1799031507" dstVarID="rois" srcBlockID="2107663053" srcVarID="out"/>
+<link dstBlockID="1666056660" dstVarID="detections" srcBlockID="1799031507" srcVarID="detection result"/>
+<link dstBlockID="1939684287" dstVarID="detections" srcBlockID="1799031507" srcVarID="detection result"/>
+<link dstBlockID="1666056660" dstVarID="parameterSet" srcBlockID="1939684287" srcVarID="parameterSet"/>
+<link dstBlockID="1642372434" dstVarID="tracks" srcBlockID="1666056660" srcVarID="tracks"/>
+<link dstBlockID="1642372434" dstVarID="file" srcBlockID="723059422" srcVarID="file"/>
+<link dstBlockID="1939684287" dstVarID="directedMotion" srcBlockID="612775020" srcVarID="boolean"/>
+<link dstBlockID="1939684287" dstVarID="multiMotionModel" srcBlockID="634820083" srcVarID="boolean"/>
+<link dstBlockID="1666056660" dstVarID="useLPSolver" srcBlockID="1826503900" srcVarID="boolean"/>
+<link dstBlockID="1939684287" dstVarID="updateMotion" srcBlockID="192350246" srcVarID="boolean"/>
+</links>
+</protocol>
