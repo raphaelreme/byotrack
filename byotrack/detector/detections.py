@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Collection
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Collection, Dict, List, Optional, Tuple, Union
 
 import numba  # type: ignore
 import numpy as np
