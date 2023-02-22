@@ -103,7 +103,15 @@ class IcyEMHTLinker(Linker):
 
         # Has to check because icy do not return any non-zero return code
         if not os.path.exists(self.tracks_file):
-            raise RuntimeError("No track found from Icy")
+            raise RuntimeError(
+                """No track found from Icy.
+
+            This probably results from a failure in Icy software. Please look at the Java Exception displayed by Icy.
+
+            Note that Icy may fail the first time you launch this code because Icy updates the required protocols
+            and is unable to continue to run after the update.
+            """
+            )
 
     @staticmethod
     def save_detections_as_icy_rois(detections_sequence: Collection[Detections], path: Union[str, os.PathLike]) -> None:
