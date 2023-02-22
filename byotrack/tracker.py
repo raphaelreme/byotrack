@@ -16,7 +16,7 @@ class Tracker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
     """
 
     @abstractmethod
-    def run(self, video: VideoReader, tracks: Collection[Track]) -> Collection[Track]:
+    def run(self, video: VideoReader) -> Collection[Track]:
         """Run the tracker on a whole video
 
         Args:
@@ -44,7 +44,7 @@ class MultiStepTracker(Tracker):  # pylint: disable=too-few-public-methods
         self.linker = linker
         self.refiner = refiner
 
-    def run(self, video: VideoReader, tracks: Collection[Track]) -> Collection[Track]:
+    def run(self, video: VideoReader) -> Collection[Track]:
         detections = self.detector.run(video)
         tracks = self.linker.run(video, detections)
         if self.refiner is not None:

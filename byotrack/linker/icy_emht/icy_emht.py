@@ -59,7 +59,7 @@ class IcyEMHTLinker(Linker):
     rois_file = "_tmp_rois.xml"
     tracks_file = "_tmp_tracks.xml"
     cmd = (
-        "java -jar icy.jar -hl -x plugins.adufour.protocols.Protocols"
+        "java -jar icy.jar -hl -x plugins.adufour.protocols.Protocols "
         "protocol={protocol} rois={rois} tracks={tracks} directed={directed} multi={multi}"
     )
 
