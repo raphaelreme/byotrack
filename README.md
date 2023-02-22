@@ -37,6 +37,8 @@ $ pip install byotrack
 import byotrack
 ```
 
+Have a look at examples notebook
+
 ## Contribute
 
 In coming...
