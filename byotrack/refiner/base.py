@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Collection
+from typing import Collection, Iterable
+
+import numpy as np
 
 from ..parameters import ParametrizedObjectMixin
 from ..tracks import Track
-from ..video.reader import VideoReader
 
 
 class Refiner(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-methods
@@ -15,11 +16,12 @@ class Refiner(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
     """
 
     @abstractmethod
-    def run(self, video: VideoReader, tracks: Collection[Track]) -> Collection[Track]:
+    def run(self, video: Iterable[np.ndarray], tracks: Collection[Track]) -> Collection[Track]:
         """Run the refiner on a whole video
 
         Args:
-            video (byotrack.VideoReader): Input video
+            video (Iterable[np.ndarray]): Sequence of frames (video)
+                Each array is expected to have a shape (H, W, C)
             tracks (Collection[Track]): Tracks of particles
 
         Returns:

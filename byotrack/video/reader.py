@@ -7,8 +7,6 @@ import cv2  # type: ignore
 import numpy as np
 from PIL import Image  # type: ignore
 
-from . import transforms
-
 
 class MetaVideoReader(type):
     """MetaClass for Video Readers
@@ -47,8 +45,6 @@ class VideoReader(metaclass=MetaVideoReader):
     Return images in BGR by default like opencv as frames are mostly used with opencv afterwards for display.
     Can also return grayscale image (H, W, 1)
 
-    It also supports basic video transforms (See VideoTransform class)
-
     Attrs:
         supported_extensions (List[str]): Static attribute used by `open` method to automatically choose
             which VideoReader to use.
@@ -59,8 +55,6 @@ class VideoReader(metaclass=MetaVideoReader):
         channels (int): Number of channels
         length (int): Number of frames
         frame_id (int): Current frame id
-        transform (byotrack.VideoTransform): Transformations applied to frames
-            (None by default, can be set with `set_transforms`)
     """
 
     supported_extensions: List[str] = []
@@ -79,15 +73,6 @@ class VideoReader(metaclass=MetaVideoReader):
         self.channels = 0
         self.length = 0
         self.frame_id = 0
-        self.transform = transforms.VideoTransform(self, transforms.VideoTransformConfig())  # By default, does nothing
-
-    def set_transform(self, config: transforms.VideoTransformConfig) -> None:
-        """Set the transformations
-
-        Args:
-            config (byotrack.VideoTransformConfig): Configuration of the transformations
-        """
-        self.transform = transforms.VideoTransform(self, config)
 
     def release(self) -> None:
         """Close the file and free memory"""
@@ -103,18 +88,14 @@ class VideoReader(metaclass=MetaVideoReader):
         """
         raise NotImplementedError()
 
-    def _retrieve(self) -> np.ndarray:
-        """Retrieve the current frame without calling transform"""
-        raise NotImplementedError()
-
     def retrieve(self) -> np.ndarray:
         """Retrieve the current frame
 
         Returns:
-            np.ndarray: The current frame (transformed)
+            np.ndarray: The current frame
                 Shape: (H, W, 3) or (H, W, 1) (Grayscale)
         """
-        return self.transform(self._retrieve())
+        raise NotImplementedError()
 
     def read(self) -> Tuple[np.ndarray, bool]:
         """Consume a frame. Is equivalent to retrieve + grab
@@ -123,7 +104,7 @@ class VideoReader(metaclass=MetaVideoReader):
         It first retrieves then grab next frame
 
         Returns:
-            np.ndarray: The current frame (transformed)
+            np.ndarray: The current frame
                 Shape: (H, W, 3) or (H, W, 1) (Grayscale)
             bool: Whether there is a next frame to read
         """
@@ -153,19 +134,19 @@ class VideoReader(metaclass=MetaVideoReader):
         """Check that the underlying data is at the right frame id"""
 
     @staticmethod
-    def open(path: str, **kwargs) -> VideoReader:
+    def open(path: Union[str, os.PathLike], **kwargs) -> VideoReader:
         """Open a video file
 
         Use the extension to know which VideoReader to use
 
         Args:
-            path (str): File to open
+            path (str | os.PathLike): File to open
             kwargs: Any additional args for the underlying video reader
 
         Returns:
             VideoReader
         """
-        extension = path.split(".")[-1]
+        extension = str(path).rsplit(".", maxsplit=1)[-1]
 
         return VideoReader.extension_to_reader.get(extension, OpenCVVideoReader)(path, **kwargs)
 
@@ -215,7 +196,7 @@ class OpenCVVideoReader(VideoReader):
             self.seek(self.frame_id)
         return grabbed
 
-    def _retrieve(self) -> np.ndarray:
+    def retrieve(self) -> np.ndarray:
         return self.ensure_3d(self.video.retrieve()[1])
 
     def seek(self, frame_id: int) -> None:
@@ -253,7 +234,7 @@ class TiffVideoReader(VideoReader):
         except EOFError:
             return False
 
-    def _retrieve(self) -> np.ndarray:
+    def retrieve(self) -> np.ndarray:
         frame = self.ensure_3d(np.array(self.video))
         return np.flip(frame, 2)  # In PIL, RGB images are read as RGB. Let's flip it to BGR
 
@@ -261,5 +242,5 @@ class TiffVideoReader(VideoReader):
         self.video.seek(frame_id)
         self.frame_id = frame_id
 
-    def _test_backend_frame_id(self) -> None:
+    def _check_backend_frame_id(self) -> None:
         assert self.frame_id == self.video.tell()

@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Collection
+from typing import Collection, Iterable
+
+import numpy as np
 
 from ..detector.detections import Detections
 from ..parameters import ParametrizedObjectMixin
 from ..tracks import Track
-from ..video.reader import VideoReader
 
 
 class Linker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-methods
@@ -16,11 +17,12 @@ class Linker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-me
     """
 
     @abstractmethod
-    def run(self, video: VideoReader, detections_sequence: Collection[Detections]) -> Collection[Track]:
+    def run(self, video: Iterable[np.ndarray], detections_sequence: Collection[Detections]) -> Collection[Track]:
         """Run the linker on a whole video
 
         Args:
-            video (byotrack.VideoReader): Input video
+            video (Iterable[np.ndarray]): Sequence of frames (video)
+                Each array is expected to have a shape (H, W, C)
             detections_sequence (Collection[Detections]): Detections for each frame
 
         Returns:

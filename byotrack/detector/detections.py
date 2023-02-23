@@ -146,7 +146,7 @@ class Detections:
     Attrs:
         data (Dict[str, toch.Tensor]): Detections data.
         length (int): Number of detections
-        frame (Optional[int]): Reference frame for the video (if any)
+        frame_id (Optional[int]): Frame id in the video (if any)
         shape: (Tuple[int, int]): Shape of the image (H, W). (Extrapolated if not given)
         position (torch.Tensor): Positions (i, j) of instances centre inferred from the data
             Shape: (N, 2), dtype: float32
@@ -158,7 +158,7 @@ class Detections:
             Shape: (N,), dtype: float32
     """
 
-    def __init__(self, data: Dict[str, torch.Tensor], frame: Optional[int] = None) -> None:
+    def __init__(self, data: Dict[str, torch.Tensor], frame_id: Optional[int] = None) -> None:
         self.length = -1
 
         if "position" in data:
@@ -189,7 +189,7 @@ class Detections:
         self._lazy_extrapolated_data: Dict[str, torch.Tensor] = {}
 
         self.shape = self._extrapolate_shape()
-        self.frame = frame
+        self.frame_id = frame_id
 
     @property
     def position(self) -> torch.Tensor:
@@ -292,7 +292,7 @@ class Detections:
     def save(self, path: Union[str, os.PathLike]) -> None:
         """Save detections to a file using `torch.save`
 
-        Note: Do not save the frame id of this detection.
+        Note: frame_id is not saved.
 
         Args:
             path (str | os.PathLike): Output path
@@ -303,7 +303,7 @@ class Detections:
     def load(path: Union[str, os.PathLike]) -> Detections:
         """Load a detections for a given frame using `torch.load`
 
-        Note: Do not set the frame id for this detection
+        Note: frame_id is not set
 
         Args:
             path (str | os.PathLike): Input path
@@ -330,8 +330,8 @@ class Detections:
         os.makedirs(path)
 
         for detections in detections_sequence:
-            assert detections.frame is not None, "Frame id is not set"
-            detections.save(os.path.join(path, f"{detections.frame}.pt"))
+            assert detections.frame_id is not None, "Frame id is not set"
+            detections.save(os.path.join(path, f"{detections.frame_id}.pt"))
 
     @staticmethod
     def load_multi_frames_detections(path: Union[str, os.PathLike]) -> Collection[Detections]:
@@ -355,6 +355,6 @@ class Detections:
 
         for file in filter(lambda file: file[-3:] == ".pt", utils.sorted_alphanumeric(files)):
             detections_sequence.append(Detections.load(os.path.join(path, file)))
-            detections_sequence[-1].frame = int(file[:-3])
+            detections_sequence[-1].frame_id = int(file[:-3])
 
         return detections_sequence

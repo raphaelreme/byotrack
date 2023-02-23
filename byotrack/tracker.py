@@ -1,12 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import Collection, Optional
+from typing import Collection, Iterable, Optional
+
+import numpy as np
 
 from .detector.base import Detector
 from .linker.base import Linker
 from .parameters import ParametrizedObjectMixin
 from .refiner.base import Refiner
 from .tracks import Track
-from .video.reader import VideoReader
 
 
 class Tracker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-methods
@@ -16,11 +17,12 @@ class Tracker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
     """
 
     @abstractmethod
-    def run(self, video: VideoReader) -> Collection[Track]:
+    def run(self, video: Iterable[np.ndarray]) -> Collection[Track]:
         """Run the tracker on a whole video
 
         Args:
-            video (byotrack.VideoReader): Input video
+            video (Iterable[np.ndarray]): Sequence of frames (video)
+                Each array is expected to have a shape (H, W, C)
 
         Returns:
             Collection[Track]: Tracks of particles
@@ -44,7 +46,7 @@ class MultiStepTracker(Tracker):  # pylint: disable=too-few-public-methods
         self.linker = linker
         self.refiner = refiner
 
-    def run(self, video: VideoReader) -> Collection[Track]:
+    def run(self, video: Iterable[np.ndarray]) -> Collection[Track]:
         detections = self.detector.run(video)
         tracks = self.linker.run(video, detections)
         if self.refiner is not None:

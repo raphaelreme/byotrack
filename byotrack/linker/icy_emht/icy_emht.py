@@ -2,14 +2,15 @@ import enum
 import os
 import pathlib
 import subprocess
-from typing import Collection, Union
+from typing import Collection, Iterable, Union
 from xml.etree import ElementTree as ET
 import zlib
 
+import numpy as np
 import torch
 
 from ...parameters import ParameterEnum
-from ..base import Detections, Linker, Track, VideoReader
+from ..base import Detections, Linker, Track
 
 
 PROTOCOL = pathlib.Path(__file__).parent / "emht_protocol.xml"
@@ -76,7 +77,7 @@ class IcyEMHTLinker(Linker):
         self.icy_dir = icy_dir
         self.motion = IcyEMHTLinker.Motion.BROWNIAN
 
-    def run(self, video: VideoReader, detections_sequence: Collection[Detections]) -> Collection[Track]:
+    def run(self, video: Iterable[np.ndarray], detections_sequence: Collection[Detections]) -> Collection[Track]:
         try:
             self.save_detections_as_icy_rois(detections_sequence, self.rois_file)
             self._run_icy()
@@ -157,7 +158,7 @@ class IcyEMHTLinker(Linker):
                 mask = detections.segmentation[i : i + height, j : j + width] == label + 1
 
                 ET.SubElement(roi, "classname").text = "plugins.kernel.roi.roi2d.ROI2DArea"
-                ET.SubElement(roi, "t").text = str(detections.frame)
+                ET.SubElement(roi, "t").text = str(detections.frame_id)
                 ET.SubElement(roi, "boundsX").text = str(j)
                 ET.SubElement(roi, "boundsY").text = str(i)
                 ET.SubElement(roi, "boundsW").text = str(width)

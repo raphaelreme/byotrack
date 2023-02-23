@@ -160,10 +160,10 @@ class SpotDetector(base.BatchDetector):
         k (float): Noise threshold. Following the paper, the wavelet coefficients
             are filtered if coef \\le k \\sigma. (The higher the less spots you retrieve)
         min_area (float): Filter resulting spots that are too small (less than min_area pixels)
-        batch_size (int): Size of the frame batch for detection process
         device (torch.device): Device on which run the B3SplineUWT
             Default to cpu
         b3swt (B3SplineUWT): Undecimated wavelet transform
+        **kwargs: Additional arguments for `BatchDetector` (batch_size, add_true_frames)
 
     Warning: The connected components used (opencv) yields segfault with too many components...
     """
@@ -176,8 +176,8 @@ class SpotDetector(base.BatchDetector):
         "min_area": ParameterBound(0.0, 30.0),
     }
 
-    def __init__(self, scale=2, k=3.0, min_area=10.0, batch_size=20, device: Optional[torch.device] = None):
-        super().__init__(batch_size)
+    def __init__(self, scale=2, k=3.0, min_area=10.0, device: Optional[torch.device] = None, **kwargs):
+        super().__init__(**kwargs)
         self.scale = scale
         self.k = k
         self.min_area = min_area
