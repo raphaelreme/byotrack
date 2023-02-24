@@ -31,17 +31,20 @@ class IcyEMHTLinker(Linker):
     for icy and some hyperparameters.
 
     The workflow is:
-    1 - Detections to rois in Icy format
-    2 - Run the Icy protocol
-    3 - [In ICY] Read rois, estimate emht parameters, run emht, export tracks to xml
-    4 - Read Icy tracks and return
 
-    Attrs:
+    1. Detections to rois in Icy format
+    2. Run the Icy protocol
+    3. [In ICY] Read rois, estimate emht parameters, run emht, export tracks to xml
+    4. Read Icy tracks and return
+
+    Attributes:
         icy_dir (str | os.PathLike): Path to the icy jar (Icy is called with java -jar <icy_jar>)
         motion (Motion): Prior on the underlying motion model (Brownian vs Directed vs Switching)
             Given to the Icy block that estimates EMHT parameters.
             Default: Motion.BROWNIAN
-        ## XXX: Should we add update_cov (bool): Whether to update covariances in Kalman filters
+
+    ## XXX: Should we add update_cov (bool): Whether to update covariances in Kalman filters
+
     """
 
     class Motion(enum.Enum):
@@ -50,6 +53,7 @@ class IcyEMHTLinker(Linker):
         Brownian: Random gaussian displacement at each time
         Directed: Random gaussian noise around a directed trajectory
         Multi: Switch randomly between Brownian and Directed
+
         """
 
         BROWNIAN = (0, 0)
@@ -65,11 +69,6 @@ class IcyEMHTLinker(Linker):
     )
 
     def __init__(self, icy_dir: Union[str, os.PathLike]) -> None:
-        """Constructor
-
-        Args:
-            icy_jar (str | os.PathLike):
-        """
         super().__init__()
         assert os.path.isdir(icy_dir)
         assert os.path.isfile(os.path.join(icy_dir, "icy.jar")), "Icy jar not found"
@@ -118,36 +117,40 @@ class IcyEMHTLinker(Linker):
     def save_detections_as_icy_rois(detections_sequence: Collection[Detections], path: Union[str, os.PathLike]) -> None:
         """Save a sequence of detections as valid rois for icy
 
-        Format: XML file
-        <root>
-            <roi>
-                <classname>plugins.kernel.roi.roi2d.ROI2DArea</classname>
-                <id>30</id>
-                <name>spot #0</name>
-                <selected>false</selected>
-                <readOnly>false</readOnly>
-                <properties>None</properties>
-                <color>-16711936</color>
-                <stroke>2</stroke>
-                <opacity>0.3</opacity>
-                <showName>false</showName>
-                <z>0</z>
-                <t>0</t>
-                <c>-1</c>
-                <boundsX>238</boundsX>
-                <boundsY>486</boundsY>
-                <boundsW>1</boundsW>
-                <boundsH>2</boundsH>
-                <boolMaskData>78:5e:63:64:4:0:0:5:0:3</boolMaskData>
-            </roi>
-            ...
-        </root>
+        Format:
+
+        .. code-block:: xml
+
+            <root>
+                <roi>
+                    <classname>plugins.kernel.roi.roi2d.ROI2DArea</classname>
+                    <id>30</id>
+                    <name>spot #0</name>
+                    <selected>false</selected>
+                    <readOnly>false</readOnly>
+                    <properties>None</properties>
+                    <color>-16711936</color>
+                    <stroke>2</stroke>
+                    <opacity>0.3</opacity>
+                    <showName>false</showName>
+                    <z>0</z>
+                    <t>0</t>
+                    <c>-1</c>
+                    <boundsX>238</boundsX>
+                    <boundsY>486</boundsY>
+                    <boundsW>1</boundsW>
+                    <boundsH>2</boundsH>
+                    <boolMaskData>78:5e:63:64:4:0:0:5:0:3</boolMaskData>
+                </roi>
+                ...
+            </root>
 
         Only needed tags are filled in the current implementation
 
         Args:
             detections_sequence (Collection[Detections]): Detections for each frame
             path (str | os.PathLike): Output path
+
         """
         ## TODO: Add support for 3D images
         root = ET.Element("root")
@@ -181,6 +184,7 @@ class IcyEMHTLinker(Linker):
 
         Returns:
             Collection[Track]: Parsed tracks
+
         """
         tree = ET.parse(path)
 

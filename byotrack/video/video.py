@@ -14,13 +14,14 @@ from .transforms import ChannelSelect, ChannelAvg, ScaleAndNormalize
 class VideoTransformConfig:
     """Configuration for video transformations
 
-    Attrs:
+    Attributes:
         aggregate (bool): Aggregate channels
         normalize (bool): Scale and Normalize the video in [0, 1]
         selected_channel (Optional[int]): Channel to use for aggregation
             If None, channel average is done. If any, it performs channel selection
         q_min (float): Minimum quantile to use when scaling the video
         q_max (float): Maximum quantile to use when scaling the video
+
     """
 
     aggregate: bool = False
@@ -39,9 +40,10 @@ class Video(Sequence[np.ndarray]):
     Return images in BGR by default like opencv as frames are mostly used with opencv afterwards for display.
     Can also return grayscale image (H, W, 1)
 
-    Attrs:
+    Attributes:
         shape (Tuple[int, int, int, int]): Shape of the video (Time, Height, Width, Channel)
         reader (byotrack.VideoReader): Underlying video reader
+
     """
 
     def __init__(self, data_source: Union[str, os.PathLike, VideoReader]) -> None:
@@ -65,6 +67,7 @@ class Video(Sequence[np.ndarray]):
 
         Args:
             config (VideoTransformConfig): Configuration of the transformations
+
         """
         self._channel_aggregator = None
         if transform_config.aggregate:
@@ -132,6 +135,7 @@ class Video(Sequence[np.ndarray]):
 
         Returns:
             np.ndarray | Video: Frame at index or a shallow copy of the video with the right slice
+
         """
         if isinstance(key, int):
             frame_id = self._slice[0] + key * self._slice[2]

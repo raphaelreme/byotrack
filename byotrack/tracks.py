@@ -19,11 +19,12 @@ class Track:
 
     A track is defined by an (non-unique) identifier, a starting frame and a succession of positions.
 
-    Attrs:
+    Attributes:
         identifier (int): Identifier of the track (non-unique)
         start (int): Starting frame of the track
         points (torch.Tensor): Positions of the particle (from starting frame to ending frame)
             Shape: (T, D), dtype: float32
+
     """
 
     _next_identifier = 0
@@ -52,6 +53,7 @@ class Track:
         Returns:
             torch.Tensor: Position at the given frame (NaN if unknown)
                 Shape: (D, ), dtype: float32
+
         """
         if self.start <= frame_id < self.start + len(self.points):
             return self.points[frame_id - self.start]
@@ -65,6 +67,7 @@ class Track:
             other (Track): The other track
             tolerance (int): Time tolerance before detecting an overlap.
                 Default: 0 (no tolerance)
+
         """
         return self.start < other.start + len(other) - tolerance and self.start + len(self) - tolerance > other.start
 
@@ -82,6 +85,7 @@ class Track:
         Returns:
             torch.Tensor: Tracks data in a single tensor
                 Shape: (T, N, D), dtype: float32
+
         """
         # Find the spatial dimension (all tracks should share the same one)
         dim = next(iter(tracks)).points.shape[1]
@@ -117,6 +121,7 @@ class Track:
         Args:
             tracks (Collection[Track]): Tracks to save
             path (str | os.PathLike): Output path
+
         """
         ids = torch.tensor([track.identifier for track in tracks])
         points = Track.tensorize(tracks, frame_range=(0, max(track.start + len(track) for track in tracks)))
@@ -128,6 +133,7 @@ class Track:
 
         Args:
             path (str | os.PathLike): Input path
+
         """
         data = torch.load(path, map_location="cpu")
         points: torch.Tensor = data["points"]

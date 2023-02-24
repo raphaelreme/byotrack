@@ -31,6 +31,7 @@ class B3SplineUWT(torch.nn.Module):
     The original image is easily reconstructed from the parameters with c_0 = c_J + \\sum_j w_j
 
     Boundaries issues are handled using mirror padding.
+
     """
 
     weights = torch.tensor([1 / 16, 1 / 4, 3 / 8, 1 / 4, 1 / 16])
@@ -40,6 +41,7 @@ class B3SplineUWT(torch.nn.Module):
 
         Args:
             level (int): Level of the Wavelet Transform. (J)
+
         """
         super().__init__()
         self.layers = torch.nn.ModuleList(
@@ -65,6 +67,7 @@ class B3SplineUWT(torch.nn.Module):
         Returns:
             torch.Tensor: Parameters [w_1, ..., w_J, c_J]
                 Shape: (B, J + 1, H, W)
+
         """
         assert len(x.shape) == 3
 
@@ -89,6 +92,7 @@ class B3SplineUWTApprox(torch.nn.Module):
 
     After some analysis this implementation is slower than
     the first one... even though it should be faster.
+
     """
 
     weights = torch.tensor([1 / 16, 1 / 4, 3 / 8, 1 / 4, 1 / 16])
@@ -98,6 +102,7 @@ class B3SplineUWTApprox(torch.nn.Module):
 
         Args:
             level (int): Level of the Wavelet Transform. (J)
+
         """
         super().__init__()
         self.layers = torch.nn.ModuleList(
@@ -123,6 +128,7 @@ class B3SplineUWTApprox(torch.nn.Module):
         Returns:
             torch.Tensor: Parameters [w_1, ..., w_J, c_J]
                 Shape: B x J + 1 x H x W
+
         """
         assert len(x.shape) == 3
         assert x.shape[0] == 1, "Batch size > 1 is not supported"
@@ -155,7 +161,7 @@ class SpotDetector(base.BatchDetector):
             but with torch no gain in time is observed. (Can be switch with follow icy)
         * Thresholding -> We follow the original paper.
 
-    Attrs:
+    Attributes:
         scale (int): Scale of the wavelet coefficients used
         k (float): Noise threshold. Following the paper, the wavelet coefficients
             are filtered if coef \\le k \\sigma. (The higher the less spots you retrieve)
@@ -166,6 +172,7 @@ class SpotDetector(base.BatchDetector):
         **kwargs: Additional arguments for `BatchDetector` (batch_size, add_true_frames)
 
     Warning: The connected components used (opencv) yields segfault with too many components...
+
     """
 
     progress_bar_description = "Spot Detector"
@@ -241,5 +248,6 @@ class SpotDetector(base.BatchDetector):
         Returns:
             torch.Tensor: Threshold for each scale
                 Shape: (..., 1, 1)
+
         """
         return coefficients.std(dim=(-1, -2), keepdim=True) * self.k

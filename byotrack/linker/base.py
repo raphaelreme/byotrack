@@ -14,6 +14,7 @@ class Linker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-me
     Link detections through time to build tracks.
 
     Each linker can define a set of parameters (See `ParametrizedObjectMixin`)
+
     """
 
     @abstractmethod
@@ -27,4 +28,5 @@ class Linker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-me
 
         Returns:
             Collection[byotrack.Track]: Tracks of particles
+
         """

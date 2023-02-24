@@ -106,6 +106,7 @@ def relabel_consecutive(segmentation: torch.Tensor) -> torch.Tensor:
 
     Returns:
         torch.Tensor: The same segmentation mask where labels are consecutive (from 0 to N)
+
     """
     labels: torch.Tensor = torch.unique(segmentation)
     max_label = labels.max().item()
@@ -126,7 +127,7 @@ class Detections:
     """Detections for a given frame
 
     Built from a data dict. The data has to contained one of "position",
-    "box" or "segmentation" keys that respectively define the positions of instances center
+    "bbox" or "segmentation" keys that respectively define the positions of instances center
     (i, j), the bounding boxes of instances (top, left, height, width) or the instance
     segmentation of the image (H, W).
 
@@ -143,7 +144,7 @@ class Detections:
     Defines position, bbox, segmentation, and confidence properties. Each of them are either from
     the data or extrapolated if missing (see _extrapolate_xxx).
 
-    Attrs:
+    Attributes:
         data (Dict[str, toch.Tensor]): Detections data.
         length (int): Number of detections
         frame_id (Optional[int]): Frame id in the video (if any)
@@ -156,6 +157,7 @@ class Detections:
             Shape: (H, W), dtype: int32
         confidence (torch.Tensor): Confidence for each instance
             Shape: (N,), dtype: float32
+
     """
 
     def __init__(self, data: Dict[str, torch.Tensor], frame_id: Optional[int] = None) -> None:
@@ -233,6 +235,7 @@ class Detections:
         Etiher given in data, or from the segmentation shape, or from the shape needed to fit positions/bboxes.
 
         (Stored in `self.shape`, not in `self._lazy_extrapolated_data`)
+
         """
         if "shape" in self.data:
             return (int(self.data["shape"][0]), int(self.data["shape"][1]))
@@ -252,6 +255,7 @@ class Detections:
         """Extrapolate position from data
 
         Average the segmentation for each label if exists or uses the bbox
+
         """
         if "segmentation" in self.data:
             return torch.tensor(_position_from_segmentation(self.data["segmentation"].numpy()))
@@ -262,6 +266,7 @@ class Detections:
         """Extrapolate bbox from data
 
         Bounding box of the segmentation if exists, or return a bbox of shape 1 centered on the position
+
         """
         if "segmentation" in self.data:
             return torch.tensor(_bbox_from_segmentation(self.data["segmentation"].numpy()))
@@ -276,6 +281,7 @@ class Detections:
         Fill the bounding boxes if exists, or fill one pixel on each position
 
         Warning: unable to handle overlapping bboxes/positions
+
         """
         if "bbox" in self.data:
             return torch.tensor(_segmentation_from_bbox(self.data["bbox"].numpy(), self.shape))
@@ -296,6 +302,7 @@ class Detections:
 
         Args:
             path (str | os.PathLike): Output path
+
         """
         torch.save(self.data, path)
 
@@ -307,6 +314,7 @@ class Detections:
 
         Args:
             path (str | os.PathLike): Input path
+
         """
         return Detections(torch.load(path, map_location="cpu"))
 
@@ -316,16 +324,18 @@ class Detections:
     ) -> None:
         """Save detections for a sequence of frames
 
-        It will save the detections as:
-        path/0.pt
-             1.pt
-             ...
-             N.pt
+        It will save the detections as::
+
+            path/0.pt
+                 1.pt
+                 ...
+                 N.pt
 
         Args:
             detections_sequence (Collection[Detections]): Detections for each frame
                 Each detections should have a valid frame id.
             path (str | os.PathLike): Output folder
+
         """
         os.makedirs(path)
 
@@ -337,17 +347,19 @@ class Detections:
     def load_multi_frames_detections(path: Union[str, os.PathLike]) -> Collection[Detections]:
         """Load detections for a sequence of frames
 
-        Expect the following file structure:
-        path/0.pt
-             1.pt
-             ...
-             N.pt
+        Expect the following file structure::
+
+            path/0.pt
+                 1.pt
+                 ...
+                 N.pt
 
         Args:
             path (str | os.PathLike): Input folder
 
         Returns:
             Collection[Detections]: Detections for each frame (sorted by frame id)
+
         """
         files = os.listdir(path)
 

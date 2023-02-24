@@ -1,5 +1,7 @@
 # Byotrack
 
+[![Documentation Status](https://readthedocs.org/projects/byotrack/badge/?version=latest)](https://byotrack.readthedocs.io/en/latest/?badge=latest)
+
 Unified python API for biological particle tracking.
 
 Many bioimage informatics tools already implement their own tracking tools (Icy, ImageJ, TrackMate...) but most of them are implemented in Java which makes it difficult for non-Java developers to experiment with the code. It is also difficult to integrate deep learning algorithms (mainly developed in Python) into these software.
@@ -21,14 +23,17 @@ Overview:
     * EMC2 [5]: Track stitching (gap closing) (In coming...)
 
 
-More documentation in coming...
-
-
 ## Install
 
 ```bash
 $ pip install byotrack
 ```
+
+Some tracker implementations require additional dependencies that are not installed with the library, to use them you need to install their dependencies on your own.
+Here is the complete list:
+
+- IcyEMHTLinker
+    - Icy: [Download Icy](https://icy.bioimageanalysis.org/download/)
 
 
 ## Getting started
@@ -37,7 +42,7 @@ $ pip install byotrack
 import byotrack
 ```
 
-Have a look at examples notebook
+Please have a look at our examples notebook and our [documentation](https://byotrack.readthedocs.io/en/latest/index.html).
 
 ## Contribute
 
@@ -64,10 +69,3 @@ In coming...
 * [5] T. Lagache, A. Hanson, J. Perez-Ortega, et al., “Tracking calcium
       dynamics from individual neurons in behaving animals”,
       PLoS computational biology, vol. 17, pp. e1009432, 10 2021.
-
-## Build and Deploy
-
-```bash
-$ python -m build
-$ python -m twine upload dist/*
-```

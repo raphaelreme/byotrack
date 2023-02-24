@@ -13,6 +13,7 @@ class Refiner(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
     Improve a set of tracks
 
     Each refiner can define a set of parameters (See `ParametrizedObjectMixin`)
+
     """
 
     @abstractmethod
@@ -26,4 +27,5 @@ class Refiner(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
 
         Returns:
             Collection[Track]: Refined tracks of particles
+
         """

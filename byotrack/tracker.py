@@ -14,6 +14,7 @@ class Tracker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
     """Base abstract tracker class
 
     A tracker can be run on a whole video and produces tracks
+
     """
 
     @abstractmethod
@@ -26,17 +27,19 @@ class Tracker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
 
         Returns:
             Collection[Track]: Tracks of particles
+
         """
 
 
 class MultiStepTracker(Tracker):  # pylint: disable=too-few-public-methods
     """Multi step tracker: split the tracking task into Detect / Link / Refine
 
-    Attrs:
+    Attributes:
         detector (byotrack.Detector): Performs the detection on the video
         linker (byotrack.Linker): Links detections through time
         refiner (Optional[byotrack.Refiner]): Refines tracks
             No refining if non-given.
+
     """
 
     def __init__(self, detector: Detector, linker: Linker, refiner: Optional[Refiner] = None) -> None:

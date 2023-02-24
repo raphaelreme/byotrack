@@ -1,0 +1,7 @@
+ipython
+nbsphinx
+# pandoc requires to install the executable, not only the python wrapping lib
+# Need to run apt install or conda install pandoc
+pandoc
+sphinx
+sphinx_rtd_theme

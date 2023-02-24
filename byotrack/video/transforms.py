@@ -9,7 +9,7 @@ import numpy as np
 class ChannelSelect:
     """Select a given channel
 
-    Attrs:
+    Attributes:
         channel (int): Channel to keep (0, 1 or 2)
 
     Args:
@@ -19,6 +19,7 @@ class ChannelSelect:
     Returns:
         np.ndarray: Filtered frame with a single channel
             Shape: (..., H, W, 1)
+
     """
 
     def __init__(self, channel: int) -> None:
@@ -26,6 +27,7 @@ class ChannelSelect:
 
         Args:
             channel (int): Selected channel
+
         """
         self.channel = channel
 
@@ -43,6 +45,7 @@ class ChannelAvg:
     Returns:
         np.ndarray: Average of channels
             Shape: (..., H, W, 1)
+
     """
 
     def __call__(self, frame: np.ndarray) -> np.ndarray:
@@ -54,7 +57,7 @@ class ScaleAndNormalize:
 
     min and max values are computed using quantile of the video to improve stability
 
-    Attrs:
+    Attributes:
         q_min (float): Quantile of the minimum value to consider
         q_max (float): Quantile of the maximum value to consider
         mini (np.ndarray): Minimum value kept (one for each channel)
@@ -69,6 +72,7 @@ class ScaleAndNormalize:
     Returns:
         np.ndarray: Normalized version of the frame in [0, 1]
             Shape: (..., H, W, C)
+
     """
 
     # Do not use all the frames of a video because it is both time and memory expensive
@@ -86,6 +90,7 @@ class ScaleAndNormalize:
         Args:
             frames (np.ndarray): Several frames of the same video to compute the stats
                 Shape: (N, H, W, C)
+
         """
         frames = frames[: self.max_frames_for_stats]
         self.mini = np.quantile(frames, self.q_min, axis=(0, 1, 2))

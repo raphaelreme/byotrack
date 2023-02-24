@@ -57,10 +57,11 @@ class ParametrizedObjectMixin:  # pylint: disable=too-few-public-methods
 
     (See an implementation with SpotDetector)
 
-    Attrs:
+    Attributes:
         parametrized (Dict[str, ParametrizedObjectMixin]): Registered child ParametrizedObjectMixin
             ParametrizedObjectMixin attributes are automatically registered.
         parameters (Dict[str, ParameterRange]): Defined range for parameters
+
     """
 
     parametrized: Dict[str, ParametrizedObjectMixin] = {}

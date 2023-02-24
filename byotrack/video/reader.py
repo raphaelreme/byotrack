@@ -30,22 +30,25 @@ class VideoReader(metaclass=MetaVideoReader):
     """Unified video reader api
 
     Close to OpenCV API but few key differences:
-    - There is always a frame loaded
-    - Frame ids goes from 0 to length - 1
-    - Read method is very different:
-        - It retrieves the current frame then grabs the next (The other way around in opencv)
-        - It returns therefore a ndarray and a bool rather than a bool and a ndarray
-        - The boolean returned indicated if we can continue to read and not if the read operation has failed
-    - Easy to check main attributes like:
-        - frame_id
-        - length
-        - shape
-        - fps if known (-1 otherwise)
+
+    * There is always a frame loaded
+    * Frame ids goes from 0 to length - 1
+    * Read method is very different:
+
+        * It retrieves the current frame then grabs the next (The other way around in opencv)
+        * It returns therefore a ndarray and a bool rather than a bool and a ndarray
+        * The boolean returned indicated if we can continue to read and not if the read operation has failed
+    * Easy to check main attributes like:
+
+        * frame_id
+        * length
+        * shape
+        * fps if known (-1 otherwise)
 
     Return images in BGR by default like opencv as frames are mostly used with opencv afterwards for display.
     Can also return grayscale image (H, W, 1)
 
-    Attrs:
+    Attributes:
         supported_extensions (List[str]): Static attribute used by `open` method to automatically choose
             which VideoReader to use.
         path (str | bytes | os.PathLike): Path of the current video
@@ -55,6 +58,7 @@ class VideoReader(metaclass=MetaVideoReader):
         channels (int): Number of channels
         length (int): Number of frames
         frame_id (int): Current frame id
+
     """
 
     supported_extensions: List[str] = []
@@ -65,6 +69,7 @@ class VideoReader(metaclass=MetaVideoReader):
         Args:
             path (str | os.PathLike): Path to the video to read
             kwargs: Any additional kwargs are given to the underlying video reader
+
         """
         self.path = path
         self.released = False
@@ -85,6 +90,7 @@ class VideoReader(metaclass=MetaVideoReader):
 
         Returns:
             bool: True if able to grab next frame
+
         """
         raise NotImplementedError()
 
@@ -94,6 +100,7 @@ class VideoReader(metaclass=MetaVideoReader):
         Returns:
             np.ndarray: The current frame
                 Shape: (H, W, 3) or (H, W, 1) (Grayscale)
+
         """
         raise NotImplementedError()
 
@@ -107,6 +114,7 @@ class VideoReader(metaclass=MetaVideoReader):
             np.ndarray: The current frame
                 Shape: (H, W, 3) or (H, W, 1) (Grayscale)
             bool: Whether there is a next frame to read
+
         """
         current_frame = self.retrieve()
 
@@ -119,6 +127,7 @@ class VideoReader(metaclass=MetaVideoReader):
 
         Raise:
             EOFError if seeking an invalid frame
+
         """
         raise NotImplementedError()
 
@@ -127,6 +136,7 @@ class VideoReader(metaclass=MetaVideoReader):
 
         Returns:
             int: current frame_id
+
         """
         return self.frame_id
 
@@ -145,6 +155,7 @@ class VideoReader(metaclass=MetaVideoReader):
 
         Returns:
             VideoReader
+
         """
         extension = str(path).rsplit(".", maxsplit=1)[-1]
 
@@ -159,6 +170,7 @@ class VideoReader(metaclass=MetaVideoReader):
 
         Returns:
             np.ndarray: Valid frame with 3 dimensions (H, W, C)
+
         """
         if len(frame.shape) == 2:
             frame = frame[..., None]
@@ -173,6 +185,7 @@ class OpenCVVideoReader(VideoReader):
     """Wrapper around opencv VideoCapture
 
     Default VideoReader when opening a file.
+
     """
 
     def __init__(self, path: Union[str, os.PathLike], **kwargs):
@@ -213,6 +226,7 @@ class TiffVideoReader(VideoReader):
     """Special VideoReader for multi images tif files, not supported by opencv
 
     Uses PIL as backend
+
     """
 
     supported_extensions = ["tif", "tiff"]

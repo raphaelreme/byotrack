@@ -17,6 +17,7 @@ class Detector(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-
     Detect on each frame the objects of interest.
 
     Each detector can define a set of parameters (See `ParametrizedObjectMixin`)
+
     """
 
     @abstractmethod
@@ -29,6 +30,7 @@ class Detector(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-
 
         Returns:
             Collection[byotrack.Detections]: Detections for each frame (ordered by frames)
+
         """
 
 
@@ -38,12 +40,13 @@ class BatchDetector(Detector):
     Usually leads to faster implementation of the detection process
     when batch size is greater than 1
 
-    Attrs:
+    Attributes:
         batch_size (int): Size of the frame batch
             Default: 20
         add_true_frames (bool): If the input is a Video, it will exploits the VideoReader knowledge
             to extract the true frame id for each detections.
             Default: True
+
     """
 
     progress_bar_description = "Detections"
@@ -91,4 +94,5 @@ class BatchDetector(Detector):
 
         Returns:
             Collection[byotrack.Detections]: Detections for each given frame
+
         """
