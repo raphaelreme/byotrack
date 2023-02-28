@@ -6,7 +6,7 @@ Linker
 Implementations
 ---------------
 
-EMHT Linker (Calls icy)
-```````````````````````
+EMHT Linker (Requires Icy)
+``````````````````````````
 
 .. automodule:: byotrack.linker.icy_emht.icy_emht

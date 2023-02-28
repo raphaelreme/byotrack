@@ -29,3 +29,21 @@ class Refiner(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
             Collection[Track]: Refined tracks of particles
 
         """
+
+
+class MultiRefiner(Refiner):  # pylint: disable=too-few-public-methods
+    """Refine tracks with multiple refiners
+
+    Attributes:
+        refiners (Ierable[Refiner]): Refiners to run
+    """
+
+    def __init__(self, refiners: Iterable[Refiner]) -> None:
+        super().__init__()
+        self.refiners = refiners
+
+    def run(self, video: Iterable[np.ndarray], tracks: Collection[Track]) -> Collection[Track]:
+        for refiner in self.refiners:
+            tracks = refiner.run(video, tracks)
+
+        return tracks

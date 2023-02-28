@@ -5,3 +5,8 @@ Refiner
 
 Implementations
 ---------------
+
+Cleaner
+```````
+
+.. automodule:: byotrack.refiner.cleaner
