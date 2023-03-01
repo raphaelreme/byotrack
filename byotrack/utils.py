@@ -1,5 +1,5 @@
 import re
-from typing import Iterable
+from typing import Iterable, List, Union
 
 
 def sorted_alphanumeric(data: Iterable[str]):
@@ -8,6 +8,11 @@ def sorted_alphanumeric(data: Iterable[str]):
     "1" < "2" < "10" < "foo1" < "foo2" < "foo3"
 
     """
-    convert = lambda text: int(text) if text.isdigit() else text.lower()
-    alphanum_key = lambda key: [convert(c) for c in re.split("([0-9]+)", key)]
+
+    def alphanum_key(key: str) -> List[Union[str, int]]:
+        def convert(text: str) -> Union[str, int]:
+            return int(text) if text.isdigit() else text.lower()
+
+        return [convert(text) for text in re.split("([0-9]+)", key)]
+
     return sorted(data, key=alphanum_key)

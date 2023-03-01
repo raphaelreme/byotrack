@@ -4,3 +4,4 @@ build
 mypy
 pylint
 twine
+types-tqdm
