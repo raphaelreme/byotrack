@@ -1,10 +1,14 @@
-name: ByoTrack linting and testing
+name: Lint and Test
 
-on: [push]
+# Triggered by other workflows or on any push on branches
+on:
+  push:
+    branches:
+      - "**"
+  workflow_call:
 
 jobs:
-  build:
-
+  main:
     runs-on: ubuntu-latest
     strategy:
       matrix:
