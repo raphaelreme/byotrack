@@ -16,7 +16,7 @@ jobs:
           python-version: '3.10'
       - name: Check deployed version
         run: |
-          python _check_version_deployed.py
+          [ "$GITHUB_REF_NAME" == "v$(python setup.py --version)" ]
   tests:
     needs: check_version
     uses: ./.github/workflows/tests.yml

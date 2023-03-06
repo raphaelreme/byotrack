@@ -1,5 +1,5 @@
 # Byotrack
-
+[![Lint and Test](https://github.com/raphaelreme/byotrack/actions/workflows/tests.yml/badge.svg)](https://github.com/raphaelreme/byotrack/actions/workflows/tests.yml)
 [![Documentation Status](https://readthedocs.org/projects/byotrack/badge/?version=latest)](https://byotrack.readthedocs.io/en/latest/?badge=latest)
 
 Unified python API for biological particle tracking.
