@@ -6,7 +6,13 @@ Refiner
 Implementations
 ---------------
 
-Cleaner
-```````
+Cleaners
+````````
 
 .. automodule:: byotrack.refiner.cleaner
+
+Stitchers
+`````````
+
+.. automodule:: byotrack.refiner.stitching.dist_stitcher
+.. automodule:: byotrack.refiner.stitching.emc2
