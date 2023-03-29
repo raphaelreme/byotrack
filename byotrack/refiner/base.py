@@ -35,7 +35,7 @@ class MultiRefiner(Refiner):  # pylint: disable=too-few-public-methods
     """Refine tracks with multiple refiners
 
     Attributes:
-        refiners (Ierable[Refiner]): Refiners to run
+        refiners (Iterable[Refiner]): Refiners to run
     """
 
     def __init__(self, refiners: Iterable[Refiner]) -> None:

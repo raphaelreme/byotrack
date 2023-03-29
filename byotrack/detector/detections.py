@@ -39,7 +39,7 @@ def _check_confidence(confidence: torch.Tensor) -> None:
     assert confidence.dtype is torch.float32
 
 
-@numba.jit(nopython=True)
+@numba.njit
 def _position_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     """Return the centre of each instance in the segmentation"""
     n = segmentation.max()
@@ -61,7 +61,7 @@ def _position_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     return positions
 
 
-@numba.jit(nopython=True)
+@numba.njit
 def _bbox_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     n = segmentation.max()
     bbox = np.zeros((n, 4), dtype=np.int32)
@@ -80,7 +80,7 @@ def _bbox_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     return bbox
 
 
-@numba.jit(nopython=True)
+@numba.njit
 def _segmentation_from_bbox(bbox: np.ndarray, shape: Tuple[int, int]) -> np.ndarray:
     segmentation = np.zeros(shape, dtype=np.int32)
     for label, bbox_ in enumerate(bbox):
