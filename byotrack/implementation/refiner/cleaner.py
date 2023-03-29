@@ -3,11 +3,10 @@ from typing import Collection, Iterable, List
 import numpy as np
 import torch
 
-from ..tracks import Track
-from .base import Refiner
+import byotrack
 
 
-class Cleaner(Refiner):
+class Cleaner(byotrack.Refiner):
     """Cleaner refiner
 
     Split tracklet when the distance between two consecutive points is greater than `max_dist`.
@@ -26,11 +25,11 @@ class Cleaner(Refiner):
         self.min_length = min_length
         self.max_dist = max_dist
 
-    def run(self, video: Iterable[np.ndarray], tracks: Collection[Track]) -> List[Track]:
+    def run(self, video: Iterable[np.ndarray], tracks: Collection[byotrack.Track]) -> List[byotrack.Track]:
         return self.clean_tracks(tracks, self.min_length, self.max_dist)
 
     @staticmethod
-    def clean_tracks(tracks: Collection[Track], min_length: int, max_dist: float) -> List[Track]:
+    def clean_tracks(tracks: Collection[byotrack.Track], min_length: int, max_dist: float) -> List[byotrack.Track]:
         """Clean tracks
 
         Split tracklet when the distance between two consecutive points is greater than `max_dist`.
@@ -50,7 +49,7 @@ class Cleaner(Refiner):
         """
         n_split = 0
         n_filtered = 0
-        cleaned_tracks: List[Track] = []
+        cleaned_tracks: List[byotrack.Track] = []
 
         for track in tracks:
             cleaned = []
@@ -62,7 +61,7 @@ class Cleaner(Refiner):
                 for i in range(len(track) - 1):
                     if speed[i] > max_dist:  # Break (i -> i + 1)
                         cleaned.append(
-                            Track(
+                            byotrack.Track(
                                 track.start + first,
                                 track.points[first : i + 1],
                                 identifier=track.identifier,
@@ -72,7 +71,7 @@ class Cleaner(Refiner):
                         n_split += 1
 
                 # There is at least one element left
-                cleaned.append(Track(track.start + first, track.points[first:], identifier=track.identifier))
+                cleaned.append(byotrack.Track(track.start + first, track.points[first:], identifier=track.identifier))
 
             n_filtered += len(cleaned)
             cleaned = list(filter(lambda tracklet: len(tracklet) >= min_length, cleaned))

@@ -1,4 +1,4 @@
-# Byotrack
+# ByoTrack
 [![Lint and Test](https://github.com/raphaelreme/byotrack/actions/workflows/tests.yml/badge.svg)](https://github.com/raphaelreme/byotrack/actions/workflows/tests.yml)
 [![Documentation Status](https://readthedocs.org/projects/byotrack/badge/?version=latest)](https://byotrack.readthedocs.io/en/latest/?badge=latest)
 
@@ -19,8 +19,8 @@ Overview:
 * Particle Linking
     * EMHT [4] (Wrapper to the one implemented in Icy [1], requires Icy to be installed)
 * Tracks Refining
-    * Cleaning (In coming...)
-    * EMC2 [5]: Track stitching (gap closing) (In coming...)
+    * Cleaning
+    * EMC2 [5]: Track stitching (gap closing)
 
 
 ## Install
@@ -34,15 +34,52 @@ Here is the complete list:
 
 - IcyEMHTLinker
     - Icy: [Download Icy](https://icy.bioimageanalysis.org/download/)
-
+- DistStitcher and children (EMC2Stitcher)
+    - pylapy: [Install pylapy](https://github.com/raphaelreme/pylapy#install)
 
 ## Getting started
 
 ```python
 import byotrack
+
+# Load some specific implementations
+from byotrack.implementation.detector.spot_detector import SpotDetector
+from byotrack.implementation.linker.icy_emht import IcyEMHTLinker
+from byotrack.implementation.refiner.cleaner import Cleaner
+from byotrack.implementation.refiner.stitching import EMC2Stitcher
+
+# Read a video from a path, normalize and aggregate channels
+video = byotrack.Video(video_path)
+transform_config = VideoTransformConfig(aggregate=True, normalize=True, q_min=0.01, q_max=0.999)
+video.set_transform(transform_config)
+
+# Create a multi step tracker
+## First the detector
+## Smaller scale <=> search for smaller spots
+## The noise threshold is linear with k. If you increase it, you will retrieve less spots.
+detector = SpotDetector(scale=1, k = 3.0, min_area=5)
+
+## Second the linker
+## Hyperparameters are automatically chosen by Icy
+linker = IcyEMHTLinker(icy_path)
+
+## Finally refiners
+## If needed you can add Cleaning and Stitching operations
+refiners = []
+if True:
+    refiners.append(Cleaner(5, 3.5))  # Split tracks on position jumps and drop small ones
+    refiners.append(EMC2Stitcher())  # Merge tracks if they track the same particle
+
+tracker = byotrack.MultiStepTracker(detector, linker, refiners)
+
+# Run the tracker
+tracks = tracker.run(video)
+
+# Save tracks
+byotrack.Track.save(tracks, output_path)
 ```
 
-Please have a look at our examples notebook and our [documentation](https://byotrack.readthedocs.io/en/latest/index.html).
+Please refer to the ![official documentation](https://byotrack.readthedocs.io/en/latest/?badge=latest).
 
 ## Contribute
 

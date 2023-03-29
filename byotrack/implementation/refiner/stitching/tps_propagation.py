@@ -67,6 +67,11 @@ def directed_propagate(
 ) -> torch.Tensor:
     """Propagate tracks matrix using Thin Plate Spline (TPS) algorithm in a single direction
 
+    NOTE: We use torch-tps which is very fast but not very accurate. For instance, shuflling the tracks
+        may yield different results (<1px deviation). We have not noticed any real impact on EMC2 stitching
+        performances. Alpha > 5.0 is advised (reduces the numerical errors + outliers resilience).
+
+
     Args:
         tracks_matrix (torch.Tensor): Tracks data in a single tensor (See `Tracks.tensorize`)
             Shape: (T, N, D), dtype: float32

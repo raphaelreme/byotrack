@@ -4,9 +4,9 @@ import cv2  # type: ignore
 import numpy as np
 import torch
 
-from ..parameters import ParameterBound, ParameterEnum
-from . import base
-from . import detections
+import byotrack
+from byotrack.api.detector.detections import relabel_consecutive
+from byotrack.api.parameters import ParameterBound, ParameterEnum
 
 
 # Set to true to follow closely the ICY implementation (slower and less precise)
@@ -147,22 +147,23 @@ class B3SplineUWTApprox(torch.nn.Module):
         return outputs[None, ...]
 
 
-class SpotDetector(base.BatchDetector):
+class SpotDetector(byotrack.BatchDetector):
     """Detection of bright spots using B3SplineUWT
 
     Following paper from Olivo-Marin, J.C. Extraction of spots in biological images using
     multiscale products. Pattern Recognit. 35, 1989-1996
 
     The multi scales behavior was implemented but let's drop it, it adds complexity without
-    real gain from what I experienced.
+    real gain from what we experienced.
 
     Main differences with Icy implementation are:
         * 2d wavelets (rather than 2 times one dimensional wavelets). It was designed to improve computations,
-            but with torch no gain in time is observed. (Can be switch with follow icy)
+            but with torch no gain in time is observed. (Can be switch with FOLLOW_ICY)
         * Thresholding -> We follow the original paper.
 
     Attributes:
-        scale (int): Scale of the wavelet coefficients used
+        scale (int): Scale of the wavelet coefficients used. With small scales, the detector focus on
+            smaller objects.
         k (float): Noise threshold. Following the paper, the wavelet coefficients
             are filtered if coef \\le k \\sigma. (The higher the less spots you retrieve)
         min_area (float): Filter resulting spots that are too small (less than min_area pixels)
@@ -195,7 +196,7 @@ class SpotDetector(base.BatchDetector):
         else:
             self.b3swt = B3SplineUWT(scale + 1).to(self.device)
 
-    def detect(self, batch: np.ndarray) -> List[detections.Detections]:
+    def detect(self, batch: np.ndarray) -> List[byotrack.Detections]:
         assert (
             batch.shape[-1] == 1
         ), "This detector does not support multi channel images. Please aggregate the channels first"
@@ -225,9 +226,9 @@ class SpotDetector(base.BatchDetector):
                 segmentation[segmentation == i] = 0
 
             detections_list.append(
-                detections.Detections(
+                byotrack.Detections(
                     {
-                        "segmentation": detections.relabel_consecutive(torch.tensor(segmentation.astype(np.int32))),
+                        "segmentation": relabel_consecutive(torch.tensor(segmentation.astype(np.int32))),
                         # "confidence": put areas instead of deleting them ?
                     }
                 )

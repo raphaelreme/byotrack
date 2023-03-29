@@ -1,13 +1,12 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Collection, Iterable, Optional
+from typing import Collection, Iterable
 
 import numpy as np
 
-from .detector.base import Detector
-from .linker.base import Linker
+import byotrack  # pylint: disable=cyclic-import
 from .parameters import ParametrizedObjectMixin
-from .refiner.base import Refiner
-from .tracks import Track
 
 
 class Tracker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-methods
@@ -18,7 +17,7 @@ class Tracker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
     """
 
     @abstractmethod
-    def run(self, video: Iterable[np.ndarray]) -> Collection[Track]:
+    def run(self, video: Iterable[np.ndarray]) -> Collection[byotrack.Track]:
         """Run the tracker on a whole video
 
         Args:
@@ -26,7 +25,7 @@ class Tracker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
                 Each array is expected to have a shape (H, W, C)
 
         Returns:
-            Collection[Track]: Tracks of particles
+            Collection[byotrack.Track]: Tracks of particles
 
         """
 
@@ -37,22 +36,24 @@ class MultiStepTracker(Tracker):  # pylint: disable=too-few-public-methods
     Attributes:
         detector (byotrack.Detector): Performs the detection on the video
         linker (byotrack.Linker): Links detections through time
-        refiner (Optional[byotrack.Refiner]): Refines tracks
-            No refining if non-given.
+        refiners (Iterable[byotrack.Refiner]): Optional refinement steps
+            Empty by default
 
     """
 
-    def __init__(self, detector: Detector, linker: Linker, refiner: Optional[Refiner] = None) -> None:
+    def __init__(
+        self, detector: byotrack.Detector, linker: byotrack.Linker, refiners: Iterable[byotrack.Refiner] = ()
+    ) -> None:
         super().__init__()
 
         self.detector = detector
         self.linker = linker
-        self.refiner = refiner
+        self.refiners = refiners
 
-    def run(self, video: Iterable[np.ndarray]) -> Collection[Track]:
+    def run(self, video: Iterable[np.ndarray]) -> Collection[byotrack.Track]:
         detections = self.detector.run(video)
         tracks = self.linker.run(video, detections)
-        if self.refiner is not None:
-            tracks = self.refiner.run(video, tracks)
+        for refiner in self.refiners:
+            tracks = refiner.run(video, tracks)
 
         return tracks

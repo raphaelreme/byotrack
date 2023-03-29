@@ -3,10 +3,10 @@ from typing import Collection, Iterable
 import numba  # type: ignore
 import numpy as np
 
+import byotrack
 
-from ...tracks import Track
 from . import dist_stitcher
-from . import tps_propatation
+from . import tps_propagation
 
 
 @numba.njit(parallel=True)
@@ -54,28 +54,29 @@ class EMC2Stitcher(dist_stitcher.DistStitcher):
 
     Attributes:
         alpha (float): Thin Plate Spline regularization (See `tps_propation` module and `torch_tps` librarie)
-            Default: 5.0
+            We advise to use alpha > 5.0. It improves outliers resiliences and helps reducing numerical errors.
+            Default: 10.0
         eta (float): Soft threshold in LAP solving (See `DistStitcher`)
             Default: 5.0 (Pixels)
         max_overlap (int): Cannot stitch tracks that overlap more than `max_overlap`
-            Default: 10
+            Default: 5
         max_dist (float): Cannot stich track i and track j if the last position of i and
             first position of j are farther than `max_dist` (ignored if max_dist <= 0)
             Default: 100.0
         max_gap (int): Cannot stich track i and track j if i ended more
             than `max_gap` frame before j started (ignored if max_gap <= 0)
-            Default: 200
+            Default: 250
 
     """
 
-    def __init__(self, alpha: float = 5.0, eta: float = 5.0) -> None:
+    def __init__(self, alpha: float = 10.0, eta: float = 5.0) -> None:
         super().__init__(self.compute_dist, eta)
         self.alpha = alpha
-        self.max_overlap = 10
+        self.max_overlap = 5
         self.max_dist = 100.0
-        self.max_gap = 200
+        self.max_gap = 250
 
-    def compute_dist(self, _: Iterable[np.ndarray], tracks: Collection[Track]) -> np.ndarray:
+    def compute_dist(self, _: Iterable[np.ndarray], tracks: Collection[byotrack.Track]) -> np.ndarray:
         """Compute EMC2 distance between tracks
 
         Compute the mininum distance between each track propagation (only in the temporal gap between them).
@@ -90,7 +91,7 @@ class EMC2Stitcher(dist_stitcher.DistStitcher):
         """
 
         skip_mask = self.skip_computation(tracks, self.max_overlap, self.max_dist, self.max_gap)
-        propagation_matrix = tps_propatation.propagate(Track.tensorize(tracks), self.alpha)
+        propagation_matrix = tps_propagation.propagate(byotrack.Track.tensorize(tracks), self.alpha)
         ranges = np.array([(track.start, track.start + len(track)) for track in tracks])
 
         return _fast_emc2_dist(propagation_matrix.numpy(), skip_mask.numpy(), ranges)

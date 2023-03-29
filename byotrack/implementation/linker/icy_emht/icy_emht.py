@@ -9,14 +9,14 @@ import zlib
 import numpy as np
 import torch
 
-from ...parameters import ParameterEnum
-from ..base import Detections, Linker, Track
+import byotrack
+from byotrack.api.parameters import ParameterEnum
 
 
 PROTOCOL = pathlib.Path(__file__).parent / "emht_protocol.xml"
 
 
-class IcyEMHTLinker(Linker):
+class IcyEMHTLinker(byotrack.Linker):
     """Run EMHT [4] from Icy [1]
 
     This code is only a wrapper arounds Icy implementation as EMHT is painful to implement.
@@ -76,7 +76,9 @@ class IcyEMHTLinker(Linker):
         self.icy_dir = icy_dir
         self.motion = IcyEMHTLinker.Motion.BROWNIAN
 
-    def run(self, video: Iterable[np.ndarray], detections_sequence: Collection[Detections]) -> Collection[Track]:
+    def run(
+        self, video: Iterable[np.ndarray], detections_sequence: Collection[byotrack.Detections]
+    ) -> Collection[byotrack.Track]:
         try:
             self.save_detections_as_icy_rois(detections_sequence, self.rois_file)
             self._run_icy()
@@ -114,7 +116,9 @@ class IcyEMHTLinker(Linker):
             )
 
     @staticmethod
-    def save_detections_as_icy_rois(detections_sequence: Collection[Detections], path: Union[str, os.PathLike]) -> None:
+    def save_detections_as_icy_rois(
+        detections_sequence: Collection[byotrack.Detections], path: Union[str, os.PathLike]
+    ) -> None:
         """Save a sequence of detections as valid rois for icy
 
         Format:
@@ -176,7 +180,7 @@ class IcyEMHTLinker(Linker):
         ET.ElementTree(root).write(path)
 
     @staticmethod
-    def parse_tracks(path: Union[str, os.PathLike]) -> Collection[Track]:
+    def parse_tracks(path: Union[str, os.PathLike]) -> Collection[byotrack.Track]:
         """Parse tracks output by ICY
 
         Args:
@@ -212,6 +216,8 @@ class IcyEMHTLinker(Linker):
             if (points_tensor[:, 2] <= 0).all():
                 points_tensor = points_tensor[:, :2].clone()
 
-            tracks.append(Track(start, points_tensor, identifier))
+            tracks.append(byotrack.Track(start, points_tensor, identifier))
 
-        return tracks
+        # Sort tracks by starting time and then position (They seem to be randomly sorted otherwise and in addition with
+        # EMC2 torch-tps approximate propagation it yields undeterministic behaviors)
+        return sorted(tracks, key=lambda track: (track.start, track.points[0].sum().item()))

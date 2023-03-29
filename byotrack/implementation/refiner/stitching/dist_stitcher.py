@@ -4,14 +4,13 @@ import numpy as np
 import pylapy
 import torch
 
-from ...tracks import Track
-from ..base import Refiner
+import byotrack
 
 
-Dist = Callable[[Iterable[np.ndarray], Collection[Track]], np.ndarray]
+Dist = Callable[[Iterable[np.ndarray], Collection[byotrack.Track]], np.ndarray]
 
 
-class DistStitcher(Refiner):
+class DistStitcher(byotrack.Refiner):
     """Track stitching using distance minimization
 
     Attributes:
@@ -28,22 +27,22 @@ class DistStitcher(Refiner):
         self.eta = eta
         self.lap_solver = pylapy.LapSolver()
 
-    def run(self, video: Iterable[np.ndarray], tracks: Collection[Track]) -> List[Track]:
+    def run(self, video: Iterable[np.ndarray], tracks: Collection[byotrack.Track]) -> List[byotrack.Track]:
         dist = self.dist(video, tracks)
         links = self.lap_solver.solve(dist, self.eta)
         return self.merge(tracks, links)
 
     @staticmethod
-    def merge(tracks: Collection[Track], links: np.ndarray) -> List[Track]:
+    def merge(tracks: Collection[byotrack.Track], links: np.ndarray) -> List[byotrack.Track]:
         """Merge tracks following the given links
 
         Args:
-            tracks (Collection[Track]): Tracks to merge
+            tracks (Collection[byotrack.Track]): Tracks to merge
             links (np.ndarray): Links between tracks. Each link is a pair of track indices
                 Shape: (L, 2), dtype: int
 
         Returns:
-            List[Track]: Merged tracks. Note that in a merge track there is a probably a unknown gap
+            List[byotrack.Track]: Merged tracks. Note that in a merge track there is a probably a unknown gap
                 between the two original tracks where the position of the merge track is set to nan by default
         """
         connected_components = _extract_connected_components(len(tracks), dict(links.tolist()))
@@ -70,12 +69,14 @@ class DistStitcher(Refiner):
                     i
                 ].points
 
-            merged_tracks.append(Track(start, points))
+            merged_tracks.append(byotrack.Track(start, points))
 
         return merged_tracks
 
     @staticmethod
-    def skip_computation(tracks: Collection[Track], max_overlap: int, max_dist: float, max_gap: int) -> torch.Tensor:
+    def skip_computation(
+        tracks: Collection[byotrack.Track], max_overlap: int, max_dist: float, max_gap: int
+    ) -> torch.Tensor:
         """Compute a boolean mask that indicate which distance should be skipped
 
         Based on simple rules, prevents the computation of most distances. Let i, j two tracks:
@@ -85,7 +86,7 @@ class DistStitcher(Refiner):
         3. i last position is at most at `max_dist` from j first position
 
         Args:
-            tracks (Collection[Track]): Current set of tracks
+            tracks (Collection[byotrack.Track]): Current set of tracks
             max_overlap (int): Cannot stitch tracks that overlap more than `max_overlap`
             max_dist (float): Cannot stich track i and track j if the last position of i and
                 first position of j are farther than `max_dist` (ignored if max_dist <= 0)

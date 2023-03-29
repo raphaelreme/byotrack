@@ -40,6 +40,27 @@ class Video(Sequence[np.ndarray]):
     Return images in BGR by default like opencv as frames are mostly used with opencv afterwards for display.
     Can also return grayscale image (H, W, 1)
 
+    Example:
+        .. code-block:: python
+
+            import byotrack
+
+            # Read a video (Usually BGR)
+            video = byotrack.Video(video_path)
+
+            # Add a transform that will aggregate channel and normalize in [0, 1] the intensities
+            transform_config = byotrack.VideoTransformConfig(aggregate=True, normalize=True, q_min=0.01, q_max=0.999)
+            video.set_transform(transform_config)
+
+            # Iterate through the video
+            for frame in video:
+                pass
+
+            # Temporal slicing
+
+            sliced = video[10:50:3]  # Take one frame every three from frame 10 to frame 50.
+
+
     Attributes:
         shape (Tuple[int, int, int, int]): Shape of the video (Time, Height, Width, Channel)
         reader (byotrack.VideoReader): Underlying video reader

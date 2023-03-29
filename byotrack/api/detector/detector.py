@@ -6,9 +6,8 @@ from typing import Collection, Iterable, List
 import numpy as np
 import tqdm
 
+import byotrack  # pylint: disable=cyclic-import
 from ..parameters import ParametrizedObjectMixin
-from ..video.video import Video
-from .detections import Detections
 
 
 class Detector(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-methods
@@ -21,7 +20,7 @@ class Detector(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-
     """
 
     @abstractmethod
-    def run(self, video: Iterable[np.ndarray]) -> Collection[Detections]:
+    def run(self, video: Iterable[np.ndarray]) -> Collection[byotrack.Detections]:
         """Run the detector on a whole video
 
         Args:
@@ -56,12 +55,12 @@ class BatchDetector(Detector):
         self.batch_size = batch_size
         self.add_true_frames = add_true_frames
 
-    def run(self, video: Iterable[np.ndarray]) -> List[Detections]:
+    def run(self, video: Iterable[np.ndarray]) -> List[byotrack.Detections]:
         reader = None
-        if self.add_true_frames and isinstance(video, Video):
+        if self.add_true_frames and isinstance(video, byotrack.Video):
             reader = video.reader
 
-        detections_sequence: List[Detections] = []
+        detections_sequence: List[byotrack.Detections] = []
         batch: List[np.ndarray] = []
         frame_ids: List[int] = []
 
@@ -83,7 +82,7 @@ class BatchDetector(Detector):
         return detections_sequence
 
     @abstractmethod
-    def detect(self, batch: np.ndarray) -> Collection[Detections]:
+    def detect(self, batch: np.ndarray) -> Collection[byotrack.Detections]:
         """Apply the detection on a batch of frames
 
         The frame id of each detections is set afterward by the BatchDetector `run` method

@@ -1,13 +1,28 @@
 from __future__ import annotations
 
 import os
-from typing import Collection, Dict, List, Optional, Tuple, Union
+import re
+from typing import Collection, Dict, Iterable, List, Optional, Tuple, Union
 
 import numba  # type: ignore
 import numpy as np
 import torch
 
-from .. import utils
+
+def sorted_alphanumeric(data: Iterable[str]):
+    """Sorts alphanumeriacally an iterable of strings
+
+    "1" < "2" < "10" < "foo1" < "foo2" < "foo3"
+
+    """
+
+    def alphanum_key(key: str) -> List[Union[str, int]]:
+        def convert(text: str) -> Union[str, int]:
+            return int(text) if text.isdigit() else text.lower()
+
+        return [convert(text) for text in re.split("([0-9]+)", key)]
+
+    return sorted(data, key=alphanum_key)
 
 
 def _check_segmentation(segmentation: torch.Tensor) -> None:
@@ -365,7 +380,7 @@ class Detections:
 
         detections_sequence: List[Detections] = []
 
-        for file in filter(lambda file: file[-3:] == ".pt", utils.sorted_alphanumeric(files)):
+        for file in filter(lambda file: file[-3:] == ".pt", sorted_alphanumeric(files)):
             detections_sequence.append(Detections.load(os.path.join(path, file)))
             detections_sequence[-1].frame_id = int(file[:-3])
 

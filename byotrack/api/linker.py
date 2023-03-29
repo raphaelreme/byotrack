@@ -1,11 +1,12 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import Collection, Iterable
 
 import numpy as np
 
-from ..detector.detections import Detections
-from ..parameters import ParametrizedObjectMixin
-from ..tracks import Track
+import byotrack  # pylint: disable=cyclic-import
+from .parameters import ParametrizedObjectMixin
 
 
 class Linker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-methods
@@ -18,13 +19,15 @@ class Linker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-me
     """
 
     @abstractmethod
-    def run(self, video: Iterable[np.ndarray], detections_sequence: Collection[Detections]) -> Collection[Track]:
+    def run(
+        self, video: Iterable[np.ndarray], detections_sequence: Collection[byotrack.Detections]
+    ) -> Collection[byotrack.Track]:
         """Run the linker on a whole video
 
         Args:
             video (Iterable[np.ndarray]): Sequence of frames (video)
                 Each array is expected to have a shape (H, W, C)
-            detections_sequence (Collection[Detections]): Detections for each frame
+            detections_sequence (Collection[byotrack.Detections]): Detections for each frame
 
         Returns:
             Collection[byotrack.Track]: Tracks of particles
