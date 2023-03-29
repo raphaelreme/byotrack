@@ -1,4 +1,6 @@
-Parameters API
-==============
+Parameters
+==========
 
-.. automodule:: byotrack.parameters
+.. warning:: This module is not mature
+
+.. automodule:: byotrack.api.parameters

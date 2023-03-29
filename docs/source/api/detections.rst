@@ -1,4 +1,4 @@
-Detections API
-==============
+Detections
+==========
 
-.. automodule:: byotrack.detector.detections
+.. automodule:: byotrack.api.detector.detections

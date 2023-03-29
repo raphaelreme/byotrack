@@ -1,5 +1,5 @@
-Video API
-=========
+Video
+=====
 
 Video
 -----

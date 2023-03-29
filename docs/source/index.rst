@@ -31,7 +31,6 @@ Contents
    run_examples/*
 
 .. toctree::
-   :maxdepth: 3
    :glob:
    :caption: API
 
@@ -43,3 +42,12 @@ Contents
    api/linker
    api/refiner
    api/parameters
+
+
+.. toctree::
+   :glob:
+   :caption: API implementations
+
+   implementation/detectors/detectors
+   implementation/linkers/linkers
+   implementation/refiners/refiners

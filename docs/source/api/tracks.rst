@@ -1,5 +1,5 @@
-Tracks API
-==========
+Tracks
+======
 
-.. automodule:: byotrack.tracks
+.. automodule:: byotrack.api.tracks
    

@@ -1,12 +1,5 @@
 Detector
 ========
 
-.. automodule:: byotrack.detector.base
+.. automodule:: byotrack.api.detector.detector
 
-Implementations
----------------
-
-Wavelet based Spot Detector
-```````````````````````````
-
-.. automodule:: byotrack.detector.spot_detector

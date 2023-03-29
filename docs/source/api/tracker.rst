@@ -1,4 +1,4 @@
 Tracker
 =======
 
-.. automodule:: byotrack.tracker
+.. automodule:: byotrack.api.tracker

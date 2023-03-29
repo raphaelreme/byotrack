@@ -39,3 +39,5 @@ Here is the complete list:
 
 * IcyEMHTLinker
     * Icy: [Download Icy](https://icy.bioimageanalysis.org/download/)
+* DistStitcher and children (EMC2Stitcher)
+    * pylapy: [Install pylapy](https://github.com/raphaelreme/pylapy#install)
