@@ -36,6 +36,8 @@ Here is the complete list:
     - Icy: [Download Icy](https://icy.bioimageanalysis.org/download/)
 - DistStitcher and children (EMC2Stitcher)
     - pylapy: [Install pylapy](https://github.com/raphaelreme/pylapy#install)
+- EMC2Stitcher
+    - torch-tps: [Install torch-tps](https://github.com/raphaelreme/torch-tps#install)
 
 ## Getting started
 
