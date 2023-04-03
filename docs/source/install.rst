@@ -38,8 +38,8 @@ Some tracker implementations require additional dependencies that are not instal
 Here is the complete list:
 
 * IcyEMHTLinker
-    * Icy: [Download Icy](https://icy.bioimageanalysis.org/download/)
+    * Icy: `Download Icy <https://icy.bioimageanalysis.org/download/>`_
 * DistStitcher and children (EMC2Stitcher)
-    * pylapy: [Install pylapy](https://github.com/raphaelreme/pylapy#install)
+    * pylapy: `Install pylapy <https://github.com/raphaelreme/pylapy#install>`_
 * EMC2Stitcher
-    * torch-tps: [Install torch-tps](https://github.com/raphaelreme/torch-tps#install)
+    * torch-tps: `Install torch-tps <https://github.com/raphaelreme/torch-tps#install>`_
