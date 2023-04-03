@@ -82,7 +82,11 @@ class IcyEMHTLinker(byotrack.Linker):
         try:
             self.save_detections_as_icy_rois(detections_sequence, self.rois_file)
             self._run_icy()
-            return self.parse_tracks(self.tracks_file)
+            # Sort tracks by starting time and then position (They seem to be randomly sorted otherwise and in addition
+            # with EMC2 torch-tps approximate propagation it yields undeterministic behaviors)
+            return sorted(
+                self.parse_tracks(self.tracks_file), key=lambda track: (track.start, track.points[0].sum().item())
+            )
         finally:
             if os.path.exists(self.rois_file):
                 os.remove(self.rois_file)
@@ -218,6 +222,4 @@ class IcyEMHTLinker(byotrack.Linker):
 
             tracks.append(byotrack.Track(start, points_tensor, identifier))
 
-        # Sort tracks by starting time and then position (They seem to be randomly sorted otherwise and in addition with
-        # EMC2 torch-tps approximate propagation it yields undeterministic behaviors)
-        return sorted(tracks, key=lambda track: (track.start, track.points[0].sum().item()))
+        return tracks
