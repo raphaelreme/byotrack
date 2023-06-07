@@ -37,6 +37,9 @@ class IcyEMHTLinker(byotrack.Linker):
     3. [In ICY] Read rois, estimate emht parameters, run emht, export tracks to xml
     4. Read Icy tracks and return
 
+    Note:
+        This implementation requires Icy to be installed (https://icy.bioimageanalysis.org/download/)
+
     Attributes:
         icy_dir (str | os.PathLike): Path to the icy jar (Icy is called with java -jar <icy_jar>)
         motion (Motion): Prior on the underlying motion model (Brownian vs Directed vs Switching)
