@@ -1,12 +1,15 @@
 Welcome to ByoTrack's documentation!
 ====================================
 
+.. image:: images/tracking.svg
+    :alt: Tracking pipeline
+
 **ByoTrack** is a Python library that enables tracking of biological object in videos. Many bioimage informatics tools already implement their
 own tracking tools (Icy, ImageJ, TrackMate...) but most of them are implemented in Java which makes it difficult for non-Java developers to
 experiment with the code. It is also difficult to integrate deep learning algorithms (mainly developed in Python) into these software.
 
-We provide a unified python API for tracking that can be easily extended with new (and old) algorithms. We also provide implementations of well-known algorithms following our API.
-
+We provide a unified python API for tracking that can be easily extended with new (and old) algorithms. We also provide implementations
+of well-known algorithms following our API.
 
 .. note::
 

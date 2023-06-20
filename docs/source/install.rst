@@ -37,6 +37,8 @@ Additional requirements
 Some tracker implementations require additional dependencies that are not installed with the library, to use them you need to install their dependencies on your own.
 Here is the complete list:
 
+* StarDistDetector
+    * stardist (+ tensorflow): `Install stardist <https://github.com/stardist/stardist#installation>_`
 * IcyEMHTLinker
     * Icy: `Download Icy <https://icy.bioimageanalysis.org/download/>`_
 * DistStitcher and children (EMC2Stitcher)

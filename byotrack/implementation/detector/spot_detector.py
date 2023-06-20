@@ -157,9 +157,10 @@ class SpotDetector(byotrack.BatchDetector):
     real gain from what we experienced.
 
     Main differences with Icy implementation are:
-        * 2d wavelets (rather than 2 times one dimensional wavelets). It was designed to improve computations,
-            but with torch no gain in time is observed. (Can be switch with FOLLOW_ICY)
-        * Thresholding -> We follow the original paper.
+
+    * 2d wavelets (rather than 2 times one dimensional wavelets). It was designed to improve computations,
+      but with torch no gain in time is observed. (Can be switch with FOLLOW_ICY)
+    * Thresholding -> We follow the original paper.
 
     Attributes:
         scale (int): Scale of the wavelet coefficients used. With small scales, the detector focus on

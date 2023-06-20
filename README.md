@@ -15,7 +15,7 @@ Overview:
     * MultiStepTracker (Detect / Link / Refine)
 * Particle Detections
     * Spot Detector [2] (Similar as the one in Icy [1] but coded in pytorch)
-    * Stardist [3] (In coming...)
+    * Stardist [3] (Inference only. Training should be done with the [official implementation](https://github.com/stardist/stardist))
 * Particle Linking
     * EMHT [4] (Wrapper to the one implemented in Icy [1], requires Icy to be installed)
 * Tracks Refining
@@ -32,6 +32,9 @@ $ pip install byotrack
 Some tracker implementations require additional dependencies that are not installed with the library, to use them you need to install their dependencies on your own.
 Here is the complete list:
 
+
+- StarDistDetector
+    - stardist (+ tensorflow): [Install stardist](https://github.com/stardist/stardist#installation>)
 - IcyEMHTLinker
     - Icy: [Download Icy](https://icy.bioimageanalysis.org/download/)
 - DistStitcher and children (EMC2Stitcher)
