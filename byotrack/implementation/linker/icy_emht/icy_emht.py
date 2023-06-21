@@ -1,8 +1,9 @@
 import enum
 import os
 import pathlib
+import shutil
 import subprocess
-from typing import Collection, Iterable, Union
+from typing import Collection, Iterable, Optional, Union
 from xml.etree import ElementTree as ET
 import zlib
 
@@ -41,7 +42,7 @@ class IcyEMHTLinker(byotrack.Linker):
         This implementation requires Icy to be installed (https://icy.bioimageanalysis.org/download/)
 
     Attributes:
-        icy_dir (str | os.PathLike): Path to the icy jar (Icy is called with java -jar <icy_jar>)
+        icy_path (str | os.PathLike): Path to the icy jar (Icy is called with java -jar <icy_jar>)
         motion (Motion): Prior on the underlying motion model (Brownian vs Directed vs Switching)
             Given to the Icy block that estimates EMHT parameters.
             Default: Motion.BROWNIAN
@@ -71,12 +72,16 @@ class IcyEMHTLinker(byotrack.Linker):
         "protocol={protocol} rois={rois} tracks={tracks} directed={directed} multi={multi}"
     )
 
-    def __init__(self, icy_dir: Union[str, os.PathLike]) -> None:
+    def __init__(self, icy_path: Optional[Union[str, os.PathLike]] = None) -> None:
         super().__init__()
-        assert os.path.isdir(icy_dir)
-        assert os.path.isfile(os.path.join(icy_dir, "icy.jar")), "Icy jar not found"
+        if icy_path is None:
+            icy_path = shutil.which("icy")
+            if icy_path is None:
+                raise RuntimeError("Icy not found, please use `icy_path` to precise where it should be found")
 
-        self.icy_dir = icy_dir
+        assert os.path.isfile(os.path.join(os.path.dirname(icy_path), "icy.jar")), f"Icy jar not found at {icy_path}"
+
+        self.icy_path = icy_path
         self.motion = IcyEMHTLinker.Motion.BROWNIAN
 
     def run(
@@ -108,7 +113,7 @@ class IcyEMHTLinker(byotrack.Linker):
         )
         print("Launching ICY with:", cmd)
 
-        subprocess.run(cmd.split(), check=True, cwd=self.icy_dir)
+        subprocess.run(cmd.split(), check=True, cwd=os.path.dirname(self.icy_path))
 
         # Has to check because icy do not return any non-zero return code
         if not os.path.exists(self.tracks_file):
