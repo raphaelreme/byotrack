@@ -27,6 +27,8 @@ class StarDistDetector(byotrack.BatchDetector):
         official implementation to install it.
     """
 
+    progress_bar_description = "Detections (StarDist)"
+
     parameters = {
         "prob_threshold": ParameterBound(0.0, 1.0),
         "nms_threshold": ParameterBound(0.0, 1.0),

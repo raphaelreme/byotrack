@@ -48,7 +48,7 @@ Here is the complete list:
 import byotrack
 
 # Load some specific implementations
-from byotrack.implementation.detector.spot_detector import SpotDetector
+from byotrack.implementation.detector.wavelet import WaveletDetector
 from byotrack.implementation.linker.icy_emht import IcyEMHTLinker
 from byotrack.implementation.refiner.cleaner import Cleaner
 from byotrack.implementation.refiner.stitching import EMC2Stitcher
@@ -62,7 +62,7 @@ video.set_transform(transform_config)
 ## First the detector
 ## Smaller scale <=> search for smaller spots
 ## The noise threshold is linear with k. If you increase it, you will retrieve less spots.
-detector = SpotDetector(scale=1, k = 3.0, min_area=5)
+detector = WaveletDetector(scale=1, k=3.0, min_area=5)
 
 ## Second the linker
 ## Hyperparameters are automatically chosen by Icy

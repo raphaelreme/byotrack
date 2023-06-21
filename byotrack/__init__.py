@@ -12,7 +12,7 @@ Overview:
     * MultiStepTracker (Detect / Link / Refine)
 * Particle Detections
     * Spot Detector [2] (Similar as the one in Icy [1] but coded in pytorch)
-    * Stardist [3] (In coming...)
+    * Stardist [3] (Inference only. Training should be done with the official implementation)
 * Particle Linking
     * EMHT [4] (Wrapper to the one implemented in Icy [1], requires Icy to be installed)
 * Tracks Refining
@@ -26,7 +26,7 @@ Getting started:
 import byotrack
 
 # Load some specific implementations
-from byotrack.implementation.detector.spot_detector import SpotDetector
+from byotrack.implementation.detector.wavelet import WaveletDetector
 from byotrack.implementation.linker.icy_emht import IcyEMHTLinker
 from byotrack.implementation.refiner.cleaner import Cleaner
 from byotrack.implementation.refiner.stitching import EMC2Stitcher
@@ -40,7 +40,7 @@ video.set_transform(transform_config)
 ## First the detector
 ## Smaller scale <=> search for smaller spots
 ## The noise threshold is linear with k. If you increase it, you will retrieve less spots.
-detector = SpotDetector(scale=1, k = 3.0, min_area=5)
+detector = WaveletDetector(scale=1, k=3.0, min_area=5)
 
 ## Second the linker
 ## Hyperparameters are automatically chosen by Icy

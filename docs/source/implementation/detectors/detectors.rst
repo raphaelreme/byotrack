@@ -5,5 +5,5 @@ Detectors
    :maxdepth: 3
    :glob:
 
-   spot_detector
+   wavelet
    stardist
