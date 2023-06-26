@@ -6,7 +6,7 @@ import numpy as np
 import byotrack
 
 from . import dist_stitcher
-from . import tps_propagation
+from .. import propagation
 
 
 @numba.njit(parallel=True)
@@ -91,7 +91,9 @@ class EMC2Stitcher(dist_stitcher.DistStitcher):
         """
 
         skip_mask = self.skip_computation(tracks, self.max_overlap, self.max_dist, self.max_gap)
-        propagation_matrix = tps_propagation.propagate(byotrack.Track.tensorize(tracks), self.alpha)
+        propagation_matrix = propagation.forward_backward_propagation(
+            byotrack.Track.tensorize(tracks), "tps", alpha=self.alpha
+        )
         ranges = np.array([(track.start, track.start + len(track)) for track in tracks])
 
         return _fast_emc2_dist(propagation_matrix.numpy(), skip_mask.numpy(), ranges)
