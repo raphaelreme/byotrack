@@ -54,3 +54,9 @@ Contents
    implementation/detectors/detectors
    implementation/linkers/linkers
    implementation/refiners/refiners
+
+.. toctree::
+   :glob:
+   :caption: Icy support
+
+   icy

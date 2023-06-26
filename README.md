@@ -84,7 +84,7 @@ tracks = tracker.run(video)
 byotrack.Track.save(tracks, output_path)
 ```
 
-Please refer to the ![official documentation](https://byotrack.readthedocs.io/en/latest/?badge=latest).
+Please refer to the ![official documentation](https://byotrack.readthedocs.io/en/latest/).
 
 ## Contribute
 

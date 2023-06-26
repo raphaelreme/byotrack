@@ -80,6 +80,7 @@ def load_tracks(path: Union[str, os.PathLike]) -> Collection[byotrack.Track]:
     Format example:
 
     .. code-block:: xml
+
         <root>
             <trackfile version="1"/>
                 <trackgroup description="mhtTracks-Run1">
@@ -141,12 +142,13 @@ def load_tracks(path: Union[str, os.PathLike]) -> Collection[byotrack.Track]:
 def save_tracks(tracks: Collection[byotrack.Track], path: Union[str, os.PathLike]) -> None:
     """Save tracks in Icy format
 
-    .. warn:: Icy do not support partial tracks (track with undefined positions). Before calling this function
+    .. warning:: Icy do not support partial tracks (track with undefined positions). Before calling this function
         you should first interpolate any missing position (See `ForwardBackwardInterpolater`)
 
     Format example:
 
     .. code-block:: xml
+
         <root>
             <trackfile version="1"/>
             <trackgroup description="mhtTracks-Run1">

@@ -8,3 +8,4 @@ Refiners
    cleaner
    dist_stitcher
    emc2
+   interpolater
