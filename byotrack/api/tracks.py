@@ -22,7 +22,7 @@ class Track:
     Attributes:
         identifier (int): Identifier of the track (non-unique)
         start (int): Starting frame of the track
-        points (torch.Tensor): Positions of the particle (from starting frame to ending frame)
+        points (torch.Tensor): Positions (i, j) of the particle (from starting frame to ending frame)
             Shape: (T, D), dtype: float32
 
     """
@@ -51,7 +51,7 @@ class Track:
             frame_id (int): id of the frame in the video
 
         Returns:
-            torch.Tensor: Position at the given frame (NaN if unknown)
+            torch.Tensor: Position (i, j) at the given frame (NaN if unknown)
                 Shape: (D, ), dtype: float32
 
         """
