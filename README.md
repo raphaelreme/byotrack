@@ -14,13 +14,14 @@ Overview:
 * Particle Tracking
     * MultiStepTracker (Detect / Link / Refine)
 * Particle Detections
-    * Spot Detector [2] (Similar as the one in Icy [1] but coded in pytorch)
+    * Wavelet Detector [2] (Similar as the one in Icy [1] but coded in pytorch)
     * Stardist [3] (Inference only. Training should be done with the [official implementation](https://github.com/stardist/stardist))
 * Particle Linking
     * EMHT [4] (Wrapper to the one implemented in Icy [1], requires Icy to be installed)
 * Tracks Refining
     * Cleaning
     * EMC2 [5]: Track stitching (gap closing)
+    * Interpolate missing positions
 
 
 ## Install
@@ -37,10 +38,6 @@ Here is the complete list:
     - stardist (+ tensorflow): [Install stardist](https://github.com/stardist/stardist#installation>)
 - IcyEMHTLinker
     - Icy: [Download Icy](https://icy.bioimageanalysis.org/download/)
-- DistStitcher and children (EMC2Stitcher)
-    - pylapy: [Install pylapy](https://github.com/raphaelreme/pylapy#install)
-- EMC2Stitcher
-    - torch-tps: [Install torch-tps](https://github.com/raphaelreme/torch-tps#install)
 
 ## Getting started
 

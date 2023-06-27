@@ -2,6 +2,7 @@ from typing import Callable, Optional, Union
 import warnings
 
 import torch
+import torch_tps
 import tqdm
 
 
@@ -152,8 +153,6 @@ def tps_directed_propagate(
         torch.Tensor: Estimation of tracks point in a single direction
             Shape: (T, N, D), dtype: float32
     """
-    import torch_tps  # pylint: disable=import-outside-toplevel
-
     tps = torch_tps.ThinPlateSpline(alpha, "cpu")  # Cf torch_tps: Faster on cpu than gpu
 
     tracks_matrix = tracks_matrix if forward else torch.flip(tracks_matrix, (0,))

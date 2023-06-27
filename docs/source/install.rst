@@ -38,10 +38,6 @@ Some tracker implementations require additional dependencies that are not instal
 Here is the complete list:
 
 * StarDistDetector
-    * stardist (+ tensorflow): `Install stardist <https://github.com/stardist/stardist#installation>_`
+    * stardist (+ tensorflow): `Install stardist <https://github.com/stardist/stardist#installation>`_
 * IcyEMHTLinker
     * Icy: `Download Icy <https://icy.bioimageanalysis.org/download/>`_
-* DistStitcher and children (EMC2Stitcher)
-    * pylapy: `Install pylapy <https://github.com/raphaelreme/pylapy#install>`_
-* EMC2Stitcher
-    * torch-tps: `Install torch-tps <https://github.com/raphaelreme/torch-tps#install>`_

@@ -2,8 +2,9 @@
 
 Unified python API for biological particle tracking.
 
-Provide a unified python API for tracking that can be easily extended with new (and old) algorithms.
-Also provide implementations of some algorithms following our API.
+We provide a unified python API for tracking that can be easily
+extended with new (and old) algorithms. We also provide
+implementations of well-known algorithms following our API.
 
 Overview:
 * Video
@@ -11,13 +12,15 @@ Overview:
 * Particle Tracking
     * MultiStepTracker (Detect / Link / Refine)
 * Particle Detections
-    * Spot Detector [2] (Similar as the one in Icy [1] but coded in pytorch)
+    * Wavelet Detector [2] (Similar as the one in Icy [1] but coded in pytorch)
     * Stardist [3] (Inference only. Training should be done with the official implementation)
 * Particle Linking
     * EMHT [4] (Wrapper to the one implemented in Icy [1], requires Icy to be installed)
 * Tracks Refining
     * Cleaning
     * EMC2 [5]: Track stitching (gap closing)
+    * Interpolate missing positions
+
 
 Getting started:
 ----------------
