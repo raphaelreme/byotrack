@@ -95,5 +95,6 @@ class EMC2Stitcher(dist_stitcher.DistStitcher):
             byotrack.Track.tensorize(tracks), "tps", alpha=self.alpha
         )
         ranges = np.array([(track.start, track.start + len(track)) for track in tracks])
+        ranges -= ranges.min()  # The track tensor has an offset of ranges.min() (Usually 0)
 
         return _fast_emc2_dist(propagation_matrix.numpy(), skip_mask.numpy(), ranges)

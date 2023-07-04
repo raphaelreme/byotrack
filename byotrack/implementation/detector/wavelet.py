@@ -223,7 +223,7 @@ class WaveletDetector(byotrack.BatchDetector):
         mask: np.ndarray
         for mask in coefficients.cpu().to(torch.uint8).numpy():  # Unefficient but fine.
             _, segmentation, stats, _ = cv2.connectedComponentsWithStats(
-                mask, np.zeros(mask.shape, dtype=np.uint16), connectivity=4, ltype=cv2.CV_16U
+                mask, np.zeros(mask.shape, dtype=np.uint16), connectivity=4, ltype=cv2.CV_16U  # type: ignore
             )
 
             # Delete too small detections

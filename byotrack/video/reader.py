@@ -190,7 +190,7 @@ class OpenCVVideoReader(VideoReader):
 
     def __init__(self, path: Union[str, os.PathLike], **kwargs):
         super().__init__(path, **kwargs)
-        self.video = cv2.VideoCapture(path, **kwargs)
+        self.video = cv2.VideoCapture(str(path), **kwargs)
         assert self.video.grab(), "No frames found in the video"
 
         self.fps = int(self.video.get(cv2.CAP_PROP_FPS))
