@@ -118,14 +118,22 @@ class Track:
     def save(tracks: Collection[Track], path: Union[str, os.PathLike]) -> None:
         """Save a collection of tracks to path
 
+        Format: pt (pytorch)
+            {
+                "offset": int
+                "ids": Tensor (N, ), int64
+                "points": Tensor (T, N, D), float32
+            }
+
         Args:
             tracks (Collection[Track]): Tracks to save
             path (str | os.PathLike): Output path
 
         """
         ids = torch.tensor([track.identifier for track in tracks])
-        points = Track.tensorize(tracks, frame_range=(0, max(track.start + len(track) for track in tracks)))
-        torch.save({"ids": ids, "points": points}, path)
+        offset = min(track.start for track in tracks)
+        points = Track.tensorize(tracks)
+        torch.save({"offset": offset, "ids": ids, "points": points}, path)
 
     @staticmethod
     def load(path: Union[str, os.PathLike]) -> Collection[Track]:
@@ -135,7 +143,8 @@ class Track:
             path (str | os.PathLike): Input path
 
         """
-        data = torch.load(path, map_location="cpu")
+        data: dict = torch.load(path, map_location="cpu")
+        offset: int = data.get("offset", 0)
         points: torch.Tensor = data["points"]
         ids: torch.Tensor = data["ids"]
 
@@ -148,6 +157,6 @@ class Track:
             defined = ~torch.isnan(track_points).all(dim=-1)
             track_points = track_points[defined]
             start = cast(int, frames[defined].min().item())
-            tracks.append(Track(start, track_points, identifier))
+            tracks.append(Track(start + offset, track_points, identifier))
 
         return tracks
