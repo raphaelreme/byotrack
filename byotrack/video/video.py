@@ -21,6 +21,7 @@ class VideoTransformConfig:
             If None, channel average is done. If any, it performs channel selection
         q_min (float): Minimum quantile to use when scaling the video
         q_max (float): Maximum quantile to use when scaling the video
+        smooth_clip (float): Smoothness of the clipping process (scaling)
 
     """
 
@@ -29,6 +30,7 @@ class VideoTransformConfig:
     selected_channel: Optional[int] = None
     q_min: float = 0.0
     q_max: float = 1.0
+    smooth_clip: float = 0.0
 
 
 class Video(Sequence[np.ndarray]):
@@ -99,7 +101,9 @@ class Video(Sequence[np.ndarray]):
 
         self._normalizer = None
         if transform_config.normalize:
-            self._normalizer = ScaleAndNormalize(transform_config.q_min, transform_config.q_max)
+            self._normalizer = ScaleAndNormalize(
+                transform_config.q_min, transform_config.q_max, transform_config.smooth_clip
+            )
             self._set_normalizer()  # Set normalizer stats
 
     def _set_normalizer(self) -> None:
