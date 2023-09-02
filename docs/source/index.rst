@@ -60,3 +60,9 @@ Contents
    :caption: Icy support
 
    icy
+
+.. toctree::
+   :glob:
+   :caption: Visualization
+
+   visualize

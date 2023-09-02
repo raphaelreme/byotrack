@@ -39,6 +39,8 @@ Here is the complete list:
 - IcyEMHTLinker
     - Icy: [Download Icy](https://icy.bioimageanalysis.org/download/)
 
+For visualization, wtih `byotrack.visualize` module you need to install matplotlib.
+
 ## Getting started
 
 ```python
