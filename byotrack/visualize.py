@@ -18,6 +18,7 @@ def display_lifetime(tracks: Collection[byotrack.Track]):
 
     Args:
         tracks (Collection[byotrack.Track]): Tracks
+
     """
     tracks_tensor = byotrack.Track.tensorize(tracks)
 
@@ -35,11 +36,11 @@ class InteractiveVisualizer:
     """Interactive visualization with opencv
 
     Keys:
-        `space` pause/unpause the video
-        w/x: move backward/forward in the video (when paused)
-        d: Switch detections display mode (Not displayed, Mask, Segmentation) if available
-        t: Switch on/off the display of tracks if available
-        v: Switch on/off the display of the video
+        * `space`: Pause/Unpause the video
+        * w/x: Move backward/forward in the video (when paused)
+        * d: Switch detections display mode (Not displayed, Mask, Segmentation) if available
+        * t: Switch on/off the display of tracks if available
+        * v: Switch on/off the display of the video
 
     Attributes:
         video (Optional[Sequence[np.ndarray]]): Optional video to display. Should be normalized in [0, 1]
@@ -78,6 +79,7 @@ class InteractiveVisualizer:
 
     def run(self, frame_id=0, fps=20) -> None:
         """Run the visualization
+
         Args:
             frame_id (int): Starting frame_id
             fps (int): Frame rate

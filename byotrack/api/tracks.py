@@ -119,6 +119,9 @@ class Track:
         """Save a collection of tracks to path
 
         Format: pt (pytorch)
+
+        .. code-block::
+
             {
                 "offset": int
                 "ids": Tensor (N, ), int64

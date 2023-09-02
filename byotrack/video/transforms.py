@@ -68,6 +68,8 @@ class ScaleAndNormalize:
             If 0, values are clipped on mini/maxi
             Else, values above maxi are log clipped:
             v = 1 + a log((v - 1)/a + 1) for v > 1, with a the smooth_clip factor
+            Typical values are between 0 and 1.
+            Default: 0 (hard clipping)
         max (np.ndarray): True maximum values (one for each channel) when using smooth clipping
             Shape: (C, )
 
