@@ -72,9 +72,9 @@ class InteractiveVisualizer:
         self.n_frames = self._get_n_frames(self.video, self.detections_sequence, self.tracks)
 
         self._frame_id = 0
-        self._display_video = 1
-        self._display_detections = 0
-        self._display_tracks = 0
+        self._display_video = int(video is not None)
+        self._display_detections = int(bool(detections_sequence))
+        self._display_tracks = int(bool(tracks))
         self._running = False
 
     def run(self, frame_id=0, fps=20) -> None:
