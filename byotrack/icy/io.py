@@ -66,7 +66,7 @@ def save_detections(detections_sequence: Collection[byotrack.Detections], path: 
             ET.SubElement(roi, "boundsH").text = str(height)
 
             # The mask is converted into bytes and zipped
-            compressed_bytes = zlib.compress(bytes(mask.reshape(height * width)), 2)
+            compressed_bytes = zlib.compress(bytes(mask.reshape(height * width).numpy()), 2)
 
             # and then converted to the good string format: byte:byte:...:byte
             ET.SubElement(roi, "boolMaskData").text = ":".join(map(lambda byte: hex(byte)[2:], compressed_bytes))
