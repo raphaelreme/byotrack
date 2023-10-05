@@ -85,7 +85,9 @@ class BatchDetector(Detector):
     def detect(self, batch: np.ndarray) -> Collection[byotrack.Detections]:
         """Apply the detection on a batch of frames
 
-        The frame id of each detections is set afterward by the BatchDetector `run` method
+        By default, the frame ids are set from 0 to n-1 with n the size of the batch.
+        The aggregattion of batches and frame ids correction is automatically handled when called
+        the `run` method.
 
         Args:
             batch (np.ndarray): Batch of video frames

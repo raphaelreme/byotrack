@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Collection, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Collection, Dict, Iterable, List, Tuple, Union
 
 import numba  # type: ignore
 import numpy as np
@@ -162,7 +162,8 @@ class Detections:
     Attributes:
         data (Dict[str, toch.Tensor]): Detections data.
         length (int): Number of detections
-        frame_id (Optional[int]): Frame id in the video (if any)
+        frame_id (int): Frame id in the video (-1 if no video)
+            Default: -1
         shape: (Tuple[int, int]): Shape of the image (H, W). (Extrapolated if not given)
         position (torch.Tensor): Positions (i, j) of instances centre inferred from the data
             Shape: (N, 2), dtype: float32
@@ -175,7 +176,7 @@ class Detections:
 
     """
 
-    def __init__(self, data: Dict[str, torch.Tensor], frame_id: Optional[int] = None) -> None:
+    def __init__(self, data: Dict[str, torch.Tensor], frame_id: int = -1) -> None:
         self.length = -1
 
         if "position" in data:
@@ -313,25 +314,25 @@ class Detections:
     def save(self, path: Union[str, os.PathLike]) -> None:
         """Save detections to a file using `torch.save`
 
-        Note: frame_id is not saved.
-
         Args:
             path (str | os.PathLike): Output path
 
         """
-        torch.save(self.data, path)
+        torch.save({"frame_id": self.frame_id, **self.data}, path)
 
     @staticmethod
     def load(path: Union[str, os.PathLike]) -> Detections:
         """Load a detections for a given frame using `torch.load`
 
-        Note: frame_id is not set
-
         Args:
             path (str | os.PathLike): Input path
 
         """
-        return Detections(torch.load(path, map_location="cpu"))
+        data = torch.load(path, map_location="cpu")
+        assert isinstance(data, dict)
+        frame_id = data.pop("frame_id")
+
+        return Detections(data, frame_id)
 
     @staticmethod
     def save_multi_frames_detections(
@@ -341,21 +342,19 @@ class Detections:
 
         It will save the detections as::
 
-            path/0.pt
-                 1.pt
+            path/{frame_id}.pt
                  ...
-                 N.pt
+
 
         Args:
             detections_sequence (Collection[Detections]): Detections for each frame
-                Each detections should have a valid frame id.
+                Each detections should have a different frame_id
             path (str | os.PathLike): Output folder
 
         """
         os.makedirs(path)
 
         for detections in detections_sequence:
-            assert detections.frame_id is not None, "Frame id is not set"
             detections.save(os.path.join(path, f"{detections.frame_id}.pt"))
 
     @staticmethod
@@ -364,10 +363,8 @@ class Detections:
 
         Expect the following file structure::
 
-            path/0.pt
-                 1.pt
+            path/{frame_id}.pt
                  ...
-                 N.pt
 
         Args:
             path (str | os.PathLike): Input folder
@@ -382,6 +379,7 @@ class Detections:
 
         for file in filter(lambda file: file[-3:] == ".pt", sorted_alphanumeric(files)):
             detections_sequence.append(Detections.load(os.path.join(path, file)))
-            detections_sequence[-1].frame_id = int(file[:-3])
+            if detections_sequence[-1].frame_id == int(file[:-3]):
+                raise ValueError(f"Detections {file} has a different saved frame_id")
 
         return detections_sequence

@@ -52,7 +52,7 @@ class StarDistDetector(byotrack.BatchDetector):
     def detect(self, batch: np.ndarray) -> List[byotrack.Detections]:
         detections_list = []
 
-        for image in batch:
+        for i, image in enumerate(batch):
             segmentation, data = self._model.predict_instances(
                 image, prob_thresh=self.prob_threshold, nms_thresh=self.nms_threshold, predict_kwargs={"verbose": 0}
             )
@@ -64,7 +64,8 @@ class StarDistDetector(byotrack.BatchDetector):
                         "confidence": torch.tensor(data["prob"], dtype=torch.float32),
                         # Could use points data for position (but has been rounded to int, let's be more precise)
                         # "position": torch.tensor(data["points"], dtype=torch.float32),
-                    }
+                    },
+                    frame_id=i,
                 )
             )
 

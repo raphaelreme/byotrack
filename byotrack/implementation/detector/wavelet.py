@@ -221,7 +221,7 @@ class WaveletDetector(byotrack.BatchDetector):
         # (Not found a quick and efficient torch implem with 4-way connectivity)
         detections_list = []
         mask: np.ndarray
-        for mask in coefficients.cpu().to(torch.uint8).numpy():  # Unefficient but fine.
+        for i, mask in enumerate(coefficients.cpu().to(torch.uint8).numpy()):  # Unefficient but fine.
             _, segmentation, stats, _ = cv2.connectedComponentsWithStats(
                 mask, np.zeros(mask.shape, dtype=np.uint16), connectivity=4, ltype=cv2.CV_16U  # type: ignore
             )
@@ -238,7 +238,8 @@ class WaveletDetector(byotrack.BatchDetector):
                     {
                         "segmentation": relabel_consecutive(torch.tensor(segmentation.astype(np.int32))),
                         # "confidence": put areas instead of deleting them ?
-                    }
+                    },
+                    frame_id=i,
                 )
             )
 
