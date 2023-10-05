@@ -228,10 +228,7 @@ class WaveletDetector(byotrack.BatchDetector):
 
             # Delete too small detections
             area = stats[:, 4]
-            to_delete = np.arange(area.shape[0])[area < self.min_area]
-
-            for i in to_delete:  # Delete too small predictions
-                segmentation[segmentation == i] = 0
+            segmentation[(area < self.min_area)[segmentation]] = 0
 
             detections_list.append(
                 byotrack.Detections(
