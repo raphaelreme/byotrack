@@ -39,14 +39,14 @@ def load_tracks(path: Union[str, os.PathLike]) -> Collection[byotrack.Track]:
             <Model>
                 <AllSpots>
                     <SpotsInFrame frame="0">
-                        <Spot ID="2811" POSITION_X="552.0" POSITION_Y="143.0" POSITION_Z="0.0" ...>...</Spot>
+                        <Spot ID="2811" POSITION_X="552.0" POSITION_Y="143.0" POSITION_Z="0.0">...</Spot>
                         ...
                     </SpotsInFrame>
                     ...
                 </AllSpots>
                 <AllTracks>
-                    <Track TRACK_ID="0"...>
-                        <Edge SPOT_SOURCE_ID="24068" SPOT_TARGET_ID="20796" .../>
+                    <Track TRACK_ID="0">
+                        <Edge SPOT_SOURCE_ID="24068" SPOT_TARGET_ID="20796"/>
                         ...
                     </Track>
                 </AllTracks>
@@ -84,8 +84,8 @@ def load_tracks(path: Union[str, os.PathLike]) -> Collection[byotrack.Track]:
         old_frame = start - 1
         points = []
         for frame, x, y in spot_data:
-            hole_size = frame - old_frame - 1
-            points.extend([[torch.nan, torch.nan]] * hole_size)
+            # Extend with nan if there is a temporal gap
+            points.extend([[torch.nan, torch.nan]] * (frame - old_frame - 1))
             points.append([y, x])
             old_frame = frame
 

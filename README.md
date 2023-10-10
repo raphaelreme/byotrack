@@ -19,8 +19,8 @@ Overview:
     * Wavelet Detector [2] (Similar as the one in Icy [1] but coded in pytorch)
     * Stardist [3] (Inference only. Training should be done with the [official implementation](https://github.com/stardist/stardist))
 * Particle Linking
-    * EMHT [4] (Wrapper to the one implemented in Icy [1], requires Icy to be installed)
-    * u-track / TrackMate [7] (Wrapper to the TrackMate [6, 8] implementation in ImageJ/Fiji, requires Fiji to be installed)
+    * EMHT [4] (Wraps the implementation in Icy [1], requires Icy to be installed)
+    * u-track / TrackMate [7] (Wraps the TrackMate [6, 8] implementation in ImageJ/Fiji, requires Fiji to be installed)
 * Tracks Refining
     * Cleaning
     * EMC2 [5]: Track stitching (gap closing)
@@ -103,11 +103,11 @@ In coming...
 * [2] J.-C. Olivo-Marin, “Extraction of spots in biological images
       using multiscale products”, Pattern Recognition, vol. 35, no. 9,
       pp. 1989–1996, 2002.
-* [3] U. Schmidt, M. Weigert, C. Broaddus, and G. Myers, “Cell de-
-      tection with star-convex polygons,” in Medical Image Computing
-      and Computer Assisted Intervention–MICCAI 2018: 21st
-      International Conference, Granada, Spain, September 16-20,
-      2018, Proceedings, Part II 11. Springer, 2018, pp. 265–273.
+* [3] U. Schmidt, M. Weigert, C. Broaddus, and G. Myers, “Cell detection
+      with star-convex polygons,” in Medical Image Computing and
+      Computer Assisted Intervention–MICCAI 2018: 21st International
+      Conference, Granada, Spain, September 16-20, 2018, Proceedings,
+      Part II 11. Springer, 2018, pp. 265–273.
 * [4] N. Chenouard, I. Bloch, and J.-C. Olivo-Marin, “Multiple hypothesis
       tracking for cluttered biological image sequences”,
       IEEE transactions on pattern analysis and machine intelligence,

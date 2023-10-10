@@ -35,6 +35,9 @@ class TrackMateLinker(byotrack.Linker):  # pylint: disable=too-few-public-method
     Note:
         This implementation requires Fiji to be installed (https://imagej.net/downloads)
 
+    Note:
+        In case of missed detections, positions are filled with nan. To fill nan with true values, use an Interpolator
+
     Attributes:
         runner (byotrack.fiji.FijiRunner): Fiji runner
         max_link_cost (float): The max distance between two consecutive spots, in pixels, allowed for creating links.

@@ -15,11 +15,13 @@ Overview:
     * Wavelet Detector [2] (Similar as the one in Icy [1] but coded in pytorch)
     * Stardist [3] (Inference only. Training should be done with the official implementation)
 * Particle Linking
-    * EMHT [4] (Wrapper to the one implemented in Icy [1], requires Icy to be installed)
+    * EMHT [4] (Wraps the implementation in Icy [1], requires Icy to be installed)
+    * u-track / TrackMate [7] (Wraps TrackMate [6, 8] implementation in ImageJ/Fiji, requires Fiji to be installed)
 * Tracks Refining
     * Cleaning
     * EMC2 [5]: Track stitching (gap closing)
     * Interpolate missing positions
+
 
 
 Getting started:
@@ -79,4 +81,4 @@ from byotrack.api.tracks import Track
 from byotrack.video import Video, VideoTransformConfig
 
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"

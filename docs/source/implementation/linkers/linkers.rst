@@ -6,3 +6,4 @@ Linkers
    :glob:
 
    icy_emht
+   trackmate

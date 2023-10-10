@@ -82,7 +82,7 @@ def load_tracks(path: Union[str, os.PathLike]) -> Collection[byotrack.Track]:
     .. code-block:: xml
 
         <root>
-            <trackfile version="1"/>
+            <trackfile version="1">
                 <trackgroup description="mhtTracks-Run1">
                     <track id="-1743400864">
                         <detection classname="plugins.nchenouard.particletracking.DetectionSpotTrack" color="-6553856"
