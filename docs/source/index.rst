@@ -63,6 +63,12 @@ Contents
 
 .. toctree::
    :glob:
+   :caption: Fiji support
+
+   fiji
+
+.. toctree::
+   :glob:
    :caption: Visualization
 
    visualize

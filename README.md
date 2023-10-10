@@ -6,7 +6,7 @@
 
 **ByoTrack** is a Python library that enables tracking of biological object in videos.
 
-Many bioimage informatics tools already implement their own tracking tools (Icy, ImageJ, TrackMate...) but most of them are implemented in Java which makes it difficult for non-Java developers to experiment with the code. It is also difficult to integrate deep learning algorithms (mainly developed in Python) into these software.
+Many bioimage informatics tools already implement their own tracking tools (Icy [1], ImageJ [6], ...) but most of them are implemented in Java which makes it difficult for non-Java developers to experiment with the code. It is also difficult to integrate deep learning algorithms (mainly developed in Python) into these software.
 
 We provide a unified python API for tracking that can be easily extended with new (and old) algorithms. We also provide implementations of well-known algorithms following our API.
 
@@ -20,6 +20,7 @@ Overview:
     * Stardist [3] (Inference only. Training should be done with the [official implementation](https://github.com/stardist/stardist))
 * Particle Linking
     * EMHT [4] (Wrapper to the one implemented in Icy [1], requires Icy to be installed)
+    * u-track / TrackMate [7] (Wrapper to the TrackMate [6, 8] implementation in ImageJ/Fiji, requires Fiji to be installed)
 * Tracks Refining
     * Cleaning
     * EMC2 [5]: Track stitching (gap closing)
@@ -40,6 +41,8 @@ Here is the complete list:
     - stardist (+ tensorflow): [Install stardist](https://github.com/stardist/stardist#installation>)
 - IcyEMHTLinker
     - Icy: [Download Icy](https://icy.bioimageanalysis.org/download/)
+- TrackMateLinker
+    - Fiji: [Download Fiji](https://imagej.net/downloads)
 
 For visualization, wtih `byotrack.visualize` module you need to install matplotlib.
 
@@ -112,3 +115,12 @@ In coming...
 * [5] T. Lagache, A. Hanson, J. Perez-Ortega, et al., “Tracking calcium
       dynamics from individual neurons in behaving animals”,
       PLoS computational biology, vol. 17, pp. e1009432, 10 2021.
+* [6] J. Schindelin, I. Arganda-Carreras, E. Frise, et al., "Fiji:
+      an open-source platform for biological-image analysis", Nature
+      Methods, 9(7), 676–682, 2012.
+* [7] K. Jaqaman, D. Loerke, M. Mettlen, et al., "Robust single-particle
+      tracking in live-cell time-lapse sequences.", Nature Methods, 5(8),
+      695–702, 2008.
+* [8] J.-Y. Tinevez, N. Perry, J. Schindelin, et al., "TrackMate: An
+      open and extensible platform for single-particle tracking.",
+      Methods, 115, 80–90, 2017.

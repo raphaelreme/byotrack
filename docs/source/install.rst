@@ -41,5 +41,8 @@ Here is the complete list:
     * stardist (+ tensorflow): `Install stardist <https://github.com/stardist/stardist#installation>`_
 * IcyEMHTLinker
     * Icy: `Download Icy <https://icy.bioimageanalysis.org/download/>`_
+* TrackMateLinker
+    * Fiji: `Download Fiji <https://imagej.net/downloads>`_
+
 
 For visualization with `byotrack.visualize` module, you need to install matplotlib (pip install matplotlib).
