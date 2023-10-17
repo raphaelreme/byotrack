@@ -1,0 +1,90 @@
+<protocol VERSION="4">
+<blocks>
+<block CommandLineID="rois" ID="1299097409" blockType="plugins.adufour.blocks.tools.input.File" className="plugins.adufour.blocks.tools.input.File" collapsed="false" definedName="File" height="61" keepsResults="true" width="136" xLocation="154" yLocation="165">
+<variables>
+<input>
+<variable ID="file" name="file" runtime="false" value="" visible="true"/>
+</input>
+<output/>
+</variables>
+</block>
+<block ID="2107663053" blockType="plugins.stef.roi.bloc.io.LoadRoisFromFile" className="plugins.stef.roi.bloc.RoiBlocks" collapsed="false" definedName="Load rois from file" height="83" keepsResults="true" width="208" xLocation="333" yLocation="165">
+<variables>
+<input>
+<variable ID="file" name="File" runtime="false" type="java.io.File" visible="true"/>
+</input>
+<output>
+<variable ID="out" name="ROI(s)" runtime="false" visible="true"/>
+</output>
+</variables>
+</block>
+<block ID="1799031507" blockType="plugins.stef.tools.ROIToDetection" className="plugins.stef.tools.ROIToDetection" collapsed="false" definedName="ROI to detection" height="135" keepsResults="true" width="413" xLocation="582" yLocation="165">
+<variables>
+<input>
+<variable ID="sequence" name="Sequence" runtime="false" value="No Sequence" visible="true"/>
+<variable ID="rois" name="ROI(s)" runtime="false" visible="true"/>
+<variable ID="exportSP" name="Export to Swimming Pool" runtime="false" value="false" visible="true"/>
+</input>
+<output>
+<variable ID="detection result" name="Detection result" runtime="false" visible="true"/>
+</output>
+</variables>
+</block>
+<block CommandLineID="parameters" ID="910255034" blockType="plugins.adufour.blocks.tools.input.File" className="plugins.adufour.blocks.tools.input.File" collapsed="false" definedName="File" height="61" keepsResults="true" width="136" xLocation="156" yLocation="347">
+<variables>
+<input>
+<variable ID="file" name="file" runtime="false" value="" visible="true"/>
+</input>
+<output/>
+</variables>
+</block>
+<block ID="353417557" blockType="plugins.stef.particletracking.block.SpotTrackingLoadParameters" className="plugins.stef.particletracking.block.SpotTrackingBlocks" collapsed="false" definedName="Spot tracking load parameters" height="83" keepsResults="true" width="275" xLocation="336" yLocation="347">
+<variables>
+<input>
+<variable ID="file" name="File" runtime="false" type="java.io.File" visible="true"/>
+</input>
+<output>
+<variable ID="parameterSet" name="MHT parameters" runtime="false" visible="true"/>
+</output>
+</variables>
+</block>
+<block ID="1666056660" blockType="plugins.stef.particletracking.block.SpotTrackingDoTracking" className="plugins.stef.particletracking.block.SpotTrackingBlocks" collapsed="false" definedName="Spot tracking do tracking" height="134" keepsResults="true" width="308" xLocation="684" yLocation="347">
+<variables>
+<input>
+<variable ID="detections" name="Detections" runtime="false" visible="true"/>
+<variable ID="parameterSet" name="MHT parameters" runtime="false" visible="true"/>
+<variable ID="useLPSolver" name="Use LPSolver" runtime="false" value="false" visible="true"/>
+</input>
+<output>
+<variable ID="tracks" name="TrackGroup" runtime="false" visible="true"/>
+</output>
+</variables>
+</block>
+<block CommandLineID="tracks" ID="723059422" blockType="plugins.adufour.blocks.tools.input.File" className="plugins.adufour.blocks.tools.input.File" collapsed="false" definedName="File" height="61" keepsResults="true" width="136" xLocation="159" yLocation="501">
+<variables>
+<input>
+<variable ID="file" name="file" runtime="false" value="" visible="true"/>
+</input>
+<output/>
+</variables>
+</block>
+<block ID="1642372434" blockType="plugins.fab.trackmanager.blocks.SaveTracksToXML" className="plugins.fab.trackmanager.TrackManager" collapsed="false" definedName="Save tracks to XML" height="84" keepsResults="true" width="213" xLocation="1066" yLocation="479">
+<variables>
+<input>
+<variable ID="tracks" name="Track group" runtime="false" visible="true"/>
+<variable ID="file" name="XML file" runtime="false" type="java.io.File" visible="true"/>
+</input>
+<output/>
+</variables>
+</block>
+</blocks>
+<links>
+<link dstBlockID="2107663053" dstVarID="file" srcBlockID="1299097409" srcVarID="file"/>
+<link dstBlockID="1799031507" dstVarID="rois" srcBlockID="2107663053" srcVarID="out"/>
+<link dstBlockID="1666056660" dstVarID="detections" srcBlockID="1799031507" srcVarID="detection result"/>
+<link dstBlockID="1642372434" dstVarID="tracks" srcBlockID="1666056660" srcVarID="tracks"/>
+<link dstBlockID="1642372434" dstVarID="file" srcBlockID="723059422" srcVarID="file"/>
+<link dstBlockID="353417557" dstVarID="file" srcBlockID="910255034" srcVarID="file"/>
+<link dstBlockID="1666056660" dstVarID="parameterSet" srcBlockID="353417557" srcVarID="parameterSet"/>
+</links>
+</protocol>
