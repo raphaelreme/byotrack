@@ -60,6 +60,7 @@ def save_detections(detections_sequence: Collection[byotrack.Detections], path: 
 
             ET.SubElement(roi, "classname").text = "plugins.kernel.roi.roi2d.ROI2DArea"
             ET.SubElement(roi, "t").text = str(detections.frame_id)
+            ET.SubElement(roi, "z").text = "0"
             ET.SubElement(roi, "boundsX").text = str(j)
             ET.SubElement(roi, "boundsY").text = str(i)
             ET.SubElement(roi, "boundsW").text = str(width)
