@@ -79,7 +79,7 @@ class EMHTParameters:  # pylint: disable=too-many-instance-attributes
     # Partcles life
     expected_track_length: int = -1  # -1 => Default to size of the sequence
     expected_initial_particles: int = -1  # -1 => Default to average num of detections
-    expected_new_particles: int = 0
+    expected_new_particles: int = 10
     existence_prob: float = 0.5
     termination_prob: float = 1e-4
 
