@@ -77,7 +77,7 @@ def load_tracks(path: Union[str, os.PathLike]) -> Collection[byotrack.Track]:
     # Go through tracks and rebuild from edges
     for track in model.findall("AllTracks")[0].findall("Track"):
         track_spots = set(map(lambda edge: spots[edge.get("SPOT_SOURCE_ID")], track.findall("Edge")))
-        track_spots.update(map(lambda edge: spots[edge.get("SPOT_SOURCE_ID")], track.findall("Edge")))
+        track_spots.update(map(lambda edge: spots[edge.get("SPOT_TARGET_ID")], track.findall("Edge")))
         spot_data = sorted(track_spots)
         start = spot_data[0][0]
 
@@ -85,6 +85,7 @@ def load_tracks(path: Union[str, os.PathLike]) -> Collection[byotrack.Track]:
         points = []
         for frame, x, y in spot_data:
             # Extend with nan if there is a temporal gap
+            assert frame > old_frame, "Splitting tracks are not supported (mutliple nodes at the same time)"
             points.extend([[torch.nan, torch.nan]] * (frame - old_frame - 1))
             points.append([y, x])
             old_frame = frame
