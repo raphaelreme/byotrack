@@ -33,6 +33,9 @@ class ForwardBackwardInterpolater(byotrack.Refiner):  # pylint: disable=too-few-
         self.kwargs = kwargs
 
     def run(self, video: Iterable[np.ndarray], tracks: Collection[byotrack.Track]) -> List[byotrack.Track]:
+        if not tracks:
+            return []
+
         tracks_matrix = byotrack.Track.tensorize(tracks)
         propagation_matrix = propagation.forward_backward_propagation(tracks_matrix, self.method, **self.kwargs)
 

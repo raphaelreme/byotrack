@@ -87,6 +87,9 @@ class Track:
                 Shape: (T, N, D), dtype: float32
 
         """
+        if not tracks:
+            raise ValueError("Cannot tensorize an empty collection of Tracks")
+
         # Find the spatial dimension (all tracks should share the same one)
         dim = next(iter(tracks)).points.shape[1]
 

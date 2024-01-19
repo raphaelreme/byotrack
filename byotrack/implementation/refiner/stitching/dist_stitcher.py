@@ -28,6 +28,9 @@ class DistStitcher(byotrack.Refiner):
         self.lap_solver = pylapy.LapSolver()
 
     def run(self, video: Iterable[np.ndarray], tracks: Collection[byotrack.Track]) -> List[byotrack.Track]:
+        if not tracks:
+            return []
+
         dist = self.dist(video, tracks)
         links = self.lap_solver.solve(dist, self.eta)
         return self.merge(tracks, links)
