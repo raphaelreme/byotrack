@@ -228,16 +228,20 @@ class IcyEMHTLinker(byotrack.Linker):  # pylint: disable=too-few-public-methods
     tracks_file = "_tmp_tracks.xml"
 
     def __init__(
-        self, icy_path: Optional[Union[str, os.PathLike]] = None, full_specs: Optional[EMHTParameters] = None
+        self,
+        icy_path: Optional[Union[str, os.PathLike]] = None,
+        full_specs: Optional[EMHTParameters] = None,
+        timeout: Optional[float] = None,
     ) -> None:
         """Constructor
 
         Args:
             icy_path (str | os.PathLike): Path to the icy jar (Icy is called with java -jar <icy_jar>)
                 If not given, icy is searched in the PATH
+            timeout (Optional[float]): Optional timeout in seconds as EMHT may enter an infinite loop.
         """
         super().__init__()
-        self.runner = icy.IcyRunner(icy_path)
+        self.runner = icy.IcyRunner(icy_path, timeout)
         self.motion = full_specs.motion if full_specs else Motion.BROWNIAN
         self.full_specs = full_specs
 

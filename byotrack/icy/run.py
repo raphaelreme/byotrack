@@ -10,11 +10,13 @@ class IcyRunner:  # pylint: disable=too-few-public-methods
     Attributes:
         icy_path (str | os.PathLike): Path to the icy jar (Icy is called with java -jar <icy_jar>)
             If not given, icy is searched in the PATH
+        tiemout (Optional[float]): Optional timeout in seconds for Icy protocol.
+            Useful for EMHT which may enter an infinite loop.
     """
 
     cmd = "java -jar icy.jar -hl -x plugins.adufour.protocols.Protocols protocol={protocol} "
 
-    def __init__(self, icy_path: Optional[Union[str, os.PathLike]] = None) -> None:
+    def __init__(self, icy_path: Optional[Union[str, os.PathLike]] = None, timeout: Optional[float] = None) -> None:
         if icy_path is None:
             icy_path = shutil.which("icy")
             if icy_path is None:
@@ -23,6 +25,7 @@ class IcyRunner:  # pylint: disable=too-few-public-methods
         assert os.path.isfile(os.path.join(os.path.dirname(icy_path), "icy.jar")), f"Icy jar not found at {icy_path}"
 
         self.icy_path = icy_path
+        self.timeout = timeout
 
     def run(self, protocol: Union[str, os.PathLike], **kwargs) -> int:
         """Runs icy with the given protocol and additional kwargs
@@ -38,4 +41,6 @@ class IcyRunner:  # pylint: disable=too-few-public-methods
         cmd = self.cmd.format(protocol=protocol) + " ".join((f"{key}={value}" for key, value in kwargs.items()))
 
         print("Calling Icy with:", cmd)
-        return subprocess.run(cmd.split(), check=True, cwd=os.path.dirname(self.icy_path)).returncode
+        return subprocess.run(
+            cmd.split(), check=True, cwd=os.path.dirname(self.icy_path), timeout=self.timeout
+        ).returncode
