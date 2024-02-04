@@ -142,12 +142,10 @@ class Video(Sequence[np.ndarray]):
         return (self._slice[1] - self._slice[0] - 1) // self._slice[2] + 1  # Number of elt in the slice
 
     @overload
-    def __getitem__(self, index: int) -> np.ndarray:
-        ...
+    def __getitem__(self, index: int) -> np.ndarray: ...
 
     @overload
-    def __getitem__(self, slice_: slice) -> Video:
-        ...
+    def __getitem__(self, slice_: slice) -> Video: ...
 
     def __getitem__(self, key):
         """Indexing and slicing operations

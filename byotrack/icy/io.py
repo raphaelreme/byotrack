@@ -1,6 +1,5 @@
 """Utilities for inputs/outputs with icy"""
 
-
 import os
 from typing import Collection, Union
 import warnings
