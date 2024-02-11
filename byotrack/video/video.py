@@ -62,9 +62,13 @@ class Video(Sequence[np.ndarray]):
 
             sliced = video[10:50:3]  # Take one frame every three from frame 10 to frame 50.
 
+            # Spatial slicing
+            sliced = video[:, 100:200, 150:250]  # All frames on the roi (100:200 x 150:250)
+
 
     Attributes:
-        shape (Tuple[int, int, int, int]): Shape of the video (Time, Height, Width, Channel)
+        shape (Tuple[int, ...]): Shape of the video (Time, Height, Width[, Depth])
+        channels (int): Number of channels
         reader (byotrack.VideoReader): Underlying video reader
 
     """
@@ -77,19 +81,25 @@ class Video(Sequence[np.ndarray]):
         else:
             self.reader = data_source
 
-        self._slice: Tuple[int, int, int] = (0, self.reader.length, 1)
+        self._slices: Tuple[Tuple[int, int, int], ...] = tuple(
+            (0, length, 1) for length in (self.reader.length, *self.reader.shape)
+        )
         self._channel_aggregator: Optional[Union[ChannelAvg, ChannelSelect]] = None
         self._normalizer: Optional[ScaleAndNormalize] = None
 
     @property
-    def shape(self) -> Tuple[int, int, int, int]:
-        return (len(self), *self.reader.shape, self.reader.channels)
+    def shape(self) -> Tuple[int, ...]:
+        return tuple(slice_length(slice_) for slice_ in self._slices)
+
+    @property
+    def channels(self) -> int:
+        return self.reader.channels if self._channel_aggregator is None else 1
 
     def set_transform(self, transform_config: VideoTransformConfig) -> None:
         """Set the transform (channel_selector and normalizer)
 
         Args:
-            config (VideoTransformConfig): Configuration of the transformations
+            transform_config (byotrack.VideoTransformConfig): Configuration of the transformations
 
         """
         self._channel_aggregator = None
@@ -111,7 +121,7 @@ class Video(Sequence[np.ndarray]):
         assert self._normalizer
 
         frame_id = self.reader.tell()
-        self.reader.seek(self._slice[0])
+        self.reader.seek(self._slices[0][0])
 
         frames = []
 
@@ -139,7 +149,7 @@ class Video(Sequence[np.ndarray]):
         return frame
 
     def __len__(self) -> int:
-        return (self._slice[1] - self._slice[0] - 1) // self._slice[2] + 1  # Number of elt in the slice
+        return slice_length(self._slices[0])  # length of temporal slice
 
     @overload
     def __getitem__(self, index: int) -> np.ndarray: ...
@@ -147,7 +157,10 @@ class Video(Sequence[np.ndarray]):
     @overload
     def __getitem__(self, slice_: slice) -> Video: ...
 
-    def __getitem__(self, key):
+    @overload
+    def __getitem__(self, slices: Tuple[slice, ...]) -> Video: ...
+
+    def __getitem__(self, key):  # pylint: disable=too-many-branches
         """Indexing and slicing operations
 
         When indexed, it returns the ith frame in the slice
@@ -160,40 +173,60 @@ class Video(Sequence[np.ndarray]):
             np.ndarray | Video: Frame at index or a shallow copy of the video with the right slice
 
         """
-        if isinstance(key, int):
-            frame_id = self._slice[0] + key * self._slice[2]
+        shape = self.shape
 
-            if frame_id >= self._slice[1]:
-                raise IndexError("Frame index out of range")
+        if isinstance(key, int):
+            if key < 0:
+                key = shape[0] + key
+
+            if key < 0 or key >= shape[0]:
+                raise IndexError(f"Index {key} out of range")
+
+            frame_id = self._slices[0][0] + key * self._slices[0][2]
 
             if frame_id == self.reader.frame_id:
                 pass  # Skip expensive seek
             if frame_id == self.reader.frame_id + 1:
                 if not self.reader.grab():  # Much faster for cv2: Allows a fast frame by frame reading
-                    raise IndexError("Frame index out of video")
+                    raise RuntimeError(f"Unable to grab frame {frame_id}")
             else:
                 try:
                     self.reader.seek(frame_id)
-                except EOFError as eof:
-                    raise IndexError(eof.args) from None
+                except EOFError:
+                    raise RuntimeError(f"Unable to seek frame {frame_id}") from None
 
-            return self.transform(self.reader.retrieve())
+            return self.transform(self.reader.retrieve()[tuple(slice(*slice_) for slice_ in self._slices[1:])])
 
         if isinstance(key, slice):
-            start, stop, step = key.indices(len(self))  # Return int pos, int pos, int
+            key = (key,)
+
+        if isinstance(key, tuple):
+            if len(key) > len(self._slices):
+                raise IndexError("Too many indices for video. Only support 3 dimensions slicing (time, height, width).")
+
+            slices = list(self._slices)
+            for i, slice_ in enumerate(key):
+                if not isinstance(slice_, slice):
+                    raise TypeError("Unsupported index for Video. Supports only int, slice and Tuple[slice, ...]")
+                start, stop, step = slice_.indices(shape[i])
+                slices[i] = (
+                    self._slices[i][0] + start * self._slices[i][2],
+                    self._slices[i][0] + stop * self._slices[i][2],
+                    step * self._slices[i][2],
+                )
 
             # Duplicate
             other = Video(self.reader)
             other._channel_aggregator = self._channel_aggregator
             other._normalizer = self._normalizer
-
-            # Set the new slice
-            other._slice = (
-                self._slice[0] + start * self._slice[2],
-                self._slice[0] + stop * self._slice[2],
-                step * self._slice[2],
-            )
+            other._slices = tuple(slices)
 
             return other
 
-        raise TypeError(f"Cannot index Video with type: {type(key)}")
+        raise TypeError("Unsupported index for Video. Supports only int, slice and Tuple[slice, ...]")
+
+
+def slice_length(slice_: Tuple[int, int, int]) -> int:
+    """Compute the number of element in a slice"""
+    start, stop, step = slice_
+    return max((stop - start - (step > 0) + (step < 0)) // step + 1, 0)

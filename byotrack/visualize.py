@@ -98,7 +98,9 @@ class InteractiveVisualizer:
             frame = np.zeros((*self.frame_shape, 3), dtype=np.uint8)
 
             if self._display_video and self.video is not None:
-                frame = (self.video[self._frame_id] * 255).astype(np.uint8)
+                _frame = self.video[self._frame_id]
+                _frame = _frame * 255 if np.issubdtype(_frame.dtype, np.floating) else _frame
+                frame = _frame.astype(np.uint8)
                 assert frame.shape[2] in (1, 3)
 
                 if frame.shape[2] == 1:

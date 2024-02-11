@@ -54,7 +54,7 @@ class VideoReader(metaclass=MetaVideoReader):
         path (str | bytes | os.PathLike): Path of the current video
         released (bool): True when release has been called (close and release memory)
         fps (int): Frame rate (-1 if unknown)
-        shape (Tuple[int, int]): Spatial dimensions of frames
+        shape (Tuple[int, ...]): Spatial dimensions of frames (Height, Width[, Depth])
         channels (int): Number of channels
         length (int): Number of frames
         frame_id (int): Current frame id
@@ -74,7 +74,7 @@ class VideoReader(metaclass=MetaVideoReader):
         self.path = path
         self.released = False
         self.fps = -1
-        self.shape = (0, 0)
+        self.shape: Tuple[int, ...] = (0, 0)
         self.channels = 0
         self.length = 0
         self.frame_id = 0
@@ -192,10 +192,11 @@ class OpenCVVideoReader(VideoReader):
         super().__init__(path, **kwargs)
         self.video = cv2.VideoCapture(str(path), **kwargs)
         assert self.video.grab(), "No frames found in the video"
+        self.channels = self.retrieve().shape[-1]
 
         self.fps = int(self.video.get(cv2.CAP_PROP_FPS))
         self.length = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.shape = (int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH)), int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+        self.shape = (int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT)), int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH)))
 
     def release(self) -> None:
         super().release()
@@ -234,7 +235,8 @@ class TiffVideoReader(VideoReader):
     def __init__(self, path: Union[str, os.PathLike], **kwargs):
         super().__init__(path, **kwargs)
         self.video = Image.open(path, **kwargs)
-        self.shape = self.video.size
+        self.channels = self.retrieve().shape[-1]
+        self.shape = self.video.size[::-1]
         self.length = self.video.n_frames
 
     def release(self) -> None:
