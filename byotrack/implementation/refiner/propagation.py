@@ -3,7 +3,7 @@ import warnings
 
 import torch
 import torch_tps
-import tqdm
+import tqdm.auto as tqdm
 
 
 def forward_backward_propagation(

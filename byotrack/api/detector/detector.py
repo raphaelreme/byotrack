@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Collection, Iterable, List
 
 import numpy as np
-import tqdm
+import tqdm.auto as tqdm
 
 import byotrack  # pylint: disable=cyclic-import
 from ..parameters import ParametrizedObjectMixin

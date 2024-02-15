@@ -167,7 +167,7 @@ class Video(Sequence[np.ndarray]):
         When sliced, it duplicates the video (wrapper) with the right slice
 
         Args:
-            key (int | slice): index or slice of the video
+            key (int | slice | Tuple[slice, ...]): index or slice of the video
 
         Returns:
             np.ndarray | Video: Frame at index or a shallow copy of the video with the right slice
