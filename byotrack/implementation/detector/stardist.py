@@ -20,11 +20,17 @@ class StarDistDetector(byotrack.BatchDetector):
     International Conference on Medical Image Computing and Computer-Assisted Intervention (MICCAI),
     Granada, Spain, September 2018.
 
-    We do not provide any code to train the stardist model. We expect you to already have trained the model.
+    We do not provide any code to train the stardist model. You can only use a trained or pretrained model.
 
     Note:
         This module requires `stardist` lib to be installed (with tensorflow). Please follow the instruction of the
         official implementation to install it.
+
+    Attributes:
+        model (StarDist2D): Underlying StarDist model
+        prob_threshold (float): Threshold on probability
+        nms_threshold (float): Threshold for Non Maximum Suppression
+
     """
 
     progress_bar_description = "Detections (StarDist)"
@@ -34,7 +40,7 @@ class StarDistDetector(byotrack.BatchDetector):
         "nms_threshold": ParameterBound(0.0, 1.0),
     }
 
-    def __init__(self, model_dir: Union[str, os.PathLike], **kwargs) -> None:
+    def __init__(self, model: StarDist2D, **kwargs) -> None:
         super().__init__(**kwargs)
 
         if self.batch_size != 1:  # TODO: Stardist do not give a straightforward implem for batch size > 1
@@ -42,18 +48,17 @@ class StarDistDetector(byotrack.BatchDetector):
                 "Current implementation do not support batch size greater than 1 and will iterate image by image"
             )
 
-        path = pathlib.Path(model_dir)
-        self._model = StarDist2D(None, path.name, str(path.parent))
+        self.model = model
 
         # Prop setter in stardist is changing type thus linting is failing...
-        self.prob_threshold: float = self._model.thresholds.prob  # pylint: disable=no-member
-        self.nms_threshold: float = self._model.thresholds.nms  # pylint: disable=no-member
+        self.prob_threshold: float = self.model.thresholds.prob  # pylint: disable=no-member
+        self.nms_threshold: float = self.model.thresholds.nms  # pylint: disable=no-member
 
     def detect(self, batch: np.ndarray) -> List[byotrack.Detections]:
         detections_list = []
 
         for i, image in enumerate(batch):
-            segmentation, data = self._model.predict_instances(
+            segmentation, data = self.model.predict_instances(
                 image, prob_thresh=self.prob_threshold, nms_thresh=self.nms_threshold, predict_kwargs={"verbose": 0}
             )
 
@@ -70,3 +75,30 @@ class StarDistDetector(byotrack.BatchDetector):
             )
 
         return detections_list
+
+    @staticmethod
+    def from_pretrained(name: str, **kwargs) -> "StarDistDetector":
+        """Load a pretrained StarDist from the paper
+
+        Args:
+            name (str): A valid identifier (From the official github)
+            **kwargs: Additional detector arguments. (See `byotrack.BatchDetector`)
+
+        Returns:
+            StarDistDetector
+        """
+        return StarDistDetector(StarDist2D.from_pretrained(name), **kwargs)
+
+    @staticmethod
+    def from_trained(train_dir: Union[str, os.PathLike], **kwargs) -> "StarDistDetector":
+        """Load a trained StarDist from a local folder
+
+        Args:
+            train_dir (str | os.PathLike): The training folder of the model
+            **kwargs: Additional detector arguments. (See `byotrack.BatchDetector`)
+
+        Returns:
+            StarDistDetector
+        """
+        path = pathlib.Path(train_dir)
+        return StarDistDetector(StarDist2D(None, path.name, str(path.parent)), **kwargs)

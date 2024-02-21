@@ -1,1 +1,1 @@
-from .trackmate import TrackMateLinker
+from .trackmate import TrackMateLinker, TrackMateParameters
