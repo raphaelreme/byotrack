@@ -41,6 +41,7 @@ Here is the complete list:
     * stardist (+ tensorflow): `Install stardist <https://github.com/stardist/stardist#installation>`_
 * IcyEMHTLinker
     * Icy: `Download Icy <https://icy.bioimageanalysis.org/download/>`_
+    * Spot Tracking Blocks plugin: `Install an Icy plugin <https://icy.bioimageanalysis.org/tutorial/how-to-install-an-icy-plugin/>`_
 * TrackMateLinker
     * Fiji: `Download Fiji <https://imagej.net/downloads>`_
 

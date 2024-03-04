@@ -210,6 +210,8 @@ class IcyEMHTLinker(byotrack.Linker):  # pylint: disable=too-few-public-methods
 
     Note:
         This implementation requires Icy to be installed (https://icy.bioimageanalysis.org/download/)
+        You should also install the Spot Tracking Blocks plugin
+        (https://icy.bioimageanalysis.org/tutorial/how-to-install-an-icy-plugin/)
 
     Attributes:
         runner (byotrack.icy.IcyRunner): Icy runner

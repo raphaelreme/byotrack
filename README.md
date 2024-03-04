@@ -41,6 +41,7 @@ Here is the complete list:
     - stardist (+ tensorflow): [Install stardist](https://github.com/stardist/stardist#installation>)
 - IcyEMHTLinker
     - Icy: [Download Icy](https://icy.bioimageanalysis.org/download/)
+    - Spot Tracking Blocks plugin: [Install an Icy plugin](https://icy.bioimageanalysis.org/tutorial/how-to-install-an-icy-plugin/)
 - TrackMateLinker
     - Fiji: [Download Fiji](https://imagej.net/downloads)
 
@@ -88,7 +89,7 @@ tracks = tracker.run(video)
 byotrack.Track.save(tracks, output_path)
 ```
 
-Please refer to the ![official documentation](https://byotrack.readthedocs.io/en/latest/).
+Please refer to the [official documentation](https://byotrack.readthedocs.io/en/latest/).
 
 ## Contribute
 
