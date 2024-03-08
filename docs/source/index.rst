@@ -16,6 +16,35 @@ of well-known algorithms following our API.
    This project and documentation is under active development.
 
 
+Cite Us
+-------
+
+.. code-block:: bibtex
+
+   @article{hanson2024automatic,
+      title={Automatic monitoring of neural activity with single-cell resolution in behaving Hydra},
+      author={Hanson, Alison and Reme, Raphael and Telerman, Noah and Yamamoto, Wataru and Olivo-Marin, Jean-Christophe and Lagache, Thibault and Yuste, Rafael},
+      journal={Scientific Reports},
+      volume={14},
+      number={1},
+      pages={5083},
+      year={2024},
+      publisher={Nature Publishing Group UK London}
+   }
+
+
+References
+----------
+
+* **[1]** F. De Chaumont, S. Dallongeville, N. Chenouard, et al., “Icy: an open bioimage informatics platform for extended reproducible research”, Nature methods, vol. 9, no. 7, pp. 690-696, 2012.
+* **[2]** J.-C. Olivo-Marin, “Extraction of spots in biological images using multiscale products”, Pattern Recognition, vol. 35, no. 9, pp. 1989-1996, 2002.
+* **[3]** U. Schmidt, M. Weigert, C. Broaddus, and G. Myers, “Cell detection with star-convex polygons,” in Medical Image Computing and Computer Assisted Intervention-MICCAI 2018: 21st International Conference, Granada, Spain, September 16-20, 2018, Proceedings, Part II 11. Springer, 2018, pp. 265-273.
+* **[4]** N. Chenouard, I. Bloch, and J.-C. Olivo-Marin, “Multiple hypothesis tracking for cluttered biological image sequences”, IEEE transactions on pattern analysis and machine intelligence, vol. 35, no. 11, pp. 2736-3750, 2013.
+* **[5]** T. Lagache, A. Hanson, J. Perez-Ortega, et al., “Tracking calcium dynamics from individual neurons in behaving animals”, PLoS computational biology, vol. 17, pp. e1009432, 10 2021.
+* **[6]** J. Schindelin, I. Arganda-Carreras, E. Frise, et al., "Fiji: an open-source platform for biological-image analysis", Nature Methods, 9(7), 676-682, 2012.
+* **[7]** K. Jaqaman, D. Loerke, M. Mettlen, et al., "Robust single-particle tracking in live-cell time-lapse sequences.", Nature Methods, 5(8), 695-702, 2008.
+* **[8]** J.-Y. Tinevez, N. Perry, J. Schindelin, et al., "TrackMate: An open and extensible platform for single-particle tracking.", Methods, 115, 80-90, 2017.
+
 Contents
 --------
 

@@ -98,13 +98,15 @@ In coming...
 ## Cite us
 
 ```bibtex
-@article{hanson2023automatic,
-  title={Automatic monitoring of whole-body neural activity in behaving Hydra},
+@article{hanson2024automatic,
+  title={Automatic monitoring of neural activity with single-cell resolution in behaving Hydra},
   author={Hanson, Alison and Reme, Raphael and Telerman, Noah and Yamamoto, Wataru and Olivo-Marin, Jean-Christophe and Lagache, Thibault and Yuste, Rafael},
-  journal={bioRxiv},
-  pages={2023--09},
-  year={2023},
-  publisher={Cold Spring Harbor Laboratory}
+  journal={Scientific Reports},
+  volume={14},
+  number={1},
+  pages={5083},
+  year={2024},
+  publisher={Nature Publishing Group UK London}
 }
 ```
 
