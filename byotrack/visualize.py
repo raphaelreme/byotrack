@@ -8,13 +8,14 @@ import torch
 
 import byotrack
 
-
-hsv = mpl.colormaps["hsv"]
-colors = list(map(lambda x: tuple(int(c * 255) for c in x[:3]), map(hsv, [i / 200 for i in range(200)])))
+_hsv = mpl.colormaps["hsv"]
+_colors = list(map(lambda x: tuple(int(c * 255) for c in x[:3]), map(_hsv, [i / 200 for i in range(200)])))
 
 
 def display_lifetime(tracks: Collection[byotrack.Track]):
     """Display the lifetime of tracks
+
+    Active tracks are in white. (Tracks on x-axis, Frames on y-axis)
 
     Args:
         tracks (Collection[byotrack.Track]): Tracks
@@ -30,6 +31,81 @@ def display_lifetime(tracks: Collection[byotrack.Track]):
     plt.ylabel("Frame")
     plt.imshow(mask)
     plt.show()
+
+
+def temporal_projection(
+    tracks_tensor: torch.Tensor,
+    colors: Sequence[Tuple[int, int, int]] = ((255, 255, 255),),
+    background: Optional[np.ndarray] = None,
+    color_by_time=False,
+) -> np.ndarray:
+    """Project all given tracks into a single image
+
+    A track is displayed as the line of its consecutive positions. Track's undefined positions
+    are not displayed.
+
+    Args:
+        tracks_tensor (torch.Tensor): Tracks tensor (See `byotrack.Track.tensorize`)
+            Positions of each track at each frame. (NaN if not defined).
+            Shape: (T, N, 2)
+        colors (Sequence[Tuple[int, int, int]]): Color sequence. When we color each track independently,
+            each track is associated with a color (ith track with ith color, it loops if more tracks than colors).
+            For time coloring, each frame has its own color (same across all tracks).
+            Default: ((255, 255, 255),) (Everything is white)
+        background (Optional[np.ndarray]): Optional frame to display behind the tracks.
+            If not given, we set the background as 0, with the smallest size to contain all tracks.
+            Default: None
+            Shape: (H, W[, C])
+        color_by_time (bool): If set to True, each frame has its own color. Otherwise, each track has its own color.
+            Color by time is much slower (cv2 do not allow complex multilines draw)
+            Default: False
+
+    Returns:
+        np.ndarray: Projection image
+            Shape: (H, W, 3), dtype: np.uint8
+    """
+
+    is_defined = ~torch.isnan(tracks_tensor).any(dim=-1)
+    frames = torch.arange(len(tracks_tensor))
+
+    if background is not None:
+        if np.issubdtype(background.dtype, np.floating):
+            background = (background * 255).round().astype(np.uint8)
+        if background.ndim == 2:
+            background = background[..., None]
+        if background.shape[2] == 1:  # type: ignore  # (Mypy-1.4.1 bugs in python3.7)
+            background = np.concatenate([background] * 3, axis=-1)
+        image = np.asarray(background)  # Mypy is lost also here...
+        offset = torch.zeros(2)
+    else:
+        offset = torch.min(tracks_tensor[is_defined], dim=0).values
+        shape = (torch.max(tracks_tensor[is_defined], dim=0).values - offset).round().to(torch.int32) + 1
+        image = np.zeros((*shape, 3), dtype=np.uint8)
+
+    for track_i, points in enumerate(tracks_tensor.permute(1, 0, 2)):
+        points = points[is_defined[:, track_i]] - offset
+
+        if color_by_time:
+            valid_frames = frames[is_defined[:, track_i]]
+
+            previous = points[0]
+            for frame_id, point in zip(valid_frames[1:], points[1:]):
+                cv2.line(
+                    image,
+                    previous.numpy().round().astype(np.int32)[::-1],
+                    point.numpy().round().astype(np.int32)[::-1],
+                    colors[frame_id % len(colors)],
+                )
+                previous = point
+        else:
+            cv2.polylines(
+                image,
+                points.numpy().round().astype(np.int32)[None, :, None, ::-1],
+                False,
+                colors[track_i % len(colors)],
+            )
+
+    return image
 
 
 class InteractiveVisualizer:
@@ -54,7 +130,7 @@ class InteractiveVisualizer:
     """
 
     window_name = "ByoTrack ViZ"
-    tracks_colors = colors
+    tracks_colors = _colors
 
     def __init__(
         self,
@@ -134,7 +210,7 @@ class InteractiveVisualizer:
 
                     i, j = point.round().to(torch.int).tolist()
 
-                    color = colors[track.identifier % len(colors)]
+                    color = self.tracks_colors[track.identifier % len(self.tracks_colors)]
 
                     cv2.circle(frame, (j, i), 5, color)
                     cv2.putText(
