@@ -83,6 +83,9 @@ def temporal_projection(
         image = np.zeros((*shape, 3), dtype=np.uint8)
 
     for track_i, points in enumerate(tracks_tensor.permute(1, 0, 2)):
+        if not is_defined[:, track_i].any():  # No points for this track
+            continue
+
         points = points[is_defined[:, track_i]] - offset
 
         if color_by_time:
