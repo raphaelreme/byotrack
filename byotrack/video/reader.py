@@ -237,7 +237,7 @@ class TiffVideoReader(VideoReader):
         self.video = Image.open(path, **kwargs)
         self.channels = self.retrieve().shape[-1]
         self.shape = self.video.size[::-1]
-        self.length = self.video.n_frames
+        self.length = self.video.n_frames  # type: ignore
 
     def release(self) -> None:
         super().release()
