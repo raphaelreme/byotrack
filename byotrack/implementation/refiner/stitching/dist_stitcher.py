@@ -102,8 +102,8 @@ class DistStitcher(byotrack.Refiner):
         starts = torch.tensor([track.start for track in tracks])
         ends = torch.tensor([track.start + len(track) for track in tracks])
 
-        first_pos = torch.concatenate([track.points[:1] for track in tracks])
-        last_pos = torch.concatenate([track.points[-1:] for track in tracks])
+        first_pos = torch.cat([track.points[:1] for track in tracks])
+        last_pos = torch.cat([track.points[-1:] for track in tracks])
 
         skip = starts[:, None] >= starts[None, :]  # Ensure full asymmetry
         skip |= ends[:, None] > starts[None, :] + max_overlap

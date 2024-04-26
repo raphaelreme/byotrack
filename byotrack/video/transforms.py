@@ -105,17 +105,19 @@ class ScaleAndNormalize:
         frames = frames[: self.max_frames_for_stats]
         self.mini = np.quantile(frames, self.q_min, axis=(0, 1, 2))
         self.maxi = np.quantile(frames, self.q_max, axis=(0, 1, 2))
+
         if self.smooth_clip > 0:
-            self.max = 1 + self.smooth_clip * np.log((frames.max() / self.maxi - 1) / self.smooth_clip + 1)
+            ratio = frames.max(axis=(0, 1, 2)) / (self.maxi + (self.maxi == 0))
+            self.max = 1 + 0.5 * np.log(np.maximum(1, 1 + (ratio - 1) / 0.5))
 
     def __call__(self, frame: np.ndarray) -> np.ndarray:
         if self.smooth_clip <= 0:  # No smooth clip
             frame = np.clip(frame, self.mini, self.maxi)
             frame -= self.mini
-            frame /= self.maxi - self.mini
+            frame /= self.maxi - self.mini + (self.maxi == self.mini)  # Divide by one if mini == maxi
             return frame
 
-        frame = (frame - self.mini) / (self.maxi - self.mini)
+        frame = (frame - self.mini) / (self.maxi - self.mini + (self.maxi == self.mini))
         # Log cliping high values
         frame[frame > 1] = 1 + self.smooth_clip * np.log((frame[frame > 1] - 1) / self.smooth_clip + 1)
         np.clip(frame, 0, self.max, frame)
