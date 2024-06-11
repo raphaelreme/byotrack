@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import cast, List, Optional, Union
 
 import cv2  # type: ignore
 import numpy as np
@@ -225,6 +225,10 @@ class WaveletDetector(byotrack.BatchDetector):
             _, segmentation, stats, _ = cv2.connectedComponentsWithStats(
                 mask, np.zeros(mask.shape, dtype=np.uint16), connectivity=4, ltype=cv2.CV_16U  # type: ignore
             )
+
+            # Fix typing issues of open-cv
+            stats = cast(np.ndarray, stats)
+            segmentation = cast(np.ndarray, segmentation)
 
             # Delete too small detections
             area = stats[:, 4]
