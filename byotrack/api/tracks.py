@@ -3,7 +3,10 @@ from __future__ import annotations
 import os
 from typing import cast, Collection, Optional, Tuple, Union
 
+import numpy as np
 import torch
+
+import byotrack  # pylint: disable=cyclic-import
 
 
 def _check_points(points: torch.Tensor) -> None:
@@ -14,32 +17,53 @@ def _check_points(points: torch.Tensor) -> None:
     assert points.dtype is torch.float32
 
 
+def _check_detection_ids(detection_ids: torch.Tensor, size: int) -> None:
+    assert detection_ids.shape == (size,)
+    assert detection_ids.dtype is torch.int32
+
+
 class Track:
     """Track for a given particle
 
     A track is defined by an (non-unique) identifier, a starting frame and a succession of positions.
+    In a detect-then-track context, a track can optionally contains the detection identifiers
+    for each time frame (-1 if non-linked to any particular detection at this time frame)
 
     Attributes:
         identifier (int): Identifier of the track (non-unique)
         start (int): Starting frame of the track
         points (torch.Tensor): Positions (i, j) of the particle (from starting frame to ending frame)
             Shape: (T, D), dtype: float32
+        detection_ids (torch.Tensor): Detection id for each time frame (-1 if unknown or non-linked
+            to a particular detection at this time frame)
+            Shape: (T,), dtype: int32
 
     """
 
     _next_identifier = 0
 
-    def __init__(self, start: int, points: torch.Tensor, identifier: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        start: int,
+        points: torch.Tensor,
+        identifier: Optional[int] = None,
+        detection_ids: Optional[torch.Tensor] = None,
+    ) -> None:
         if identifier is None:
             self.identifier = Track._next_identifier
             Track._next_identifier += 1
         else:
             self.identifier = identifier
 
+        if detection_ids is None:  # All are unknown (-1)
+            detection_ids = torch.full((len(points),), -1, dtype=torch.int32)
+
         _check_points(points)
+        _check_detection_ids(detection_ids, len(points))
 
         self.start = start
         self.points = points
+        self.detection_ids = detection_ids
 
     def __len__(self) -> int:
         return self.points.shape[0]
@@ -118,6 +142,33 @@ class Track:
         return points
 
     @staticmethod
+    def _tensorize_det_ids(tracks: Collection[Track]) -> torch.Tensor:
+        """Build a detection identifiers tensor for multiple tracks
+
+        Args:
+            tracks (Collection[Track]): A collection of tracks (usually from the same video)
+
+        Returns:
+            torch.Tensor: Detection identifiers in a single tensor
+                Shape: (T, N), dtype: int32
+        """
+        if not tracks:
+            raise ValueError("Cannot tensorize an empty collection of Tracks")
+
+        # Compute once start and end of each track
+        starts = [track.start for track in tracks]
+        ends = [track.start + len(track) for track in tracks]
+
+        start = min(starts)
+        end = max(ends)
+        ids = torch.full((end - start, len(tracks)), -1, dtype=torch.int32)
+
+        for i, (track_start, track_end, track) in enumerate(zip(starts, ends, tracks)):
+            ids[track_start - start : track_end - start, i] = track.detection_ids
+
+        return ids
+
+    @staticmethod
     def save(tracks: Collection[Track], path: Union[str, os.PathLike]) -> None:
         """Save a collection of tracks to path
 
@@ -129,6 +180,7 @@ class Track:
                 "offset": int
                 "ids": Tensor (N, ), int64
                 "points": Tensor (T, N, D), float32
+                "det_ids": Tensor (T, N), int32
             }
 
         Args:
@@ -139,7 +191,8 @@ class Track:
         ids = torch.tensor([track.identifier for track in tracks])
         offset = min(track.start for track in tracks)
         points = Track.tensorize(tracks)
-        torch.save({"offset": offset, "ids": ids, "points": points}, path)
+        det_ids = Track._tensorize_det_ids(tracks)
+        torch.save({"offset": offset, "ids": ids, "points": points, "det_ids": det_ids}, path)
 
     @staticmethod
     def load(path: Union[str, os.PathLike]) -> Collection[Track]:
@@ -153,6 +206,7 @@ class Track:
         offset: int = data.get("offset", 0)
         points: torch.Tensor = data["points"]
         ids: torch.Tensor = data["ids"]
+        det_ids: torch.Tensor = data.get("det_ids", torch.full(points.shape[:2], -1, dtype=torch.int32))
 
         frames = torch.arange(points.shape[0])
 
@@ -162,7 +216,49 @@ class Track:
             track_points = points[:, i]
             defined = ~torch.isnan(track_points).all(dim=-1)
             track_points = track_points[defined]
+            track_det_ids = det_ids[:, i][defined]
             start = cast(int, frames[defined].min().item())
-            tracks.append(Track(start + offset, track_points, identifier))
+            tracks.append(Track(start + offset, track_points, identifier, track_det_ids))
 
         return tracks
+
+
+def update_detection_ids(tracks: Collection[Track], detections_sequence: Collection[byotrack.Detections]) -> None:
+    """Update the `detections_ids` attribute of each track inplace
+
+    For each frame and each track, a perfectly matching detection is searched (the track position should be equal
+    to the detection position). If a match is found, it is registered in the `detections_ids` attribute.
+
+    This is useful to fill the `detection_ids` attributes after a wrapping linking code (See EMHT or TrackMate).
+    For this code to work, the linking algorithm that produces tracks should use the detection position
+    as the track position without using any temporal/spatial smoothing.
+
+    Args:
+        tracks (Collection[Track]): The tracks to update inplace
+        detections_sequence (Collection[byotrack.Detections]): Detections for the different frames
+
+    """
+    points = Track.tensorize(tracks)
+
+    # Store tracks as an array of objects to access advance slicing
+    # And reset detection_ids
+    tracks_array = np.empty((len(tracks),), dtype=np.object_)
+    for i, track in enumerate(tracks):
+        tracks_array[i] = track
+        track.detection_ids[:] = -1
+
+    for detections in detections_sequence:
+        valid_tracks = ~torch.isnan(points[detections.frame_id]).any(dim=1)
+        if valid_tracks.sum() == 0:
+            continue
+
+        valid_points = points[detections.frame_id][valid_tracks]
+
+        # Compute dist between tracks and detections at time t (Shape: (N_det, N_track))
+        dist = (valid_points[None] - detections.position[:, None]).abs().sum(dim=-1)
+        mini, argmin = torch.min(dist, dim=0)
+        match = mini < 1e-5  # Keep only perfect matches
+        argmin = argmin[match]
+
+        for i, track in enumerate(tracks_array[valid_tracks][match]):
+            track.detection_ids[detections.frame_id - track.start] = argmin[i]

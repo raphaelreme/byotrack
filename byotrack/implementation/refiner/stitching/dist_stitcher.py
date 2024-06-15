@@ -66,13 +66,17 @@ class DistStitcher(byotrack.Refiner):
             end = max(track_list[i].start + len(track_list[i]) for i in connected_component)
 
             points = torch.full((end - start, dim), torch.nan)
+            detection_ids = torch.full((end - start,), -1, dtype=torch.int32)
 
             for i in connected_component:
                 points[track_list[i].start - start : track_list[i].start - start + len(track_list[i])] = track_list[
                     i
                 ].points
+                detection_ids[track_list[i].start - start : track_list[i].start - start + len(track_list[i])] = (
+                    track_list[i].detection_ids
+                )
 
-            merged_tracks.append(byotrack.Track(start, points))
+            merged_tracks.append(byotrack.Track(start, points, detection_ids=detection_ids))
 
         return merged_tracks
 

@@ -8,6 +8,7 @@ import numpy as np
 
 import byotrack
 from byotrack import fiji
+from byotrack.api.tracks import update_detection_ids
 
 
 SCRIPT = pathlib.Path(__file__).parent / "_trackmate.py"
@@ -160,11 +161,13 @@ class TrackMateLinker(byotrack.Linker):  # pylint: disable=too-few-public-method
             self.specs.save(self.parameters_file)
             fiji.save_detections(detections_sequence, self.detections_file)
             self._run_fiji()
+
+            tracks = fiji.load_tracks(self.tracks_file)
+            update_detection_ids(tracks, detections_sequence)
+
             # Sort tracks by starting time and then position (Prevents undeterministic behaviors with some post
             # processing steps)
-            return sorted(
-                fiji.load_tracks(self.tracks_file), key=lambda track: (track.start, track.points[0].sum().item())
-            )
+            return sorted(tracks, key=lambda track: (track.start, track.points[0].sum().item()))
         finally:
             if os.path.exists(self.detections_file):
                 os.remove(self.detections_file)

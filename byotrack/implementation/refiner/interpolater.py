@@ -44,9 +44,12 @@ class ForwardBackwardInterpolater(byotrack.Refiner):  # pylint: disable=too-few-
             if self.full:
                 start = 0
                 points = propagation_matrix[:, i]
+                detection_ids = torch.full((propagation_matrix.shape[0],), -1, dtype=torch.int32)
+                detection_ids[track.start : track.start + len(track)] = track.detection_ids
             else:
                 start = track.start
                 points = propagation_matrix[start : start + len(track), i]
-            new_tracks.append(byotrack.Track(start, points, track.identifier))
+                detection_ids = track.detection_ids.clone()
+            new_tracks.append(byotrack.Track(start, points, track.identifier, detection_ids))
 
         return new_tracks

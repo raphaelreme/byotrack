@@ -65,13 +65,21 @@ class Cleaner(byotrack.Refiner):
                                 track.start + first,
                                 track.points[first : i + 1],
                                 identifier=track.identifier,
+                                detection_ids=track.detection_ids[first : i + 1],
                             )
                         )
                         first = i + 1
                         n_split += 1
 
                 # There is at least one element left
-                cleaned.append(byotrack.Track(track.start + first, track.points[first:], identifier=track.identifier))
+                cleaned.append(
+                    byotrack.Track(
+                        track.start + first,
+                        track.points[first:],
+                        identifier=track.identifier,
+                        detection_ids=track.detection_ids[first:],
+                    )
+                )
 
             n_filtered += len(cleaned)
             cleaned = list(filter(lambda tracklet: len(tracklet) >= min_length, cleaned))

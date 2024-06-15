@@ -11,6 +11,7 @@ import numpy as np
 import byotrack
 from byotrack import icy
 from byotrack.api.parameters import ParameterEnum
+from byotrack.api.tracks import update_detection_ids
 
 
 PROTOCOL = pathlib.Path(__file__).parent / "emht_protocol.xml"
@@ -255,11 +256,13 @@ class IcyEMHTLinker(byotrack.Linker):  # pylint: disable=too-few-public-methods
                 self.full_specs.to_xml(detections_sequence).write(self.parameters_file)
             icy.save_detections(detections_sequence, self.rois_file)
             self._run_icy()
+
+            tracks = icy.load_tracks(self.tracks_file)
+            update_detection_ids(tracks, detections_sequence)
+
             # Sort tracks by starting time and then position (They seem to be randomly sorted otherwise and in addition
             # with EMC2 torch-tps approximate propagation it yields undeterministic behaviors)
-            return sorted(
-                icy.load_tracks(self.tracks_file), key=lambda track: (track.start, track.points[0].sum().item())
-            )
+            return sorted(tracks, key=lambda track: (track.start, track.points[0].sum().item()))
         finally:
             if os.path.exists(self.rois_file):
                 os.remove(self.rois_file)
