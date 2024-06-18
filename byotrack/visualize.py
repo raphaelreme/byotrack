@@ -1,10 +1,11 @@
-from typing import Collection, Optional, Sequence, Tuple
+from typing import Collection, Dict, Optional, Sequence, Tuple
 
 import cv2
 import matplotlib as mpl  # type: ignore
 import matplotlib.pyplot as plt  # type: ignore
 import numpy as np
 import torch
+import tqdm
 
 import byotrack
 
@@ -313,3 +314,151 @@ class InteractiveVisualizer:
             )
 
         return n_frames
+
+
+class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
+    """Interactive optical flow visualization using a moving grid above the video
+
+    The video is displayed with a uniform grid (control points) above that moves according to the computed flow map.
+    If the optical flow algorithm is good, the points should moves along the video.
+
+    Keys:
+        * `space`: Pause/Unpause the video
+        * w/x: Move backward/forward in the video (when paused)
+        * g: Reset the control points as a grid
+
+    Note:
+        To prevent lagging, even when precompute is False, optical flow map are saved and never computed twice.
+        You should not use this function with too large videos. (Use slicing to reduce the size of a video)
+
+    Attributes:
+        video (Sequence[np.ndarray]): The video of interest
+        optflow (byotrack.OpticalFlow): Optical flow algorithm to visualize
+        grid_step (int): size (in pixels) between control points
+        points (np.ndarray): Control points (grid)
+            Shape: (N, 2), dtype: float64
+        precompute (bool): Compute all the flows first (bi directionnal) to prevent lagging
+            Default: False
+    """
+
+    window_name = "ByoTrack FlowViz"
+    colors = _colors
+
+    def __init__(self, video: Sequence[np.ndarray], optflow: byotrack.OpticalFlow, grid_step=20, precompute=False):
+        self.video = video
+        self.optflow = optflow
+        self.grid_step = grid_step
+        self.precompute = precompute
+        # Cache
+        self._flow_maps: Dict[Tuple[int, int], np.ndarray] = {}
+
+        self.frame_shape = video[0].shape[:2]
+        self.n_frames = len(video)
+        self._grid = (
+            np.indices(self.frame_shape, dtype=np.float64)[:, ::grid_step, ::grid_step].reshape(2, -1).transpose()
+        )
+        self.points = self._grid.copy()
+
+        self._frame_id = 0
+        self._running = False
+
+        if precompute:
+            self._precompute()
+
+    def _precompute(self):
+        """Precompute all flow maps (forward and backward)"""
+        src = self.optflow.preprocess(self.video[0])
+
+        for frame_id, frame in enumerate(tqdm.tqdm(self.video[1:])):
+            dst = self.optflow.preprocess(frame)
+
+            self._flow_maps[(frame_id, frame_id + 1)] = self.optflow.compute(src, dst)
+            self._flow_maps[(frame_id + 1, frame_id)] = self.optflow.compute(dst, src)
+
+            src = dst
+
+    def run(self, frame_id=0, fps=20) -> None:
+        """Run the visualization
+
+        Args:
+            frame_id (int): Starting frame_id
+            fps (int): Frame rate
+        """
+        try:
+            self._frame_id = frame_id
+            self._run(fps)
+        finally:
+            cv2.destroyWindow(self.window_name)
+
+    def _run(self, fps=20) -> None:
+        self.points = self._grid
+
+        src_frame_id = self._frame_id
+        src = self.optflow.preprocess(self.video[self._frame_id])
+        dst = src
+
+        while True:
+            self._frame_id += self._running
+
+            frame = self.video[self._frame_id]
+
+            if src_frame_id != self._frame_id:  # Change of frame, let's update
+                dst = self.optflow.preprocess(frame)
+                if (src_frame_id, self._frame_id) not in self._flow_maps:
+                    self._flow_maps[(src_frame_id, self._frame_id)] = self.optflow.compute(src, dst)
+
+                self.points = self.optflow.transform(self._flow_maps[(src_frame_id, self._frame_id)], self.points)
+
+                src = dst
+                src_frame_id = self._frame_id
+
+            # Drawing
+            draw = frame * 255 if np.issubdtype(frame.dtype, np.floating) else frame
+            draw = draw.astype(np.uint8)
+            assert draw.shape[2] in (1, 3)
+
+            if draw.shape[2] == 1:
+                draw = np.concatenate([draw] * 3, axis=2)
+
+            for k, (i, j) in enumerate(self.points):
+                cv2.circle(draw, (round(j), round(i)), 3, self.colors[k % len(self.colors)])
+
+            # Display the resulting frame
+            cv2.imshow(self.window_name, draw)
+            cv2.setWindowTitle(self.window_name, f"Frame {self._frame_id} / {self.n_frames}")
+
+            # Handle user actions
+            key = cv2.waitKey(1000 // fps) & 0xFF
+            if self.handle_actions(key):
+                break
+
+    def handle_actions(self, key: int) -> bool:
+        """Handle inputs from user
+
+        Return True to quit
+
+        Args:
+            key (int): Key input from user
+
+        Returns:
+            bool: True to quit visualization
+        """
+        if key == ord("q"):
+            return True
+
+        if cv2.getWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE) < 1:
+            return True
+
+        if key == ord(" "):
+            self._running = not self._running
+
+        if not self._running and key == ord("w"):  # Prev
+            self._frame_id = (self._frame_id - 1) % self.n_frames
+
+        if not self._running and key == ord("x"):  # Next
+            self._frame_id = (self._frame_id + 1) % self.n_frames
+
+        if key == ord("g"):
+            self.points = self._grid
+
+        return False

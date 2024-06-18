@@ -1,4 +1,4 @@
-ICY EMHT
+Icy EMHT
 ========
 
 Wrapper around Spot Tracking protocol of ICY.

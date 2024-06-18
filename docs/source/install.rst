@@ -44,6 +44,9 @@ Here is the complete list:
     * Spot Tracking Blocks plugin: `Install an Icy plugin <https://icy.bioimageanalysis.org/tutorial/how-to-install-an-icy-plugin/>`_
 * TrackMateLinker
     * Fiji: `Download Fiji <https://imagej.net/downloads>`_
+    * tifffile: `Install tifffile <https://github.com/cgohlke/tifffile#quickstart>`_
+- SkimageOpticalFlow
+    - scikit-image: `Install stardist <https://scikit-image.org/docs/stable/user_guide/install.html>`_`
 
 
 For visualization with `byotrack.visualize` module, you need to install matplotlib (pip install matplotlib).

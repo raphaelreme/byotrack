@@ -125,6 +125,7 @@ class TrackMateLinker(byotrack.Linker):  # pylint: disable=too-few-public-method
 
     Note:
         This implementation requires Fiji to be installed (https://imagej.net/downloads)
+        And tifffile library (https://github.com/cgohlke/tifffile#quickstart)
 
     Note:
         In case of missed detections, positions are filled with nan. To fill nan with true values, use an Interpolator

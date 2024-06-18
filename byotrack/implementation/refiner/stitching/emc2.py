@@ -1,4 +1,4 @@
-from typing import Collection, Iterable
+from typing import Collection, Iterable, Sequence, Union
 
 import numba  # type: ignore
 import numpy as np
@@ -53,11 +53,17 @@ class EMC2Stitcher(dist_stitcher.DistStitcher):
     individual neurons in behaving animals”, PLoS computational biology, vol. 17, pp. e1009432, 10 2021.
 
     Attributes:
-        alpha (float): Thin Plate Spline regularization (See `tps_propation` module and `torch_tps` librarie)
-            We advise to use alpha > 5.0. It improves outliers resiliences and helps reducing numerical errors.
-            Default: 10.0
+        method (str | DirectedPropagate): Method to use for position propagation. Either "constant", "tps"
+            or "flow" (see `constant_directed_propagate`, `tps_directed_propagate` or `optical_flow_directed_propagate`)
+            or a user defined Callable following the `DirectedPropagate` protocol.
+            Default: "tps"
         eta (float): Soft threshold in LAP solving (See `DistStitcher`)
             Default: 5.0 (Pixels)
+        kwargs (Dict[str, Any]): Additional parameters given to `method`.
+            For instance for "tps", you can set `alpha` (float) which is the regularization parameter of the
+            interpolation (see `tps_propation` module and `torch_tps` librarie). We advise to use alpha > 5.0
+            (alpha = 10 by default). For "flow" propagation, you should provide `optflow` (byotrack.OpticalFlow)
+            to correctly estimate optical flows.
         max_overlap (int): Cannot stitch tracks that overlap more than `max_overlap`
             Default: 5
         max_dist (float): Cannot stich track i and track j if the last position of i and
@@ -69,30 +75,32 @@ class EMC2Stitcher(dist_stitcher.DistStitcher):
 
     """
 
-    def __init__(self, alpha: float = 10.0, eta: float = 5.0) -> None:
+    def __init__(self, method: Union[str, propagation.DirectedPropagate] = "tps", eta: float = 5.0, **kwargs) -> None:
         super().__init__(self.compute_dist, eta)
-        self.alpha = alpha
         self.max_overlap = 5
         self.max_dist = 100.0
         self.max_gap = 250
+        self.method = method
+        self.kwargs = kwargs
 
-    def compute_dist(self, _: Iterable[np.ndarray], tracks: Collection[byotrack.Track]) -> np.ndarray:
+    def compute_dist(self, video: Iterable[np.ndarray], tracks: Collection[byotrack.Track]) -> np.ndarray:
         """Compute EMC2 distance between tracks
 
         Compute the mininum distance between each track propagation (only in the temporal gap between them).
 
         Args:
-            video (Iterable[np.ndarray]): Unused, added for API purposes
+            video (Iterable[np.ndarray]): Video of the tracked particles
             tracks (Collection[Track]): Input tracks
 
         Returns:
             np.ndarray: Distance between each track. (Contains np.inf)
                 Shape: (N, N), dtype: float32
         """
+        assert isinstance(video, Sequence), "EMC2 requires Sequence-like video"
 
         skip_mask = self.skip_computation(tracks, self.max_overlap, self.max_dist, self.max_gap)
         propagation_matrix = propagation.forward_backward_propagation(
-            byotrack.Track.tensorize(tracks), "tps", alpha=self.alpha
+            byotrack.Track.tensorize(tracks), video, self.method, **self.kwargs
         )
         ranges = np.array([(track.start, track.start + len(track)) for track in tracks])
         ranges -= ranges.min()  # The track tensor has an offset of ranges.min() (Usually 0)

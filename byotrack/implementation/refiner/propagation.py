@@ -1,13 +1,41 @@
-from typing import Callable, Optional, Union
+import sys
+from typing import Optional, Sequence, Union, TYPE_CHECKING
 import warnings
 
+import numpy as np
 import torch
 import torch_tps
 import tqdm.auto as tqdm
 
+import byotrack
+from byotrack.api.optical_flow.optical_flow import DummyOpticalFlow
+
+
+# For python <= 3.7, protocol does not exist. Hacky code to pass linting and running
+if sys.version_info >= (3, 8):
+    from typing import Protocol
+else:
+    if TYPE_CHECKING:
+        from typing_extensions import Protocol
+    else:
+
+        class Protocol:  # pylint: disable=too-few-public-methods
+            """Empty protocol implementation at runtime"""
+
+
+class DirectedPropagate(Protocol):  # pylint: disable=too-few-public-methods
+    """Protocol for directed propagate method
+
+    Methods that implement this protocol are expected to propagate the tracks matrix in the given direction
+    """
+
+    def __call__(
+        self, tracks_matrix: torch.Tensor, video: Sequence[np.ndarray], forward=True, **kwargs
+    ) -> torch.Tensor: ...
+
 
 def forward_backward_propagation(
-    tracks_matrix: torch.Tensor, method: Union[str, Callable[..., torch.Tensor]], **kwargs
+    tracks_matrix: torch.Tensor, video: Sequence[np.ndarray], method: Union[str, DirectedPropagate], **kwargs
 ) -> torch.Tensor:
     """Fill all NaN values in the tracks matrix by merging a forward and backward propagation
 
@@ -22,27 +50,32 @@ def forward_backward_propagation(
     Args:
         tracks_matrix (torch.Tensor): Tracks data in a single tensor (See `Track.tensorize`)
             Shape: (T, N, D), dtype: float32
-        method (str | Callable[..., torch.Tensor]): Method to use for propagation. Either "tps", "constant"
-            of a self defined function to be called.
+        video (Sequence[np.ndarray]): Video on which the tracks are based.
+        method (str | DirectedPropagate): Method to use for propagation. Either "constant", "tps"
+            or "flow" (see `constant_directed_propagate`, `tps_directed_propagate` or `optical_flow_directed_propagate`)
+            or a user defined Callable following the `DirectedPropagate` protocol.
+            The method will be called with the tracks_matrix, video, a boolean direction and additional kwargs.
         **kwargs (Any): Additional arguments given to the method
 
     Returns:
         torch.Tensor: Extrapolated point for each track and time
             Shape: (T, N, D), dtype: float32
     """
-    directed_propagate: Callable[..., torch.Tensor]
+    directed_propagate: DirectedPropagate
     if isinstance(method, str):
         if method.lower() == "tps":
             directed_propagate = tps_directed_propagate
         elif method.lower() == "constant":
             directed_propagate = constant_directed_propagate
+        elif method.lower() == "flow":
+            directed_propagate = optical_flow_directed_propagate
         else:
-            raise ValueError(f"Unknown method {method}. We only provide two of them: constant and tps")
+            raise ValueError(f"Unknown method {method}. We only provide three of them: 'constant', 'tps' and 'flow'")
     else:
         directed_propagate = method
 
-    forward_positions = directed_propagate(tracks_matrix, True, **kwargs)
-    backward_positions = directed_propagate(tracks_matrix, False, **kwargs)
+    forward_positions = directed_propagate(tracks_matrix, video, True, **kwargs)
+    backward_positions = directed_propagate(tracks_matrix, video, False, **kwargs)
 
     return merge(tracks_matrix, forward_positions, backward_positions)
 
@@ -97,12 +130,19 @@ def merge(
     return propagation_matrix
 
 
-def constant_directed_propagate(tracks_matrix: torch.Tensor, forward=True) -> torch.Tensor:
+def constant_directed_propagate(
+    tracks_matrix: torch.Tensor,
+    video: Sequence[np.ndarray] = (),  # pylint: disable=unused-argument
+    forward=True,
+    **kwargs,
+) -> torch.Tensor:
     """Propagate tracks matrix with the last known position in a single direction
 
     Args:
         tracks_matrix (torch.Tensor): Tracks data in a single tensor (See `Tracks.tensorize`)
             Shape: (T, N, D), dtype: float32
+        video (Sequence[np.ndarray]): Video (Unused, added for api purposes)
+            Default: () (As unused a default value is provided)
         forward (bool): Forward or backward propagation
             Default: True (Forward)
 
@@ -110,12 +150,17 @@ def constant_directed_propagate(tracks_matrix: torch.Tensor, forward=True) -> to
         torch.Tensor: Estimation of tracks point in a single direction
             Shape: (T, N, D), dtype: float32
     """
+    if kwargs:
+        warnings.warn(f"`constant_directed_propagate` has been given unused kwargs: {kwargs}")
+
     tracks_matrix = tracks_matrix if forward else torch.flip(tracks_matrix, (0,))
 
     propagation_matrix = tracks_matrix.clone()  # (T, N, D)
     valid = ~torch.isnan(propagation_matrix).any(dim=-1)  # (T, N)
 
-    for i in tqdm.trange(1, tracks_matrix.shape[0], desc=f"{'Forward' if forward else 'Backward'} propagation"):
+    for i in tqdm.trange(
+        1, tracks_matrix.shape[0], desc=f"Constant {'forward' if forward else 'backward'} propagation"
+    ):
         # Compute propagation mask (not valid and has a past)
         propagation_mask = ~valid[i] & ~torch.isnan(propagation_matrix[i - 1]).any(dim=-1)
 
@@ -129,7 +174,12 @@ def constant_directed_propagate(tracks_matrix: torch.Tensor, forward=True) -> to
 
 
 def tps_directed_propagate(
-    tracks_matrix: torch.Tensor, forward=True, alpha=5.0, track_mask: Optional[torch.Tensor] = None
+    tracks_matrix: torch.Tensor,
+    video: Sequence[np.ndarray] = (),  # pylint: disable=unused-argument
+    forward=True,
+    alpha=10.0,
+    track_mask: Optional[torch.Tensor] = None,
+    **kwargs,
 ) -> torch.Tensor:
     """Propagate tracks matrix using Thin Plate Spline (TPS) algorithm in a single direction
 
@@ -141,10 +191,13 @@ def tps_directed_propagate(
     Args:
         tracks_matrix (torch.Tensor): Tracks data in a single tensor (See `Tracks.tensorize`)
             Shape: (T, N, D), dtype: float32
+        video (Sequence[np.ndarray]): Video (Unused, added for api purposes)
+            Default: () (As unused a default value is provided)
         forward (bool): Forward or backward propagation
             Default: True (Forward)
-        alpha (float): Regularization parameter of TPS
-            Default: 5.0 (alpha > 5.0 is advised)
+        alpha (float): Thin Plate Spline regularization (See `torch_tps` librarie). We advise to use alpha > 5.0.
+            It improves outliers resiliences and helps reducing numerical errors.
+            Default: 10.0
         track_mask (Optional[torch.Tensor]): Filter out some tracks to build control points
             Allow to drop uncertain tracks or to simulate propagation with less particles
             Shape: (N, ), dtype: bool
@@ -153,6 +206,9 @@ def tps_directed_propagate(
         torch.Tensor: Estimation of tracks point in a single direction
             Shape: (T, N, D), dtype: float32
     """
+    if kwargs:
+        warnings.warn(f"`tps_directed_propagate` has been given unused kwargs: {kwargs}")
+
     tps = torch_tps.ThinPlateSpline(alpha, "cpu")  # Cf torch_tps: Faster on cpu than gpu
 
     tracks_matrix = tracks_matrix if forward else torch.flip(tracks_matrix, (0,))
@@ -160,7 +216,7 @@ def tps_directed_propagate(
     propagation_matrix = tracks_matrix.clone()  # (T, N, D)
     valid = ~torch.isnan(propagation_matrix).any(dim=-1)  # (T, N)
 
-    for i in tqdm.trange(1, tracks_matrix.shape[0], desc=f"{'Forward' if forward else 'Backward'} propagation"):
+    for i in tqdm.trange(1, tracks_matrix.shape[0], desc=f"TPS {'forward' if forward else 'backward'} propagation"):
         # Compute control mask (Valid before and now)
         control_mask = valid[i - 1] & valid[i]  # (N,)
         if track_mask is not None:
@@ -180,5 +236,66 @@ def tps_directed_propagate(
 
         # Propagate points
         propagation_matrix[i, propagation_mask] = tps.transform(propagation_matrix[i - 1, propagation_mask])
+
+    return propagation_matrix if forward else torch.flip(propagation_matrix, (0,))
+
+
+def optical_flow_directed_propagate(
+    tracks_matrix: torch.Tensor,
+    video: Sequence[np.ndarray],
+    forward=True,
+    optflow: byotrack.OpticalFlow = DummyOpticalFlow(),
+    **kwargs,
+):
+    """Propagate tracks matrix in single direction using optical flow
+
+    Args:
+        tracks_matrix (torch.Tensor): Tracks data in a single tensor (See `Tracks.tensorize`)
+            Shape: (T, N, D), dtype: float32
+        video (Sequence[np.ndarray]): Video on which the tracks are based.
+            This function requires the video to be a Sequence
+        forward (bool): Forward or backward propagation
+            Default: True (Forward)
+        optflow (byotrack.OpticalFlow): Optical flow to use
+            Default: DummyOpticalFlow (predict no displacement <=> constant propagate)
+
+    Returns:
+        torch.Tensor: Estimation of tracks point in a single direction
+            Shape: (T, N, D), dtype: float32
+    """
+    if kwargs:
+        warnings.warn(f"`optical_flow_directed_propagate` has been given unused kwargs: {kwargs}")
+
+    tracks_matrix = tracks_matrix if forward else torch.flip(tracks_matrix, (0,))
+
+    def frame_id(i: int) -> int:
+        return i if forward else len(tracks_matrix) - i - 1
+
+    propagation_matrix = tracks_matrix.clone()  # (T, N, D)
+    valid = ~torch.isnan(propagation_matrix).any(dim=-1)  # (T, N)
+
+    src = optflow.preprocess(video[frame_id(0)])
+
+    for i in tqdm.trange(
+        1,
+        tracks_matrix.shape[0],
+        desc=f"{optflow.__class__.__name__} {'forward' if forward else 'backward'} propagation",
+    ):
+        # Compute propagation mask (not valid and has a past)
+        propagation_mask = ~valid[i] & ~torch.isnan(propagation_matrix[i - 1]).any(dim=-1)
+
+        dst = optflow.preprocess(video[frame_id(i)])
+
+        if propagation_mask.sum() == 0:
+            src = dst
+            continue  # No propagation to do
+
+        flow_map = optflow.compute(src, dst)
+        src = dst
+
+        # Propagate points
+        propagation_matrix[i, propagation_mask] = torch.tensor(
+            optflow.transform(flow_map, propagation_matrix[i - 1, propagation_mask].numpy())
+        )
 
     return propagation_matrix if forward else torch.flip(propagation_matrix, (0,))

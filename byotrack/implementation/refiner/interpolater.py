@@ -1,4 +1,4 @@
-from typing import Callable, Collection, Iterable, List, Union
+from typing import Collection, Iterable, List, Sequence, Union
 
 import numpy as np
 import torch
@@ -11,22 +11,28 @@ from . import propagation
 class ForwardBackwardInterpolater(byotrack.Refiner):  # pylint: disable=too-few-public-methods
     """Interpolate tracks to fill out NaN values by averaging a forward estimation and a backward estimation.
 
-    We propose two modes for position propagation: constant and tps. Constant estimation propagates the
-    last known position, whereas tps uses active tracks knowledge to estimate the elastic motion.
+    We propose three modes for position propagation: constant, tps and flow. Constant estimation propagates the
+    last known position, tps interpolates elastically the motion of the active tracks to fill missing ones and
+    flow uses optical flow to propagate the tracks.
 
     Forward and backward propagation are smoothly merged together in a weighted average. See `propagation` module
 
     Attributes:
-        method (str | Callable[..., torch.Tensor]): Method for directed propagation
-            ("constant", "tps" or your own callable)
-            Default: "constant"
+        method (str | DirectedPropagate): Method to use for position propagation. Either "constant", "tps"
+            or "flow" (see `constant_directed_propagate`, `tps_directed_propagate` or `optical_flow_directed_propagate`)
+            or a user defined Callable following the `DirectedPropagate` protocol.
+            The method will be called with the tracks_matrix, video, a boolean direction and additional kwargs.
         full (bool): Interpolate track on all frames or only on the track range
             Default: False (Will not extend partial tracks, but only fill out NaN values inside of them)
-        **kwargs: Additional arguments given to the method (For instance, `alpha` for tps)
+        kwargs (Dict[str, Any]): Additional parameters given to `method`.
+            For instance for "tps", you can set `alpha` (float) which is the regularization parameter of the
+            interpolation (see `tps_propation` module and `torch_tps` librarie). We advise to use alpha > 5.0
+            (alpha = 10 by default). For "flow" propagation, you should provide `optflow` (byotrack.OpticalFlow)
+            to correctly estimate optical flows.
 
     """
 
-    def __init__(self, method: Union[str, Callable[..., torch.Tensor]] = "constant", full=False, **kwargs) -> None:
+    def __init__(self, method: Union[str, propagation.DirectedPropagate] = "constant", full=False, **kwargs) -> None:
         super().__init__()
         self.method = method
         self.full = full
@@ -36,8 +42,10 @@ class ForwardBackwardInterpolater(byotrack.Refiner):  # pylint: disable=too-few-
         if not tracks:
             return []
 
+        assert isinstance(video, Sequence), "ForwardBackward interpolation requires Sequence-like video"
+
         tracks_matrix = byotrack.Track.tensorize(tracks)
-        propagation_matrix = propagation.forward_backward_propagation(tracks_matrix, self.method, **self.kwargs)
+        propagation_matrix = propagation.forward_backward_propagation(tracks_matrix, video, self.method, **self.kwargs)
 
         new_tracks = []
         for i, track in enumerate(tracks):

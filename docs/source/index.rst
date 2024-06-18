@@ -73,6 +73,7 @@ Contents
    api/detector
    api/linker
    api/refiner
+   api/optical_flow
    api/parameters
 
 
@@ -83,6 +84,7 @@ Contents
    implementation/detectors/detectors
    implementation/linkers/linkers
    implementation/refiners/refiners
+   implementation/optical_flows/optical_flows
 
 .. toctree::
    :glob:
