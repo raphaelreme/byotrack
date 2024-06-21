@@ -25,6 +25,8 @@ Overview:
     * Cleaning
     * EMC2 [5]: Track stitching (gap closing)
     * Interpolate missing positions
+* Optical Flow
+    * Support for Open-CV and Scikit-Image algorithms
 
 
 ## Install

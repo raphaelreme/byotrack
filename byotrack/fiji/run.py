@@ -1,10 +1,11 @@
 import os
+import platform
 import subprocess
 from typing import Union
 
 
 class FijiRunner:  # pylint: disable=too-few-public-methods
-    """Runs icy in headless with specified protocol and arguments
+    """Runs fiji in headless with specified protocol and arguments
 
     Attributes:
         fiji_path (str | os.PathLike): Path to the fiji executable
@@ -15,7 +16,7 @@ class FijiRunner:  # pylint: disable=too-few-public-methods
 
     """
 
-    cmd = '{fiji} --ij2 --headless --console --run {script} "{args}"'
+    cmd = './{fiji} --ij2 --headless --console --run "{script}" "{args}"'
 
     def __init__(self, fiji_path: Union[str, os.PathLike]) -> None:
         self.fiji_path = fiji_path
@@ -35,7 +36,10 @@ class FijiRunner:  # pylint: disable=too-few-public-methods
         """
         args = ",".join(f"{key}='{value}'" for key, value in kwargs.items())
 
-        cmd = self.cmd.format(fiji=self.fiji_path, script=script, args=args)
+        cmd = self.cmd.format(fiji=os.path.basename(self.fiji_path), script=script, args=args)
+
+        if platform.system().lower() == "windows":
+            cmd = cmd[2:]  # Strip ./ on windows
 
         print("Calling Fiji with:", cmd)
-        return subprocess.run(cmd, check=True, shell=True).returncode
+        return subprocess.run(cmd, check=True, cwd=os.path.dirname(self.fiji_path), shell=True).returncode

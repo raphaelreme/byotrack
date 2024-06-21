@@ -14,7 +14,7 @@ class IcyRunner:  # pylint: disable=too-few-public-methods
             Useful for EMHT which may enter an infinite loop.
     """
 
-    cmd = "java -jar icy.jar -hl -x plugins.adufour.protocols.Protocols protocol={protocol} "
+    cmd = 'java -jar icy.jar -hl -x plugins.adufour.protocols.Protocols protocol="{protocol}" '
 
     def __init__(self, icy_path: Optional[Union[str, os.PathLike]] = None, timeout: Optional[float] = None) -> None:
         if icy_path is None:
@@ -42,5 +42,5 @@ class IcyRunner:  # pylint: disable=too-few-public-methods
 
         print("Calling Icy with:", cmd)
         return subprocess.run(
-            cmd.split(), check=True, cwd=os.path.dirname(self.icy_path), timeout=self.timeout
+            cmd, check=True, cwd=os.path.dirname(self.icy_path), shell=True, timeout=self.timeout
         ).returncode

@@ -279,7 +279,7 @@ class IcyEMHTLinker(byotrack.Linker):  # pylint: disable=too-few-public-methods
                 warnings.warn(
                     f"""motion attribute ({self.motion}) != full_specs.motion ({self.full_specs.motion})
 
-Will use motion attribute (and modify the specifications)
+                    Will use motion attribute (and modify the specifications)
                     """
                 )
 
@@ -287,17 +287,17 @@ Will use motion attribute (and modify the specifications)
 
             self.runner.run(
                 PARAMETRIZED_PROTOCOL,
-                rois=os.path.abspath(self.rois_file),
-                parameters=os.path.abspath(self.parameters_file),
-                tracks=os.path.abspath(self.tracks_file),
+                rois=f'"{os.path.abspath(self.rois_file)}"',
+                parameters=f'"{os.path.abspath(self.parameters_file)}"',
+                tracks=f'"{os.path.abspath(self.tracks_file)}"',
             )
         else:
             directed, multi = self.motion.value
 
             self.runner.run(
                 PROTOCOL,
-                rois=os.path.abspath(self.rois_file),
-                tracks=os.path.abspath(self.tracks_file),
+                rois=f'"{os.path.abspath(self.rois_file)}"',
+                tracks=f'"{os.path.abspath(self.tracks_file)}"',
                 directed=directed,
                 multi=multi,
             )
