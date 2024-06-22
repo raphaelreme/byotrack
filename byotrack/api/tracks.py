@@ -223,7 +223,9 @@ class Track:
         return tracks
 
 
-def update_detection_ids(tracks: Collection[Track], detections_sequence: Collection[byotrack.Detections]) -> None:
+def update_detection_ids(
+    tracks: Collection[Track], detections_sequence: Collection[byotrack.Detections], using_segmentation=True
+) -> None:
     """Update the `detections_ids` attribute of each track inplace
 
     For each frame and each track, a perfectly matching detection is searched (the track position should be equal
@@ -236,9 +238,12 @@ def update_detection_ids(tracks: Collection[Track], detections_sequence: Collect
     Args:
         tracks (Collection[Track]): The tracks to update inplace
         detections_sequence (Collection[byotrack.Detections]): Detections for the different frames
+        using_segmentation (bool): Whether to use the segmentation to compute position of detections
+            or use position if available. (Icy and Fiji are only given the segmentation)
 
     """
-    points = Track.tensorize(tracks)
+    frame_range = (min(track.start for track in tracks), max(track.start + len(track) for track in tracks))
+    points = Track.tensorize(tracks, frame_range=frame_range)
 
     # Store tracks as an array of objects to access advance slicing
     # And reset detection_ids
@@ -248,11 +253,20 @@ def update_detection_ids(tracks: Collection[Track], detections_sequence: Collect
         track.detection_ids[:] = -1
 
     for detections in detections_sequence:
-        valid_tracks = ~torch.isnan(points[detections.frame_id]).any(dim=1)
+        if detections.length == 0:
+            continue
+        if detections.frame_id < frame_range[0] or detections.frame_id >= frame_range[1]:
+            continue
+
+        valid_tracks = ~torch.isnan(points[detections.frame_id - frame_range[0]]).any(dim=1)
         if valid_tracks.sum() == 0:
             continue
 
-        valid_points = points[detections.frame_id][valid_tracks]
+        valid_points = points[detections.frame_id - frame_range[0]][valid_tracks]
+
+        # If using seg, we rely solely on the segmentation
+        if using_segmentation and "position" in detections.data:
+            detections = byotrack.Detections({"segmentation": detections.segmentation}, frame_id=detections.frame_id)
 
         # Compute dist between tracks and detections at time t (Shape: (N_det, N_track))
         dist = (valid_points[None] - detections.position[:, None]).abs().sum(dim=-1)
@@ -260,5 +274,5 @@ def update_detection_ids(tracks: Collection[Track], detections_sequence: Collect
         match = mini < 1e-5  # Keep only perfect matches
         argmin = argmin[match]
 
-        for i, track in enumerate(tracks_array[valid_tracks][match]):
+        for i, track in enumerate(tracks_array[valid_tracks.numpy()][match.numpy()]):
             track.detection_ids[detections.frame_id - track.start] = argmin[i]

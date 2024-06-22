@@ -2,7 +2,7 @@ import dataclasses
 import enum
 import os
 import pathlib
-from typing import Collection, Iterable, Optional, Union
+from typing import Collection, Iterable, List, Optional, Union
 import warnings
 from xml.etree import ElementTree as ET
 
@@ -250,7 +250,7 @@ class IcyEMHTLinker(byotrack.Linker):  # pylint: disable=too-few-public-methods
 
     def run(
         self, video: Iterable[np.ndarray], detections_sequence: Collection[byotrack.Detections]
-    ) -> Collection[byotrack.Track]:
+    ) -> List[byotrack.Track]:
         try:
             if self.full_specs:
                 self.full_specs.to_xml(detections_sequence).write(self.parameters_file)

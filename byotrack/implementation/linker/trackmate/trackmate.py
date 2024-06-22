@@ -2,7 +2,7 @@ import dataclasses
 import json
 import os
 import pathlib
-from typing import Collection, Iterable, Optional, Union
+from typing import Collection, Iterable, List, Optional, Union
 
 import numpy as np
 
@@ -157,13 +157,17 @@ class TrackMateLinker(byotrack.Linker):  # pylint: disable=too-few-public-method
 
     def run(
         self, video: Iterable[np.ndarray], detections_sequence: Collection[byotrack.Detections]
-    ) -> Collection[byotrack.Track]:
+    ) -> List[byotrack.Track]:
         try:
             self.specs.save(self.parameters_file)
             fiji.save_detections(detections_sequence, self.detections_file)
             self._run_fiji()
 
             tracks = fiji.load_tracks(self.tracks_file)
+            offset = next(iter(detections_sequence)).frame_id
+            for track in tracks:
+                track.start += offset
+
             update_detection_ids(tracks, detections_sequence)
 
             # Sort tracks by starting time and then position (Prevents undeterministic behaviors with some post

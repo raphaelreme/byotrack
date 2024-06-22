@@ -98,9 +98,12 @@ class EMC2Stitcher(dist_stitcher.DistStitcher):
         """
         assert isinstance(video, Sequence), "EMC2 requires Sequence-like video"
 
+        start = min(track.start for track in tracks)
+        end = max(track.start + len(track) for track in tracks)
+
         skip_mask = self.skip_computation(tracks, self.max_overlap, self.max_dist, self.max_gap)
         propagation_matrix = propagation.forward_backward_propagation(
-            byotrack.Track.tensorize(tracks), video, self.method, **self.kwargs
+            byotrack.Track.tensorize(tracks), video[start:end], self.method, **self.kwargs
         )
         ranges = np.array([(track.start, track.start + len(track)) for track in tracks])
         ranges -= ranges.min()  # The track tensor has an offset of ranges.min() (Usually 0)

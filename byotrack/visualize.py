@@ -22,15 +22,19 @@ def display_lifetime(tracks: Collection[byotrack.Track]):
         tracks (Collection[byotrack.Track]): Tracks
 
     """
+    start = min(track.start for track in tracks)
     tracks_tensor = byotrack.Track.tensorize(tracks)
 
     mask = (~torch.isnan(tracks_tensor).any(dim=2, keepdim=True)).numpy() * 255
     mask = np.concatenate([mask] * 3, axis=2)
 
-    plt.figure(figsize=(24, 16), dpi=100)
+    fig = plt.figure(figsize=(24, 16), dpi=100)
     plt.xlabel("Track id")
     plt.ylabel("Frame")
     plt.imshow(mask)
+    # Hacky axe relabelling
+    fig.axes[0].set_yticks(fig.axes[0].get_yticks()[1:-1])
+    fig.axes[0].set_yticklabels(fig.axes[0].get_yticks().astype(np.int32) + start)
     plt.show()
 
 

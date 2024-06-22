@@ -1,7 +1,7 @@
-"""Utilities for inputs/outputs with icy"""
+"""Utilities for inputs/outputs with fiji"""
 
 import os
-from typing import Collection, Union
+from typing import Collection, List, Union
 from xml.etree import ElementTree as ET
 
 import numpy as np
@@ -21,11 +21,16 @@ def save_detections(detections_sequence: Collection[byotrack.Detections], path: 
         path (str | os.PathLike): Output path
 
     """
+    # Check that detections are consecutives
+    start = next(iter(detections_sequence)).frame_id
+    for i, detections in enumerate(detections_sequence):
+        assert i == detections.frame_id - start, "Unable to save non-consecutive detections for fiji"
+
     segmentations = np.concatenate([detections.segmentation[None].numpy() for detections in detections_sequence])
     tifffile.imwrite(path, segmentations, photometric="minisblack")
 
 
-def load_tracks(path: Union[str, os.PathLike]) -> Collection[byotrack.Track]:
+def load_tracks(path: Union[str, os.PathLike]) -> List[byotrack.Track]:
     """Load tracks saved by trackmate
 
     Currently only 2d tracks are supported
@@ -56,7 +61,7 @@ def load_tracks(path: Union[str, os.PathLike]) -> Collection[byotrack.Track]:
         path (str | os.PathLike): Input path
 
     Returns:
-        Collection[Track]: Parsed tracks
+        List[Track]: Parsed tracks
 
     """
     tracks = []

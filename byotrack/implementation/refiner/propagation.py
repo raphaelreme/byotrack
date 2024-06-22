@@ -50,7 +50,8 @@ def forward_backward_propagation(
     Args:
         tracks_matrix (torch.Tensor): Tracks data in a single tensor (See `Track.tensorize`)
             Shape: (T, N, D), dtype: float32
-        video (Sequence[np.ndarray]): Video on which the tracks are based.
+        video (Sequence[np.ndarray]): Video on which the tracks are based. (video[i] should match with the points
+            from tracks_matrix[0])
         method (str | DirectedPropagate): Method to use for propagation. Either "constant", "tps"
             or "flow" (see `constant_directed_propagate`, `tps_directed_propagate` or `optical_flow_directed_propagate`)
             or a user defined Callable following the `DirectedPropagate` protocol.
@@ -252,8 +253,8 @@ def optical_flow_directed_propagate(
     Args:
         tracks_matrix (torch.Tensor): Tracks data in a single tensor (See `Tracks.tensorize`)
             Shape: (T, N, D), dtype: float32
-        video (Sequence[np.ndarray]): Video on which the tracks are based.
-            This function requires the video to be a Sequence
+        video (Sequence[np.ndarray]): Video on which the tracks are based. (video[i] should match with the points
+            from tracks_matrix[0]).
         forward (bool): Forward or backward propagation
             Default: True (Forward)
         optflow (byotrack.OpticalFlow): Optical flow to use

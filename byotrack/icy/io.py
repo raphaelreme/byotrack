@@ -1,7 +1,7 @@
 """Utilities for inputs/outputs with icy"""
 
 import os
-from typing import Collection, Union
+from typing import Collection, List, Union
 import warnings
 from xml.etree import ElementTree as ET
 import zlib
@@ -74,7 +74,7 @@ def save_detections(detections_sequence: Collection[byotrack.Detections], path: 
     ET.ElementTree(root).write(path)
 
 
-def load_tracks(path: Union[str, os.PathLike]) -> Collection[byotrack.Track]:
+def load_tracks(path: Union[str, os.PathLike]) -> List[byotrack.Track]:
     """Load tracks in Icy format
 
     Format example:
@@ -103,7 +103,7 @@ def load_tracks(path: Union[str, os.PathLike]) -> Collection[byotrack.Track]:
         path (str | os.PathLike): Input path
 
     Returns:
-        Collection[Track]: Parsed tracks
+        List[Track]: Parsed tracks
 
     """
     tree = ET.parse(path)

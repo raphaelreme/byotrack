@@ -22,8 +22,9 @@ class ForwardBackwardInterpolater(byotrack.Refiner):  # pylint: disable=too-few-
             or "flow" (see `constant_directed_propagate`, `tps_directed_propagate` or `optical_flow_directed_propagate`)
             or a user defined Callable following the `DirectedPropagate` protocol.
             The method will be called with the tracks_matrix, video, a boolean direction and additional kwargs.
-        full (bool): Interpolate track on all frames or only on the track range
-            Default: False (Will not extend partial tracks, but only fill out NaN values inside of them)
+        full (bool): If True, it will extrapolate positions for all the frames of the video
+            If False, it will only interpolate NaN values inside each track domain, without extrapolation
+            Default: False
         kwargs (Dict[str, Any]): Additional parameters given to `method`.
             For instance for "tps", you can set `alpha` (float) which is the regularization parameter of the
             interpolation (see `tps_propation` module and `torch_tps` librarie). We advise to use alpha > 5.0
@@ -44,7 +45,11 @@ class ForwardBackwardInterpolater(byotrack.Refiner):  # pylint: disable=too-few-
 
         assert isinstance(video, Sequence), "ForwardBackward interpolation requires Sequence-like video"
 
-        tracks_matrix = byotrack.Track.tensorize(tracks)
+        tracks_matrix = byotrack.Track.tensorize(tracks, frame_range=(0, len(video)) if self.full else None)
+        if not self.full:
+            start = min(track.start for track in tracks)
+            end = max(track.start + len(track) for track in tracks)
+            video = video[start:end]  # Clip video temporally so that it matches with the tracks_matrix
         propagation_matrix = propagation.forward_backward_propagation(tracks_matrix, video, self.method, **self.kwargs)
 
         new_tracks = []

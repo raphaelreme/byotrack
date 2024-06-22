@@ -165,7 +165,7 @@ class Detections:
         frame_id (int): Frame id in the video (-1 if no video)
             Default: -1
         shape: (Tuple[int, int]): Shape of the image (H, W). (Extrapolated if not given)
-        position (torch.Tensor): Positions (i, j) of instances centre inferred from the data
+        position (torch.Tensor): Positions (i, j) of instances (center) inferred from the data
             Shape: (N, 2), dtype: float32
         bbox (torch.Tensor): Bounding boxes of instances inferred from the data
             Shape: (N, 4), dtype: int32
@@ -196,8 +196,6 @@ class Detections:
 
             assert self.length in (-1, self.length)
             self.length = length
-
-        assert self.length != 1, "Cannot built detections without any position, bbox or segmentation"
 
         if "condidence" in data:
             _check_confidence(data["confidence"])
@@ -258,6 +256,9 @@ class Detections:
 
         if "segmentation" in self.data:
             return (self.data["segmentation"].shape[0], self.data["segmentation"].shape[1])
+
+        if self.length == 0:
+            return (1, 1)  # No data to extrapolate it.
 
         if "bbox" in self.data:
             maxi = self.data["bbox"][:, :2] + self.data["bbox"][:, 2:]
