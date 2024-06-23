@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Collection, Iterable, List
+from typing import List, Sequence
 
 import numpy as np
 import tqdm.auto as tqdm
@@ -20,15 +20,15 @@ class Detector(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-
     """
 
     @abstractmethod
-    def run(self, video: Iterable[np.ndarray]) -> Collection[byotrack.Detections]:
+    def run(self, video: Sequence[np.ndarray]) -> Sequence[byotrack.Detections]:
         """Run the detector on a whole video
 
         Args:
-            video (Iterable[np.ndarray]): Sequence of frames (video)
+            video (Sequence[np.ndarray]): Sequence of frames (video)
                 Each array is expected to have a shape (H, W, C)
 
         Returns:
-            Collection[byotrack.Detections]: Detections for each frame (ordered by frames)
+            Sequence[byotrack.Detections]: Detections for each frame (ordered by frames)
 
         """
 
@@ -44,18 +44,19 @@ class BatchDetector(Detector):
             Default: 20
         add_true_frames (bool): If the input is a Video, it will exploits the VideoReader knowledge
             to extract the true frame id for each detections.
-            Default: True
+            If False, it will register the index of the frame as the frame_id
+            Default: False
 
     """
 
     progress_bar_description = "Detections"
 
-    def __init__(self, batch_size=20, add_true_frames=True) -> None:
+    def __init__(self, batch_size=20, add_true_frames=False) -> None:
         super().__init__()
         self.batch_size = batch_size
         self.add_true_frames = add_true_frames
 
-    def run(self, video: Iterable[np.ndarray]) -> List[byotrack.Detections]:
+    def run(self, video: Sequence[np.ndarray]) -> List[byotrack.Detections]:
         reader = None
         if self.add_true_frames and isinstance(video, byotrack.Video):
             reader = video.reader
@@ -82,7 +83,7 @@ class BatchDetector(Detector):
         return detections_sequence
 
     @abstractmethod
-    def detect(self, batch: np.ndarray) -> Collection[byotrack.Detections]:
+    def detect(self, batch: np.ndarray) -> Sequence[byotrack.Detections]:
         """Apply the detection on a batch of frames
 
         By default, the frame ids are set from 0 to n-1 with n the size of the batch.
@@ -94,6 +95,6 @@ class BatchDetector(Detector):
                 Shape: (B, H, W, C)
 
         Returns:
-            Collection[byotrack.Detections]: Detections for each given frame
+            Sequence[byotrack.Detections]: Detections for each given frame
 
         """

@@ -1,7 +1,7 @@
 """Utilities for inputs/outputs with fiji"""
 
 import os
-from typing import Collection, List, Union
+from typing import List, Sequence, Union
 from xml.etree import ElementTree as ET
 
 import numpy as np
@@ -11,21 +11,15 @@ import torch
 import byotrack
 
 
-def save_detections(detections_sequence: Collection[byotrack.Detections], path: Union[str, os.PathLike]) -> None:
+def save_detections(detections_sequence: Sequence[byotrack.Detections], path: Union[str, os.PathLike]) -> None:
     """Save a sequence of detections as a stack of segmentation that can be reload by the trackmate label detector
 
-    .. warning:: Only supports consecutive detections
-
     Args:
-        detections_sequence (Collection[Detections]): Detections for each frame (Should be consecutives)
+        detections_sequence (Sequence[Detections]): Detections for each frame. There should be one Detections object
+            for every frame of the video (even if empty it should be provided)
         path (str | os.PathLike): Output path
 
     """
-    # Check that detections are consecutives
-    start = next(iter(detections_sequence)).frame_id
-    for i, detections in enumerate(detections_sequence):
-        assert i == detections.frame_id - start, "Unable to save non-consecutive detections for fiji"
-
     segmentations = np.concatenate([detections.segmentation[None].numpy() for detections in detections_sequence])
     tifffile.imwrite(path, segmentations, photometric="minisblack")
 

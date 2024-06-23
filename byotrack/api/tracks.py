@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import cast, Collection, Optional, Tuple, Union
+from typing import cast, Collection, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import torch
@@ -224,7 +224,7 @@ class Track:
 
 
 def update_detection_ids(
-    tracks: Collection[Track], detections_sequence: Collection[byotrack.Detections], using_segmentation=True
+    tracks: Collection[Track], detections_sequence: Sequence[byotrack.Detections], using_segmentation=True
 ) -> None:
     """Update the `detections_ids` attribute of each track inplace
 
@@ -237,7 +237,8 @@ def update_detection_ids(
 
     Args:
         tracks (Collection[Track]): The tracks to update inplace
-        detections_sequence (Collection[byotrack.Detections]): Detections for the different frames
+        detections_sequence (Sequence[byotrack.Detections]): Detections for the different frames
+            It should directly be the detections used in the linking algorithm
         using_segmentation (bool): Whether to use the segmentation to compute position of detections
             or use position if available. (Icy and Fiji are only given the segmentation)
 
@@ -252,21 +253,21 @@ def update_detection_ids(
         tracks_array[i] = track
         track.detection_ids[:] = -1
 
-    for detections in detections_sequence:
+    for frame_id, detections in enumerate(detections_sequence):
         if detections.length == 0:
             continue
-        if detections.frame_id < frame_range[0] or detections.frame_id >= frame_range[1]:
+        if frame_id < frame_range[0] or frame_id >= frame_range[1]:
             continue
 
-        valid_tracks = ~torch.isnan(points[detections.frame_id - frame_range[0]]).any(dim=1)
+        valid_tracks = ~torch.isnan(points[frame_id - frame_range[0]]).any(dim=1)
         if valid_tracks.sum() == 0:
             continue
 
-        valid_points = points[detections.frame_id - frame_range[0]][valid_tracks]
+        valid_points = points[frame_id - frame_range[0]][valid_tracks]
 
         # If using seg, we rely solely on the segmentation
         if using_segmentation and "position" in detections.data:
-            detections = byotrack.Detections({"segmentation": detections.segmentation}, frame_id=detections.frame_id)
+            detections = byotrack.Detections({"segmentation": detections.segmentation})
 
         # Compute dist between tracks and detections at time t (Shape: (N_det, N_track))
         dist = (valid_points[None] - detections.position[:, None]).abs().sum(dim=-1)
@@ -275,4 +276,4 @@ def update_detection_ids(
         argmin = argmin[match]
 
         for i, track in enumerate(tracks_array[valid_tracks.numpy()][match.numpy()]):
-            track.detection_ids[detections.frame_id - track.start] = argmin[i]
+            track.detection_ids[frame_id - track.start] = argmin[i]

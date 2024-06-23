@@ -1,7 +1,7 @@
 """Utilities for inputs/outputs with icy"""
 
 import os
-from typing import Collection, List, Union
+from typing import Collection, List, Sequence, Union
 import warnings
 from xml.etree import ElementTree as ET
 import zlib
@@ -11,7 +11,7 @@ import torch
 import byotrack
 
 
-def save_detections(detections_sequence: Collection[byotrack.Detections], path: Union[str, os.PathLike]) -> None:
+def save_detections(detections_sequence: Sequence[byotrack.Detections], path: Union[str, os.PathLike]) -> None:
     """Save a sequence of detections as valid rois for icy
 
     Format example:
@@ -45,20 +45,22 @@ def save_detections(detections_sequence: Collection[byotrack.Detections], path: 
     Only needed tags are filled in the current implementation
 
     Args:
-        detections_sequence (Collection[Detections]): Detections for each frame
+        detections_sequence (Sequence[Detections]): Detections for each frame.
+            The `frame_id` attribute is not used and we rely on the position of
+            the Detections in the sequence.
         path (str | os.PathLike): Output path
 
     """
     ## XXX: Support for 3D images
     root = ET.Element("root")
-    for detections in detections_sequence:
+    for frame_id, detections in enumerate(detections_sequence):
         for label, bbox in enumerate(detections.bbox):
             roi = ET.SubElement(root, "roi")
             i, j, height, width = bbox.tolist()
             mask = detections.segmentation[i : i + height, j : j + width] == label + 1
 
             ET.SubElement(roi, "classname").text = "plugins.kernel.roi.roi2d.ROI2DArea"
-            ET.SubElement(roi, "t").text = str(detections.frame_id)
+            ET.SubElement(roi, "t").text = str(frame_id)
             ET.SubElement(roi, "z").text = "0"
             ET.SubElement(roi, "boundsX").text = str(j)
             ET.SubElement(roi, "boundsY").text = str(i)

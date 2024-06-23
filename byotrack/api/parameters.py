@@ -27,7 +27,7 @@ class ParameterBound(ParameterRange):
 
     def is_valid(self, parameter: object) -> bool:
         if isinstance(parameter, (float, int)):
-            return self.low < parameter < self.high
+            return self.low <= parameter <= self.high
         return False
 
     def to_str(self) -> str:

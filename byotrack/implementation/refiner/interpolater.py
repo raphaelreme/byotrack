@@ -1,4 +1,4 @@
-from typing import Collection, Iterable, List, Sequence, Union
+from typing import Collection, List, Sequence, Union
 
 import numpy as np
 import torch
@@ -39,11 +39,9 @@ class ForwardBackwardInterpolater(byotrack.Refiner):  # pylint: disable=too-few-
         self.full = full
         self.kwargs = kwargs
 
-    def run(self, video: Iterable[np.ndarray], tracks: Collection[byotrack.Track]) -> List[byotrack.Track]:
+    def run(self, video: Sequence[np.ndarray], tracks: Collection[byotrack.Track]) -> List[byotrack.Track]:
         if not tracks:
             return []
-
-        assert isinstance(video, Sequence), "ForwardBackward interpolation requires Sequence-like video"
 
         tracks_matrix = byotrack.Track.tensorize(tracks, frame_range=(0, len(video)) if self.full else None)
         if not self.full:

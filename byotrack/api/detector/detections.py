@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Collection, Dict, Iterable, List, Tuple, Union
+from typing import Dict, Iterable, List, Sequence, Tuple, Union
 
 import numba  # type: ignore
 import numpy as np
@@ -162,7 +162,10 @@ class Detections:
     Attributes:
         data (Dict[str, toch.Tensor]): Detections data.
         length (int): Number of detections
-        frame_id (int): Frame id in the video (-1 if no video)
+        frame_id (int): Optional frame id in the original video (-1 if no video)
+            In ByoTrack, detections linking do not rely on this frame_id, but rather
+            on the position inside the detections_sequence. It should only be used
+            for debugging/visualization.
             Default: -1
         shape: (Tuple[int, int]): Shape of the image (H, W). (Extrapolated if not given)
         position (torch.Tensor): Positions (i, j) of instances (center) inferred from the data
@@ -336,9 +339,7 @@ class Detections:
         return Detections(data, frame_id)
 
     @staticmethod
-    def save_multi_frames_detections(
-        detections_sequence: Collection[Detections], path: Union[str, os.PathLike]
-    ) -> None:
+    def save_multi_frames_detections(detections_sequence: Sequence[Detections], path: Union[str, os.PathLike]) -> None:
         """Save detections for a sequence of frames
 
         It will save the detections as::
@@ -348,39 +349,41 @@ class Detections:
 
 
         Args:
-            detections_sequence (Collection[Detections]): Detections for each frame
+            detections_sequence (Sequence[Detections]): Detections for each frame
                 Each detections should have a different frame_id
             path (str | os.PathLike): Output folder
 
         """
         os.makedirs(path)
 
-        for detections in detections_sequence:
-            detections.save(os.path.join(path, f"{detections.frame_id}.pt"))
+        for i, detections in enumerate(detections_sequence):
+            detections.save(os.path.join(path, f"{i}.pt"))
 
     @staticmethod
-    def load_multi_frames_detections(path: Union[str, os.PathLike]) -> Collection[Detections]:
+    def load_multi_frames_detections(path: Union[str, os.PathLike]) -> List[Detections]:
         """Load detections for a sequence of frames
 
         Expect the following file structure::
 
-            path/{frame_id}.pt
+            path/{0}.pt
                  ...
+                 {i}.pt
+                 ...
+                 {n}.pt
 
         Args:
             path (str | os.PathLike): Input folder
 
         Returns:
-            Collection[Detections]: Detections for each frame (sorted by frame id)
+            List[Detections]: Detections for each frame (sorted by frame id)
 
         """
         files = os.listdir(path)
 
         detections_sequence: List[Detections] = []
 
-        for file in filter(lambda file: file[-3:] == ".pt", sorted_alphanumeric(files)):
+        for i, file in enumerate(filter(lambda file: file[-3:] == ".pt", sorted_alphanumeric(files))):
+            assert file == f"{i}.pt", f"The {i}th file is not '{i}.pt'"
             detections_sequence.append(Detections.load(os.path.join(path, file)))
-            if detections_sequence[-1].frame_id == int(file[:-3]):
-                raise ValueError(f"Detections {file} has a different saved frame_id")
 
         return detections_sequence

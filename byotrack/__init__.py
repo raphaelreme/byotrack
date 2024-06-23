@@ -74,7 +74,7 @@ Please refer to the ![official documentation](https://byotrack.readthedocs.io/en
 # Import API and main features but no implementation
 from byotrack.api.detector.detections import Detections
 from byotrack.api.detector.detector import BatchDetector, Detector
-from byotrack.api.linker import Linker
+from byotrack.api.linker import Linker, OnlineLinker
 from byotrack.api.optical_flow.optical_flow import OpticalFlow
 from byotrack.api.refiner import Refiner
 from byotrack.api.tracker import MultiStepTracker, Tracker

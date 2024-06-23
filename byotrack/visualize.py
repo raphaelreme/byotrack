@@ -127,9 +127,9 @@ class InteractiveVisualizer:
         * v: Switch on/off the display of the video
 
     Attributes:
-        video (Optional[Sequence[np.ndarray]]): Optional video to display. Should be normalized in [0, 1]
-            Default: None
-        detections_sequence (Collection[byotrack.Detections]): Optional detections to display
+        video (Sequence[np.ndarray]): Optional video to display. Should be normalized in [0, 1]
+            Default: () (no frames)
+        detections_sequence (Sequence[byotrack.Detections]): Optional detections to display
             Default: () (no detections)
         tracks (Collection[byotrack.Tracks]): Optional tracks to display
             Default: () (no tracks)
@@ -142,11 +142,11 @@ class InteractiveVisualizer:
 
     def __init__(
         self,
-        video: Optional[Sequence[np.ndarray]] = None,
-        detections_sequence: Collection[byotrack.Detections] = (),
+        video: Sequence[np.ndarray] = (),
+        detections_sequence: Sequence[byotrack.Detections] = (),
         tracks: Collection[byotrack.Track] = (),
     ) -> None:
-        assert video is not None or detections_sequence or tracks, "No data to display"
+        assert video or detections_sequence or tracks, "No data to display"
 
         self.video = video
         self.detections_sequence = detections_sequence
@@ -156,7 +156,7 @@ class InteractiveVisualizer:
         self.n_frames = self._get_n_frames(self.video, self.detections_sequence, self.tracks)
 
         self._frame_id = 0
-        self._display_video = int(video is not None)
+        self._display_video = int(bool(video))
         self._display_detections = int(bool(detections_sequence))
         self._display_tracks = int(bool(tracks))
         self._running = False
@@ -175,13 +175,11 @@ class InteractiveVisualizer:
             cv2.destroyWindow(self.window_name)
 
     def _run(self, fps=20) -> None:
-        frame_to_detections = {detections.frame_id: detections for detections in self.detections_sequence}
 
         while True:
-            self._frame_id += self._running
             frame = np.zeros((*self.frame_shape, 3), dtype=np.uint8)
 
-            if self._display_video and self.video is not None:
+            if self._display_video and self.video:
                 _frame = self.video[self._frame_id]
                 _frame = _frame * 255 if np.issubdtype(_frame.dtype, np.floating) else _frame
                 frame = _frame.astype(np.uint8)
@@ -190,14 +188,14 @@ class InteractiveVisualizer:
                 if frame.shape[2] == 1:
                     frame = np.concatenate([frame] * 3, axis=2)
 
-            if self._display_detections and self._frame_id in frame_to_detections:
-                segmentation: np.ndarray = frame_to_detections[self._frame_id].segmentation.clone().numpy()
+            if self._display_detections and 0 <= self._frame_id < len(self.detections_sequence):
+                segmentation: np.ndarray = self.detections_sequence[self._frame_id].segmentation.clone().numpy()
                 if self._display_detections == 1:  # Display segmentation as mask
                     segmentation = segmentation != 0
                     segmentation = segmentation.astype(np.uint8)[..., None] * 255
                 else:
                     segmentation = (segmentation % 206) + 50
-                    segmentation[frame_to_detections[self._frame_id].segmentation == 0] = 0
+                    segmentation[self.detections_sequence[self._frame_id].segmentation == 0] = 0
                     segmentation = segmentation.astype(np.uint8)[..., None]
 
                 segmentation = np.concatenate(
@@ -260,6 +258,12 @@ class InteractiveVisualizer:
         if not self._running and key == ord("x"):  # Next
             self._frame_id = (self._frame_id + 1) % self.n_frames
 
+        if self._running:  # Stop running if we reach the last frame
+            self._frame_id += 1
+            if self._frame_id >= self.n_frames:
+                self._running = False
+                self._frame_id = self.n_frames - 1
+
         if key == ord("d"):
             self._display_detections = (self._display_detections + 1) % 3
 
@@ -273,16 +277,15 @@ class InteractiveVisualizer:
 
     @staticmethod
     def _get_frame_shape(
-        video: Optional[Sequence[np.ndarray]] = None,
-        detections_sequence: Collection[byotrack.Detections] = (),
+        video: Sequence[np.ndarray] = (),
+        detections_sequence: Sequence[byotrack.Detections] = (),
         tracks: Collection[byotrack.Track] = (),
     ) -> Tuple[int, int]:
         frame_shape: Tuple[int, int] = (1, 1)
-        if video is not None:
+        if video:
             frame_shape = np.broadcast_shapes(frame_shape, video[0].shape[:2])  # type: ignore
         if detections_sequence:
-            detections = next(iter(detections_sequence))
-            frame_shape = np.broadcast_shapes(frame_shape, detections.shape)  # type: ignore
+            frame_shape = np.broadcast_shapes(frame_shape, detections_sequence[0].shape)  # type: ignore
         if tracks:
             track_tensor = byotrack.Track.tensorize(tracks)
             positions = track_tensor[~torch.isnan(track_tensor).any(dim=2)]
@@ -300,22 +303,19 @@ class InteractiveVisualizer:
 
     @staticmethod
     def _get_n_frames(
-        video: Optional[Sequence[np.ndarray]] = None,
-        detections_sequence: Collection[byotrack.Detections] = (),
+        video: Sequence[np.ndarray] = (),
+        detections_sequence: Sequence[byotrack.Detections] = (),
         tracks: Collection[byotrack.Track] = (),
     ) -> int:
-        if video is not None:
+        if video:
             return len(video)
 
         n_frames = 1
         if tracks:
-            n_frames = max(track.start + len(track) for track in tracks)
+            n_frames = max(n_frames, max(track.start + len(track) for track in tracks))
 
         if detections_sequence:
-            n_frames = max(
-                n_frames,
-                1 + max(detections.frame_id if detections.frame_id else 0 for detections in detections_sequence),
-            )
+            n_frames = max(n_frames, len(detections_sequence))
 
         return n_frames
 

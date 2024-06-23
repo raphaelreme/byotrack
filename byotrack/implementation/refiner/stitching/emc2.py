@@ -1,4 +1,4 @@
-from typing import Collection, Iterable, Sequence, Union
+from typing import Collection, Sequence, Union
 
 import numba  # type: ignore
 import numpy as np
@@ -83,21 +83,19 @@ class EMC2Stitcher(dist_stitcher.DistStitcher):
         self.method = method
         self.kwargs = kwargs
 
-    def compute_dist(self, video: Iterable[np.ndarray], tracks: Collection[byotrack.Track]) -> np.ndarray:
+    def compute_dist(self, video: Sequence[np.ndarray], tracks: Collection[byotrack.Track]) -> np.ndarray:
         """Compute EMC2 distance between tracks
 
         Compute the mininum distance between each track propagation (only in the temporal gap between them).
 
         Args:
-            video (Iterable[np.ndarray]): Video of the tracked particles
+            video (Sequence[np.ndarray]): Video of the tracked particles
             tracks (Collection[Track]): Input tracks
 
         Returns:
             np.ndarray: Distance between each track. (Contains np.inf)
                 Shape: (N, N), dtype: float32
         """
-        assert isinstance(video, Sequence), "EMC2 requires Sequence-like video"
-
         start = min(track.start for track in tracks)
         end = max(track.start + len(track) for track in tracks)
 

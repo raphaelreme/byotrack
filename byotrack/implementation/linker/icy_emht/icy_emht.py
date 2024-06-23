@@ -2,7 +2,7 @@ import dataclasses
 import enum
 import os
 import pathlib
-from typing import Collection, Iterable, List, Optional, Union
+from typing import List, Optional, Sequence, Union
 import warnings
 from xml.etree import ElementTree as ET
 
@@ -99,7 +99,7 @@ class EMHTParameters:  # pylint: disable=too-many-instance-attributes
     gate_factor: float = 4.0
     tree_depth: int = 4
 
-    def to_xml(self, detections_sequence: Collection[byotrack.Detections]) -> ET.ElementTree:
+    def to_xml(self, detections_sequence: Sequence[byotrack.Detections]) -> ET.ElementTree:
         """Convert to xml format used by Icy
 
         Format example:
@@ -119,18 +119,15 @@ class EMHTParameters:  # pylint: disable=too-many-instance-attributes
             </root>
 
         Args:
-            detections_sequence (Collection[byotrack.Detections]): Detections (Some parameters requires to
+            detections_sequence (Sequence[byotrack.Detections]): Detections (Some parameters requires to
                 know the number of detections)
 
         Returns:
             xml.etree.ElementTree.ElementTree: Xml tree of the configuration
 
         """
-        num_frames = (
-            max(detections_sequence, key=lambda detections: detections.frame_id).frame_id
-            - min(detections_sequence, key=lambda detections: detections.frame_id).frame_id
-        )
-        mean_particles = sum(map(lambda detections: detections.length, detections_sequence)) / len(detections_sequence)
+        num_frames = len(detections_sequence)
+        mean_particles = sum(detections.length for detections in detections_sequence) / len(detections_sequence)
 
         root = ET.Element("root")
         config = ET.SubElement(root, "MHTconfiguration")
@@ -249,7 +246,7 @@ class IcyEMHTLinker(byotrack.Linker):  # pylint: disable=too-few-public-methods
         self.full_specs = full_specs
 
     def run(
-        self, video: Iterable[np.ndarray], detections_sequence: Collection[byotrack.Detections]
+        self, video: Sequence[np.ndarray], detections_sequence: Sequence[byotrack.Detections]
     ) -> List[byotrack.Track]:
         try:
             if self.full_specs:
