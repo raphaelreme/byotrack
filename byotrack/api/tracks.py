@@ -223,7 +223,7 @@ class Track:
         return tracks
 
 
-def update_detection_ids(
+def update_detection_ids(  # pylint: disable=too-many-locals
     tracks: Collection[Track], detections_sequence: Sequence[byotrack.Detections], using_segmentation=True
 ) -> None:
     """Update the `detections_ids` attribute of each track inplace

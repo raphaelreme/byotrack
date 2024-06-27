@@ -33,6 +33,7 @@ jobs:
           pip install torch!=2.3.0
           pip install -r requirements-dev.txt
       - name: pylint
+        if: ${{ matrix.python-version != 3.8 }}  # Pylint is currently broken. will be fixed soon
         run: |
           pylint byotrack
       - name: mypy

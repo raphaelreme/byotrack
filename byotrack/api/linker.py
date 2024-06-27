@@ -100,4 +100,6 @@ class OnlineLinker(Linker):
             self.update(frame, detections)
             progress_bar.update()
 
+        progress_bar.close()
+
         return self.collect()
