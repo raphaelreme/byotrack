@@ -21,9 +21,12 @@ PARAMETRIZED_PROTOCOL = pathlib.Path(__file__).parent / "emht_protocol_with_full
 class Motion(enum.Enum):
     """Different motion models:
 
-    Brownian: Random gaussian displacement at each time
-    Directed: Random gaussian noise around a directed trajectory
-    Multi: Switch randomly between Brownian and Directed
+    * BROWNIAN
+        Random gaussian displacement at each time
+    * DIRECTED
+        Random gaussian noise around a directed trajectory
+    * MULTI
+        Uses both models and switches between them
 
     """
 
@@ -57,7 +60,7 @@ class EMHTParameters:  # pylint: disable=too-many-instance-attributes
         motion (Motion): Motion of the particles (Brownian vs Directed vs Multi). If MULTI, motion 1 is
             brownian and motion 2 is directed.
             Default: Motion.BROWNIAN
-        use_most_likely_model (bool): Use the most likelymodel to predict rather than a weighted predictions
+        use_most_likely_model (bool): Use the most likely model to predict rather than a weighted predictions
             Default: True
         update_motion_{1, 2} (bool): Update the covariance (Q ?) online of motion 1 or 2
         xy_std_{1,2} (float): Used to define the covariance (Q) of the process. (Looking at Icy code,
