@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Collection, Iterable, List, Sequence
+from typing import Collection, Iterable, List, Sequence, Union
 
 import numpy as np
 import tqdm.auto as tqdm
@@ -18,11 +18,11 @@ class Tracker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
     """
 
     @abstractmethod
-    def run(self, video: Sequence[np.ndarray]) -> Collection[byotrack.Track]:
+    def run(self, video: Union[Sequence[np.ndarray], np.ndarray]) -> Collection[byotrack.Track]:
         """Run the tracker on a whole video
 
         Args:
-            video (Sequence[np.ndarray]): Sequence of frames (video)
+            video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames (array).
                 Each array is expected to have a shape (H, W, C)
 
         Returns:
@@ -51,7 +51,7 @@ class MultiStepTracker(Tracker):  # pylint: disable=too-few-public-methods
         self.linker = linker
         self.refiners = refiners
 
-    def run(self, video: Sequence[np.ndarray]) -> Collection[byotrack.Track]:
+    def run(self, video: Union[Sequence[np.ndarray], np.ndarray]) -> Collection[byotrack.Track]:
         detections = self.detector.run(video)
         tracks = self.linker.run(video, detections)
         for refiner in self.refiners:
@@ -82,7 +82,7 @@ class BatchMultiStepTracker(Tracker):  # pylint: disable=too-few-public-methods
         self.detector = detector
         self.linker = linker
 
-    def run(self, video: Sequence[np.ndarray]) -> Collection[byotrack.Track]:
+    def run(self, video: Union[Sequence[np.ndarray], np.ndarray]) -> Collection[byotrack.Track]:
         reader = None
         if self.detector.add_true_frames and isinstance(video, byotrack.Video):
             reader = video.reader

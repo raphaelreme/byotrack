@@ -83,13 +83,15 @@ class EMC2Stitcher(dist_stitcher.DistStitcher):
         self.method = method
         self.kwargs = kwargs
 
-    def compute_dist(self, video: Sequence[np.ndarray], tracks: Collection[byotrack.Track]) -> np.ndarray:
+    def compute_dist(
+        self, video: Union[Sequence[np.ndarray], np.ndarray], tracks: Collection[byotrack.Track]
+    ) -> np.ndarray:
         """Compute EMC2 distance between tracks
 
         Compute the mininum distance between each track propagation (only in the temporal gap between them).
 
         Args:
-            video (Sequence[np.ndarray]): Video of the tracked particles
+            video (Sequence[np.ndarray] | np.ndarray): Video of the tracked particles
             tracks (Collection[Track]): Input tracks
 
         Returns:

@@ -1,6 +1,5 @@
-from typing import Collection, Sequence, List
+from typing import Collection, List
 
-import numpy as np
 import torch
 
 import byotrack
@@ -25,7 +24,7 @@ class Cleaner(byotrack.Refiner):
         self.min_length = min_length
         self.max_dist = max_dist
 
-    def run(self, video: Sequence[np.ndarray], tracks: Collection[byotrack.Track]) -> List[byotrack.Track]:
+    def run(self, video, tracks: Collection[byotrack.Track]) -> List[byotrack.Track]:
         return self.clean_tracks(tracks, self.min_length, self.max_dist)
 
     @staticmethod

@@ -30,12 +30,15 @@ class DirectedPropagate(Protocol):  # pylint: disable=too-few-public-methods
     """
 
     def __call__(
-        self, tracks_matrix: torch.Tensor, video: Sequence[np.ndarray], forward=True, **kwargs
+        self, tracks_matrix: torch.Tensor, video: Union[Sequence[np.ndarray], np.ndarray], forward=True, **kwargs
     ) -> torch.Tensor: ...
 
 
 def forward_backward_propagation(
-    tracks_matrix: torch.Tensor, video: Sequence[np.ndarray], method: Union[str, DirectedPropagate], **kwargs
+    tracks_matrix: torch.Tensor,
+    video: Union[Sequence[np.ndarray], np.ndarray],
+    method: Union[str, DirectedPropagate],
+    **kwargs,
 ) -> torch.Tensor:
     """Fill all NaN values in the tracks matrix by merging a forward and backward propagation
 
@@ -50,8 +53,8 @@ def forward_backward_propagation(
     Args:
         tracks_matrix (torch.Tensor): Tracks data in a single tensor (See `Track.tensorize`)
             Shape: (T, N, D), dtype: float32
-        video (Sequence[np.ndarray]): Video on which the tracks are based. (video[i] should match with the points
-            from tracks_matrix[0])
+        video (Sequence[np.ndarray] | np.ndarray): Video on which the tracks are based. (video[i] should match with
+            the points from tracks_matrix[i])
         method (str | DirectedPropagate): Method to use for propagation. Either "constant", "tps"
             or "flow" (see `constant_directed_propagate`, `tps_directed_propagate` or `optical_flow_directed_propagate`)
             or a user defined Callable following the `DirectedPropagate` protocol.
@@ -133,7 +136,7 @@ def merge(
 
 def constant_directed_propagate(
     tracks_matrix: torch.Tensor,
-    video: Sequence[np.ndarray] = (),  # pylint: disable=unused-argument
+    video: Union[Sequence[np.ndarray], np.ndarray] = (),  # pylint: disable=unused-argument
     forward=True,
     **kwargs,
 ) -> torch.Tensor:
@@ -142,7 +145,7 @@ def constant_directed_propagate(
     Args:
         tracks_matrix (torch.Tensor): Tracks data in a single tensor (See `Tracks.tensorize`)
             Shape: (T, N, D), dtype: float32
-        video (Sequence[np.ndarray]): Video (Unused, added for api purposes)
+        video (Sequence[np.ndarray] | np.ndarray): Video (Unused, added for api purposes)
             Default: () (As unused a default value is provided)
         forward (bool): Forward or backward propagation
             Default: True (Forward)
@@ -176,7 +179,7 @@ def constant_directed_propagate(
 
 def tps_directed_propagate(
     tracks_matrix: torch.Tensor,
-    video: Sequence[np.ndarray] = (),  # pylint: disable=unused-argument
+    video: Union[Sequence[np.ndarray], np.ndarray] = (),  # pylint: disable=unused-argument
     forward=True,
     alpha=10.0,
     track_mask: Optional[torch.Tensor] = None,
@@ -192,7 +195,7 @@ def tps_directed_propagate(
     Args:
         tracks_matrix (torch.Tensor): Tracks data in a single tensor (See `Tracks.tensorize`)
             Shape: (T, N, D), dtype: float32
-        video (Sequence[np.ndarray]): Video (Unused, added for api purposes)
+        video (Sequence[np.ndarray] | np.ndarray): Video (Unused, added for api purposes)
             Default: () (As unused a default value is provided)
         forward (bool): Forward or backward propagation
             Default: True (Forward)
@@ -243,7 +246,7 @@ def tps_directed_propagate(
 
 def optical_flow_directed_propagate(
     tracks_matrix: torch.Tensor,
-    video: Sequence[np.ndarray],
+    video: Union[Sequence[np.ndarray], np.ndarray],
     forward=True,
     optflow: byotrack.OpticalFlow = DummyOpticalFlow(),
     **kwargs,
@@ -253,8 +256,8 @@ def optical_flow_directed_propagate(
     Args:
         tracks_matrix (torch.Tensor): Tracks data in a single tensor (See `Tracks.tensorize`)
             Shape: (T, N, D), dtype: float32
-        video (Sequence[np.ndarray]): Video on which the tracks are based. (video[i] should match with the points
-            from tracks_matrix[0]).
+        video (Sequence[np.ndarray] | np.ndarray): Video on which the tracks are based. (video[i] should match with
+            the points from tracks_matrix[i]).
         forward (bool): Forward or backward propagation
             Default: True (Forward)
         optflow (byotrack.OpticalFlow): Optical flow to use

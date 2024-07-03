@@ -50,10 +50,11 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
         self.ema = ema
         self.fill_gap = fill_gap
 
+    ema: float
     fill_gap: bool
 
 
-class NearestNeigborLinker(FrameByFrameLinker):
+class NearestNeighborLinker(FrameByFrameLinker):
     """Frame by frame linker by associating with the closest detections
 
     Motion is not modeled, but if an optical flow method is provided, it

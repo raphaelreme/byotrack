@@ -1,4 +1,4 @@
-from typing import Collection, Dict, Optional, Sequence, Tuple
+from typing import Collection, Dict, Optional, Sequence, Tuple, Union
 
 import cv2
 import matplotlib as mpl  # type: ignore
@@ -127,7 +127,7 @@ class InteractiveVisualizer:
         * v: Switch on/off the display of the video
 
     Attributes:
-        video (Sequence[np.ndarray]): Optional video to display. Should be normalized in [0, 1]
+        video (Sequence[np.ndarray] | np.ndarray): Optional video to display.
             Default: () (no frames)
         detections_sequence (Sequence[byotrack.Detections]): Optional detections to display
             Default: () (no detections)
@@ -142,21 +142,21 @@ class InteractiveVisualizer:
 
     def __init__(
         self,
-        video: Sequence[np.ndarray] = (),
+        video: Union[Sequence[np.ndarray], np.ndarray] = (),
         detections_sequence: Sequence[byotrack.Detections] = (),
         tracks: Collection[byotrack.Track] = (),
     ) -> None:
-        assert video or detections_sequence or tracks, "No data to display"
+        assert len(video) != 0 or detections_sequence or tracks, "No data to display"
 
         self.video = video
         self.detections_sequence = detections_sequence
         self.tracks = tracks
 
-        self.frame_shape = self._get_frame_shape(self.video, self.detections_sequence, self.tracks)
-        self.n_frames = self._get_n_frames(self.video, self.detections_sequence, self.tracks)
+        self.frame_shape = self._get_frame_shape()
+        self.n_frames = self._get_n_frames()
 
         self._frame_id = 0
-        self._display_video = int(bool(video))
+        self._display_video = int(len(video) != 0)
         self._display_detections = int(bool(detections_sequence))
         self._display_tracks = int(bool(tracks))
         self._running = False
@@ -179,7 +179,7 @@ class InteractiveVisualizer:
         while True:
             frame = np.zeros((*self.frame_shape, 3), dtype=np.uint8)
 
-            if self._display_video and self.video:
+            if self._display_video and len(self.video) != 0:
                 _frame = self.video[self._frame_id]
                 _frame = _frame * 255 if np.issubdtype(_frame.dtype, np.floating) else _frame
                 frame = _frame.astype(np.uint8)
@@ -275,19 +275,14 @@ class InteractiveVisualizer:
 
         return False
 
-    @staticmethod
-    def _get_frame_shape(
-        video: Sequence[np.ndarray] = (),
-        detections_sequence: Sequence[byotrack.Detections] = (),
-        tracks: Collection[byotrack.Track] = (),
-    ) -> Tuple[int, int]:
+    def _get_frame_shape(self) -> Tuple[int, int]:
         frame_shape: Tuple[int, int] = (1, 1)
-        if video:
-            frame_shape = np.broadcast_shapes(frame_shape, video[0].shape[:2])  # type: ignore
-        if detections_sequence:
-            frame_shape = np.broadcast_shapes(frame_shape, detections_sequence[0].shape)  # type: ignore
-        if tracks:
-            track_tensor = byotrack.Track.tensorize(tracks)
+        if len(self.video) != 0:
+            frame_shape = np.broadcast_shapes(frame_shape, self.video[0].shape[:2])  # type: ignore
+        if self.detections_sequence:
+            frame_shape = np.broadcast_shapes(frame_shape, self.detections_sequence[0].shape)  # type: ignore
+        if self.tracks:
+            track_tensor = byotrack.Track.tensorize(self.tracks)
             positions = track_tensor[~torch.isnan(track_tensor).any(dim=2)]
             minimum: torch.Tensor = positions.min(dim=0).values.round()
             maximum: torch.Tensor = positions.max(dim=0).values.round()
@@ -301,21 +296,16 @@ class InteractiveVisualizer:
 
         return frame_shape
 
-    @staticmethod
-    def _get_n_frames(
-        video: Sequence[np.ndarray] = (),
-        detections_sequence: Sequence[byotrack.Detections] = (),
-        tracks: Collection[byotrack.Track] = (),
-    ) -> int:
-        if video:
-            return len(video)
+    def _get_n_frames(self) -> int:
+        if len(self.video) != 0:
+            return len(self.video)
 
         n_frames = 1
-        if tracks:
-            n_frames = max(n_frames, max(track.start + len(track) for track in tracks))
+        if self.tracks:
+            n_frames = max(n_frames, max(track.start + len(track) for track in self.tracks))
 
-        if detections_sequence:
-            n_frames = max(n_frames, len(detections_sequence))
+        if self.detections_sequence:
+            n_frames = max(n_frames, len(self.detections_sequence))
 
         return n_frames
 
@@ -336,7 +326,7 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
         You should not use this function with too large videos. (Use slicing to reduce the size of a video)
 
     Attributes:
-        video (Sequence[np.ndarray]): The video of interest
+        video (Sequence[np.ndarray] | np.ndarray): The video of interest
         optflow (byotrack.OpticalFlow): Optical flow algorithm to visualize
         grid_step (int): size (in pixels) between control points
         points (np.ndarray): Control points (grid)
@@ -348,7 +338,13 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
     window_name = "ByoTrack FlowViz"
     colors = _colors
 
-    def __init__(self, video: Sequence[np.ndarray], optflow: byotrack.OpticalFlow, grid_step=20, precompute=False):
+    def __init__(
+        self,
+        video: Union[Sequence[np.ndarray], np.ndarray],
+        optflow: byotrack.OpticalFlow,
+        grid_step=20,
+        precompute=False,
+    ):
         self.video = video
         self.optflow = optflow
         self.grid_step = grid_step

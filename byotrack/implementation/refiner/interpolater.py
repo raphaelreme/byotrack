@@ -39,7 +39,9 @@ class ForwardBackwardInterpolater(byotrack.Refiner):  # pylint: disable=too-few-
         self.full = full
         self.kwargs = kwargs
 
-    def run(self, video: Sequence[np.ndarray], tracks: Collection[byotrack.Track]) -> List[byotrack.Track]:
+    def run(
+        self, video: Union[Sequence[np.ndarray], np.ndarray], tracks: Collection[byotrack.Track]
+    ) -> List[byotrack.Track]:
         if not tracks:
             return []
 

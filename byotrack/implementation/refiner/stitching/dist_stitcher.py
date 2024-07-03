@@ -1,4 +1,4 @@
-from typing import Callable, Collection, Dict, List, Sequence, Set
+from typing import Callable, Collection, Dict, List, Sequence, Set, Union
 
 import numpy as np
 import pylapy
@@ -7,7 +7,7 @@ import torch
 import byotrack
 
 
-Dist = Callable[[Sequence[np.ndarray], Collection[byotrack.Track]], np.ndarray]
+Dist = Callable[[Union[Sequence[np.ndarray], np.ndarray], Collection[byotrack.Track]], np.ndarray]
 
 
 class DistStitcher(byotrack.Refiner):
@@ -27,7 +27,9 @@ class DistStitcher(byotrack.Refiner):
         self.eta = eta
         self.lap_solver = pylapy.LapSolver()
 
-    def run(self, video: Sequence[np.ndarray], tracks: Collection[byotrack.Track]) -> List[byotrack.Track]:
+    def run(
+        self, video: Union[Sequence[np.ndarray], np.ndarray], tracks: Collection[byotrack.Track]
+    ) -> List[byotrack.Track]:
         if not tracks:
             return []
 

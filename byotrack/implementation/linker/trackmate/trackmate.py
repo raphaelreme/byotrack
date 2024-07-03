@@ -4,8 +4,6 @@ import os
 import pathlib
 from typing import List, Optional, Sequence, Union
 
-import numpy as np
-
 import byotrack
 from byotrack import fiji
 from byotrack.api.tracks import update_detection_ids
@@ -50,7 +48,7 @@ class TrackMateParameters:  # pylint: disable=too-many-instance-attributes
             Default: 2 (1 missed detections)
         linking_max_distance (float): The max distance between two consecutive spots, in physical units, allowed
             for creating links. If using kalman filters: this is the initial search radius, in physical units,
-            specifying how far two spots can be apart when initiating new tracks. (See `kalman_search_raius`)
+            specifying how far two spots can be apart when initiating new tracks. (See `kalman_search_radius`)
             Default: 15.0
         gap_closing_max_distance (float): Gap-closing max spatial distance. The max distance between two spots,
             in physical units, allowed for creating links over missing detections.
@@ -155,9 +153,7 @@ class TrackMateLinker(byotrack.Linker):  # pylint: disable=too-few-public-method
         self.runner = fiji.FijiRunner(fiji_path)
         self.specs = specs
 
-    def run(
-        self, video: Sequence[np.ndarray], detections_sequence: Sequence[byotrack.Detections]
-    ) -> List[byotrack.Track]:
+    def run(self, video, detections_sequence: Sequence[byotrack.Detections]) -> List[byotrack.Track]:
         try:
             self.specs.save(self.parameters_file)
             fiji.save_detections(detections_sequence, self.detections_file)

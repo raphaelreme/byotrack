@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Collection, Sequence
+from typing import Collection, Sequence, Union
 
 import numpy as np
 
@@ -19,11 +19,13 @@ class Refiner(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
     """
 
     @abstractmethod
-    def run(self, video: Sequence[np.ndarray], tracks: Collection[byotrack.Track]) -> Collection[byotrack.Track]:
+    def run(
+        self, video: Union[Sequence[np.ndarray], np.ndarray], tracks: Collection[byotrack.Track]
+    ) -> Collection[byotrack.Track]:
         """Run the refiner on a whole video
 
         Args:
-            video (Sequence[np.ndarray]): Sequence of frames (video)
+            video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames (array).
                 Each array is expected to have a shape (H, W, C)
             tracks (Collection[byotrack.Track]): Tracks of particles
 

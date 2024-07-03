@@ -6,8 +6,6 @@ from typing import List, Optional, Sequence, Union
 import warnings
 from xml.etree import ElementTree as ET
 
-import numpy as np
-
 import byotrack
 from byotrack import icy
 from byotrack.api.parameters import ParameterEnum
@@ -248,9 +246,7 @@ class IcyEMHTLinker(byotrack.Linker):  # pylint: disable=too-few-public-methods
         self.motion = full_specs.motion if full_specs else Motion.BROWNIAN
         self.full_specs = full_specs
 
-    def run(
-        self, video: Sequence[np.ndarray], detections_sequence: Sequence[byotrack.Detections]
-    ) -> List[byotrack.Track]:
+    def run(self, video, detections_sequence: Sequence[byotrack.Detections]) -> List[byotrack.Track]:
         try:
             if self.full_specs:
                 self.full_specs.to_xml(detections_sequence).write(self.parameters_file)

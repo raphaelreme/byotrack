@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Collection, Sequence
+from typing import Collection, Sequence, Union
 import warnings
 
 import numpy as np
@@ -22,12 +22,12 @@ class Linker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-me
 
     @abstractmethod
     def run(
-        self, video: Sequence[np.ndarray], detections_sequence: Sequence[byotrack.Detections]
+        self, video: Union[Sequence[np.ndarray], np.ndarray], detections_sequence: Sequence[byotrack.Detections]
     ) -> Collection[byotrack.Track]:
         """Run the linker on a whole video
 
         Args:
-            video (Sequence[np.ndarray]): Sequence of frames (video)
+            video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames.
                 Each array is expected to have a shape (H, W, C)
             detections_sequence (Sequence[byotrack.Detections]): Detections for each frame
                 Detections is expected for each frame of the video, in the same order.
@@ -81,7 +81,7 @@ class OnlineLinker(Linker):
         """
 
     def run(
-        self, video: Sequence[np.ndarray], detections_sequence: Sequence[byotrack.Detections]
+        self, video: Union[Sequence[np.ndarray], np.ndarray], detections_sequence: Sequence[byotrack.Detections]
     ) -> Collection[byotrack.Track]:
         if len(video) != len(detections_sequence):
             warnings.warn(

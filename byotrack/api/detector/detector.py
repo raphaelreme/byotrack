@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Sequence
+from typing import List, Sequence, Union
 
 import numpy as np
 import tqdm.auto as tqdm
@@ -20,11 +20,11 @@ class Detector(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-
     """
 
     @abstractmethod
-    def run(self, video: Sequence[np.ndarray]) -> Sequence[byotrack.Detections]:
+    def run(self, video: Union[Sequence[np.ndarray], np.ndarray]) -> Sequence[byotrack.Detections]:
         """Run the detector on a whole video
 
         Args:
-            video (Sequence[np.ndarray]): Sequence of frames (video)
+            video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames (array).
                 Each array is expected to have a shape (H, W, C)
 
         Returns:
@@ -56,7 +56,7 @@ class BatchDetector(Detector):
         self.batch_size = batch_size
         self.add_true_frames = add_true_frames
 
-    def run(self, video: Sequence[np.ndarray]) -> List[byotrack.Detections]:
+    def run(self, video: Union[Sequence[np.ndarray], np.ndarray]) -> List[byotrack.Detections]:
         reader = None
         if self.add_true_frames and isinstance(video, byotrack.Video):
             reader = video.reader
