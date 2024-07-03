@@ -21,7 +21,10 @@ class VideoTransformConfig:
             If None, channel average is done. If any, it performs channel selection
         q_min (float): Minimum quantile to use when scaling the video
         q_max (float): Maximum quantile to use when scaling the video
-        smooth_clip (float): Smoothness of the clipping process (scaling)
+        smooth_clip (float): Smoothness of the clipping process (log clipping)
+            See `ScaleAndNormalize`: it logs clip the highest values on q_max.
+            If 0.0, hard clipping is done.
+        compute_stats_on (int): Number of frames to use to compute the quantiles.
 
     """
 
@@ -31,6 +34,7 @@ class VideoTransformConfig:
     q_min: float = 0.0
     q_max: float = 1.0
     smooth_clip: float = 0.0
+    compute_stats_on: int = 50
 
 
 class Video(Sequence[np.ndarray]):
@@ -81,15 +85,15 @@ class Video(Sequence[np.ndarray]):
         else:
             self.reader = data_source
 
-        self._slices: Tuple[Tuple[int, int, int], ...] = tuple(
-            (0, length, 1) for length in (self.reader.length, *self.reader.shape)
-        )
+        self._slices: Tuple[slice, ...] = tuple(slice(None) for _ in (self.reader.length, *self.reader.shape))
         self._channel_aggregator: Optional[Union[ChannelAvg, ChannelSelect]] = None
         self._normalizer: Optional[ScaleAndNormalize] = None
 
     @property
     def shape(self) -> Tuple[int, ...]:
-        return tuple(slice_length(slice_) for slice_ in self._slices)
+        return tuple(
+            slice_length(slice_, shape) for slice_, shape in zip(self._slices, (self.reader.length, *self.reader.shape))
+        )
 
     @property
     def channels(self) -> int:
@@ -111,33 +115,11 @@ class Video(Sequence[np.ndarray]):
 
         self._normalizer = None
         if transform_config.normalize:
+            frames = np.asarray(self[: min(transform_config.compute_stats_on, ScaleAndNormalize.max_frames_for_stats)])
             self._normalizer = ScaleAndNormalize(
                 transform_config.q_min, transform_config.q_max, transform_config.smooth_clip
             )
-            self._set_normalizer()  # Set normalizer stats
-
-    def _set_normalizer(self) -> None:
-        """Set the normalizer stats (after aggregation)"""
-        assert self._normalizer
-
-        frame_id = self.reader.tell()
-        self.reader.seek(self._slices[0][0])
-
-        frames = []
-
-        has_next = True
-        while has_next:
-            frame, has_next = self.reader.read()
-            if self._channel_aggregator:
-                frame = self._channel_aggregator(frame)
-
-            frames.append(frame[None, ...])
-            if len(frames) >= self._normalizer.max_frames_for_stats:
-                break
-
-        self._normalizer.update_stats(np.concatenate(frames, axis=0))
-
-        self.reader.seek(frame_id)  # Reset reader where it was
+            self._normalizer.update_stats(frames)
 
     def transform(self, frame: np.ndarray) -> np.ndarray:
         """Transform a frame using channel aggregation and normalization"""
@@ -149,7 +131,7 @@ class Video(Sequence[np.ndarray]):
         return frame
 
     def __len__(self) -> int:
-        return slice_length(self._slices[0])  # length of temporal slice
+        return slice_length(self._slices[0], self.reader.length)  # length of temporal slice
 
     @overload
     def __getitem__(self, index: int) -> np.ndarray: ...
@@ -173,16 +155,16 @@ class Video(Sequence[np.ndarray]):
             np.ndarray | Video: Frame at index or a shallow copy of the video with the right slice
 
         """
-        shape = self.shape
-
         if isinstance(key, int):
-            if key < 0:
-                key = shape[0] + key
+            start, _, step = self._slices[0].indices(self.reader.length)
 
-            if key < 0 or key >= shape[0]:
+            if key < 0:
+                key += len(self)
+
+            if key < 0 or key >= len(self):
                 raise IndexError(f"Index {key} out of range")
 
-            frame_id = self._slices[0][0] + key * self._slices[0][2]
+            frame_id = start + key * step
 
             if frame_id == self.reader.frame_id:
                 pass  # Skip expensive seek
@@ -195,7 +177,7 @@ class Video(Sequence[np.ndarray]):
                 except EOFError:
                     raise RuntimeError(f"Unable to seek frame {frame_id}") from None
 
-            return self.transform(self.reader.retrieve()[tuple(slice(*slice_) for slice_ in self._slices[1:])])
+            return self.transform(self.reader.retrieve()[self._slices[1:]])
 
         if isinstance(key, slice):
             key = (key,)
@@ -205,15 +187,12 @@ class Video(Sequence[np.ndarray]):
                 raise IndexError("Too many indices for video. Only support 3 dimensions slicing (time, height, width).")
 
             slices = list(self._slices)
+            shapes = (self.reader.length, *self.reader.shape)
             for i, slice_ in enumerate(key):
                 if not isinstance(slice_, slice):
                     raise TypeError("Unsupported index for Video. Supports only int, slice and Tuple[slice, ...]")
-                start, stop, step = slice_.indices(shape[i])
-                slices[i] = (
-                    self._slices[i][0] + start * self._slices[i][2],
-                    self._slices[i][0] + stop * self._slices[i][2],
-                    step * self._slices[i][2],
-                )
+
+                slices[i] = compose_slice(self._slices[i], slice_, shapes[i])
 
             # Duplicate
             other = Video(self.reader)
@@ -226,7 +205,29 @@ class Video(Sequence[np.ndarray]):
         raise TypeError("Unsupported index for Video. Supports only int, slice and Tuple[slice, ...]")
 
 
-def slice_length(slice_: Tuple[int, int, int]) -> int:
+def compose_slice(slice_1: slice, slice_2: slice, length: int) -> slice:
+    """Compose two slices in the given order"""
+    # Compute start, stop, step and length of the first slice
+    start_1, _, step_1 = slice_1.indices(length)
+    length_1 = slice_length(slice_1, length)
+
+    # Same for the second slice
+    start_2, stop_2, step_2 = slice_2.indices(length_1)
+    length = slice_length(slice_2, length_1)
+
+    # Compute the final start, stop and step
+    start = start_1 + start_2 * step_1
+    stop = start_1 + stop_2 * step_1
+    step = step_1 * step_2
+
+    if start > stop:
+        if stop < 0:  # (5, -1, -1) is empty, instead use (5, None, -1)
+            return slice(start, None, step)
+
+    return slice(start, stop, step)
+
+
+def slice_length(slice_: slice, shape: int) -> int:
     """Compute the number of element in a slice"""
-    start, stop, step = slice_
+    start, stop, step = slice_.indices(shape)
     return max((stop - start - (step > 0) + (step < 0)) // step + 1, 0)
