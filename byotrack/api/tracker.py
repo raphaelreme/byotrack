@@ -60,27 +60,31 @@ class MultiStepTracker(Tracker):  # pylint: disable=too-few-public-methods
         return tracks
 
 
-class BatchMultiStepTracker(Tracker):  # pylint: disable=too-few-public-methods
-    """Online Tracking with detect/link framework
+class BatchMultiStepTracker(MultiStepTracker):  # pylint: disable=too-few-public-methods
+    """Online Tracking with detect/link/refine framework
 
     It only works with BatchDetector and OnlineLinker: it reduces RAM usage and computations
     by loading frames only by batch. Each batch is processed by the detector followed
     by the linker. Once a batch is processed, a new one is loaded. The detections are never fully stored,
     neither the video.
 
-    It does not support refining tracks as usually tracks refinement is offline.
+    Tracks refining is done offline.
 
     Attributes:
         detector (byotrack.BatchDetector): Performs the detection on the video by batch
             It defines the batch size to use
         linker (byotrack.OnlineLinker): Links detections one frame at time
+        refiners (Sequence[byotrack.Refiner]): Optional refinement steps
+            Empty by default
 
     """
 
-    def __init__(self, detector: byotrack.BatchDetector, linker: byotrack.OnlineLinker) -> None:
-        super().__init__()
-        self.detector = detector
-        self.linker = linker
+    def __init__(
+        self, detector: byotrack.BatchDetector, linker: byotrack.OnlineLinker, refiners: Iterable[byotrack.Refiner] = ()
+    ) -> None:
+        super().__init__(detector, linker, refiners)
+        self.detector: byotrack.BatchDetector
+        self.linker: byotrack.OnlineLinker
 
     def run(self, video: Union[Sequence[np.ndarray], np.ndarray]) -> Collection[byotrack.Track]:
         reader = None
@@ -121,4 +125,8 @@ class BatchMultiStepTracker(Tracker):  # pylint: disable=too-few-public-methods
                 self.linker.update(frame, detections)
                 link_bar.update()
 
-        return self.linker.collect()
+        tracks = self.linker.collect()
+        for refiner in self.refiners:
+            tracks = refiner.run(video, tracks)
+
+        return tracks

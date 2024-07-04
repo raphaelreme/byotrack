@@ -77,7 +77,7 @@ from byotrack.api.detector.detector import BatchDetector, Detector
 from byotrack.api.linker import Linker, OnlineLinker
 from byotrack.api.optical_flow.optical_flow import OpticalFlow
 from byotrack.api.refiner import Refiner
-from byotrack.api.tracker import MultiStepTracker, Tracker
+from byotrack.api.tracker import BatchMultiStepTracker, MultiStepTracker, Tracker
 from byotrack.api.tracks import Track
 from byotrack.video import Video, VideoTransformConfig
 
