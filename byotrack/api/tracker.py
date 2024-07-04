@@ -101,7 +101,7 @@ class BatchMultiStepTracker(MultiStepTracker):  # pylint: disable=too-few-public
         link_bar = tqdm.tqdm(desc=self.linker.progress_bar_description, total=len(video))
 
         for i, frame in enumerate(video):
-            batch.append(frame[None, ...])
+            batch.append(frame[None])
             frame_ids.append(reader.tell() if reader else i)
 
             if len(batch) >= self.detector.batch_size:
@@ -110,8 +110,10 @@ class BatchMultiStepTracker(MultiStepTracker):  # pylint: disable=too-few-public
 
                 for frame_id, frame, detections in zip(frame_ids, batch, detections_sequence):
                     detections.frame_id = frame_id
-                    self.linker.update(frame, detections)
+                    self.linker.update(frame[0], detections)
                     link_bar.update()
+
+                link_bar.refresh()
 
                 batch = []
                 frame_ids = []
@@ -122,8 +124,11 @@ class BatchMultiStepTracker(MultiStepTracker):  # pylint: disable=too-few-public
 
             for frame_id, frame, detections in zip(frame_ids, batch, detections_sequence):
                 detections.frame_id = frame_id
-                self.linker.update(frame, detections)
+                self.linker.update(frame[0], detections)
                 link_bar.update()
+
+        detect_bar.close()
+        link_bar.close()
 
         tracks = self.linker.collect()
         for refiner in self.refiners:
