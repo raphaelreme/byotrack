@@ -61,7 +61,10 @@ Contents
    :glob:
    :caption: Getting started
 
-   run_examples/*
+   run_examples/ByoTrack fundamental.ipynb
+   run_examples/Video.ipynb
+   run_examples/Detectors.ipynb
+   run_examples/Linkers.ipynb
 
 .. toctree::
    :glob:
