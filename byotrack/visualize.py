@@ -116,7 +116,7 @@ def temporal_projection(
     return image
 
 
-class InteractiveVisualizer:
+class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
     """Interactive visualization with opencv
 
     Keys:
@@ -135,10 +135,14 @@ class InteractiveVisualizer:
             Default: () (no tracks)
         frame_shape (Tuple[int, int]): Shape of frames
         n_frames (int): Number of frames
+        tracks_colors (List[Tuple[int, int, int]]): Colors to use for tracks
+            Colors are picked circularly given the track identifier.
+            By default we use the hsv colormaps from matplotlib
+        scale (int): Up or Down scale the display.
+            Default: 1 (no scaling)
     """
 
     window_name = "ByoTrack ViZ"
-    tracks_colors = _colors
 
     def __init__(
         self,
@@ -154,6 +158,8 @@ class InteractiveVisualizer:
 
         self.frame_shape = self._get_frame_shape()
         self.n_frames = self._get_n_frames()
+        self.tracks_colors = _colors
+        self.scale = 1
 
         self._frame_id = 0
         self._display_video = int(len(video) != 0)
@@ -174,8 +180,7 @@ class InteractiveVisualizer:
         finally:
             cv2.destroyWindow(self.window_name)
 
-    def _run(self, fps=20) -> None:
-
+    def _run(self, fps=20) -> None:  # pylint: disable=too-many-branches
         while True:
             frame = np.zeros((*self.frame_shape, 3), dtype=np.uint8)
 
@@ -208,9 +213,12 @@ class InteractiveVisualizer:
                 else:
                     frame = segmentation
 
+            if self.scale != 1:
+                frame = cv2.resize(frame, None, fx=self.scale, fy=self.scale)  # type: ignore
+
             if self._display_tracks:
                 for track in self.tracks:
-                    point = track[self._frame_id]
+                    point = track[self._frame_id] * self.scale
                     if torch.isnan(point).any():
                         continue
 
@@ -333,10 +341,14 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
             Shape: (N, 2), dtype: float64
         precompute (bool): Compute all the flows first (bi directionnal) to prevent lagging
             Default: False
+        tracks_colors (List[Tuple[int, int, int]]): Colors to use for tracks
+            Colors are picked circularly given the track identifier.
+            By default we use the hsv colormaps from matplotlib
+        scale (int): Up or Down scale the display.
+            Default: 1 (no scaling)
     """
 
     window_name = "ByoTrack FlowViz"
-    colors = _colors
 
     def __init__(
         self,
@@ -354,6 +366,8 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
 
         self.frame_shape = video[0].shape[:2]
         self.n_frames = len(video)
+        self.colors = _colors
+        self.scale = 1
         self._grid = (
             np.indices(self.frame_shape, dtype=np.float64)[:, ::grid_step, ::grid_step].reshape(2, -1).transpose()
         )
@@ -420,7 +434,10 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
             if draw.shape[2] == 1:
                 draw = np.concatenate([draw] * 3, axis=2)
 
-            for k, (i, j) in enumerate(self.points):
+            if self.scale != 1:
+                draw = cv2.resize(draw, None, fx=self.scale, fy=self.scale)
+
+            for k, (i, j) in enumerate(self.points * self.scale):
                 cv2.circle(draw, (round(j), round(i)), 3, self.colors[k % len(self.colors)])
 
             # Display the resulting frame

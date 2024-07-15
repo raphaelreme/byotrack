@@ -63,7 +63,6 @@ class Video(Sequence[np.ndarray]):
                 pass
 
             # Temporal slicing
-
             sliced = video[10:50:3]  # Take one frame every three from frame 10 to frame 50.
 
             # Spatial slicing

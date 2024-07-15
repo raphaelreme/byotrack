@@ -27,7 +27,7 @@ class Linker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-me
         """Run the linker on a whole video
 
         Args:
-            video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames.
+            video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames (array).
                 Each array is expected to have a shape (H, W, C)
             detections_sequence (Sequence[byotrack.Detections]): Detections for each frame
                 Detections is expected for each frame of the video, in the same order.
