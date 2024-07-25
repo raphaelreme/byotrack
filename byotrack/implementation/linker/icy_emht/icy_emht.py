@@ -8,7 +8,6 @@ from xml.etree import ElementTree as ET
 
 import byotrack
 from byotrack import icy
-from byotrack.api.parameters import ParameterEnum
 from byotrack.api.tracks import update_detection_ids
 
 
@@ -223,7 +222,6 @@ class IcyEMHTLinker(byotrack.Linker):  # pylint: disable=too-few-public-methods
 
     """
 
-    parameters = {"motion": ParameterEnum({Motion.BROWNIAN, Motion.DIRECTED, Motion.MULTI})}
     rois_file = "_tmp_rois.xml"
     parameters_file = "_tmp_parameters.xml"
     tracks_file = "_tmp_tracks.xml"

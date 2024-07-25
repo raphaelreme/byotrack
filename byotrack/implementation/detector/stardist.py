@@ -9,7 +9,6 @@ import torch
 
 import byotrack
 from byotrack.api.detector.detections import relabel_consecutive
-from byotrack.api.parameters import ParameterBound
 
 
 class StarDistDetector(byotrack.BatchDetector):
@@ -34,11 +33,6 @@ class StarDistDetector(byotrack.BatchDetector):
     """
 
     progress_bar_description = "Detections (StarDist)"
-
-    parameters = {
-        "prob_threshold": ParameterBound(0.0, 1.0),
-        "nms_threshold": ParameterBound(0.0, 1.0),
-    }
 
     def __init__(self, model: StarDist2D, **kwargs) -> None:
         super().__init__(**kwargs)

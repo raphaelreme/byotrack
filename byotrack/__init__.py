@@ -82,4 +82,4 @@ from byotrack.api.tracks import Track
 from byotrack.video import Video, VideoTransformConfig
 
 
-__version__ = "0.7.1"
+__version__ = "0.7.2"

@@ -6,7 +6,6 @@ import torch
 
 import byotrack
 from byotrack.api.detector.detections import relabel_consecutive
-from byotrack.api.parameters import ParameterBound, ParameterEnum
 
 
 # Set to true to follow closely the ICY implementation (slower and less precise)
@@ -185,12 +184,6 @@ class WaveletDetector(byotrack.BatchDetector):
     """
 
     progress_bar_description = "Detections (Wavelet)"
-
-    parameters = {
-        "scale": ParameterEnum({0, 1, 2, 3, 4}),
-        "k": ParameterBound(1.0, 10.0),
-        "min_area": ParameterBound(0.0, 30.0),
-    }
 
     def __init__(self, scale=2, k=3.0, min_area=10.0, device: Optional[torch.device] = None, **kwargs):
         super().__init__(**kwargs)
