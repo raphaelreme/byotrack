@@ -75,6 +75,7 @@ Please refer to the ![official documentation](https://byotrack.readthedocs.io/en
 from byotrack.api.detector.detections import Detections
 from byotrack.api.detector.detector import BatchDetector, Detector
 from byotrack.api.linker import Linker, OnlineLinker
+from byotrack.api.features_extractor import FeaturesExtractor, MultiFeaturesExtractor
 from byotrack.api.optical_flow.optical_flow import OpticalFlow
 from byotrack.api.refiner import Refiner
 from byotrack.api.tracker import BatchMultiStepTracker, MultiStepTracker, Tracker
@@ -82,4 +83,4 @@ from byotrack.api.tracks import Track
 from byotrack.video import Video, VideoTransformConfig
 
 
-__version__ = "0.7.2"
+__version__ = "0.7.3"

@@ -1,6 +1,7 @@
 from abc import abstractmethod
 import dataclasses
 from typing import List, Optional, Tuple, Union
+import warnings
 
 import enum
 
@@ -257,8 +258,12 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
             will extract flow maps of the video online. (The underlying OpticalFlow object is accessible in
             self.optflow.optflow)
             Default: None
+        features_extractor (Optional[FeaturesExtractor]): Optional features extractor that will extract
+            features for the detections, which could be useful for tracking.
+            Default: None
         save_all (bool): Save metadata useless for the final building of tracks
-            but that could be usefull for analysis. For instance, it will keep invalid tracks.
+            but that could be useful for analysis. For instance, it will keep invalid tracks.
+            Or the computed features inside the Detections objects.
         frame_id (int): Current frame id of the linking process
         inactive_tracks (List[TrackHandler]): Terminated tracks
         active_tracks (List[TrackHandler]): Current track handlers
@@ -271,11 +276,13 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
         self,
         specs: FrameByFrameLinkerParameters,
         optflow: Optional[byotrack.OpticalFlow] = None,
+        features_extractor: Optional[byotrack.FeaturesExtractor] = None,
         save_all=False,
     ) -> None:
         super().__init__()
         self.specs = specs
         self.optflow = OnlineFlowExtractor(optflow) if optflow else None
+        self.features_extractor = features_extractor
         self.save_all = save_all
         self.frame_id = -1
         self.inactive_tracks: List[TrackHandler] = []
@@ -430,8 +437,18 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
     def update(self, frame: np.ndarray, detections: byotrack.Detections) -> None:
         self.frame_id += 1
 
+        # Compute features if the extractor is given and register inside the detections
+        # Do not recompute the features if some are already registered
+        remove_feats = False
+        if self.features_extractor is not None:
+            if "features" in detections.data:
+                warnings.warn("Some features are already computed. They will be used.")
+            else:
+                remove_feats = True
+                self.features_extractor.register(frame, detections)
+
         # Compute the flow map if optflow given
-        if self.optflow:
+        if self.optflow is not None:
             self.optflow.update(frame)
 
         self.motion_model()
@@ -445,3 +462,7 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
         ), "Wrong implementation of post_association. It should register the positions of each active tracks"
         for i, track in enumerate(self.active_tracks):
             track.register_track_id(i)
+
+        # Remove the computed features if save_all is False
+        if not self.save_all and remove_feats:
+            detections.data.pop("features")
