@@ -24,7 +24,7 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
             It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH)
             Default: OPT_SMOOTH
         ema (float): Optional exponential moving average to reduce detection noise. Detection positions are smoothed
-            using this EMA. Should be smaller than 1.It use: x_{t+1} = ema x_{t} + (1 - ema) det(t)
+            using this EMA. Should be smaller than 1. It use: x_{t+1} = ema x_{t} + (1 - ema) det(t)
             As motion is not modeled, EMA may introduce lag that will hinder tracking. It is more effective with
             optical flow to compensate motions, in this case, a typical value is 0.5, to average the previous position
             with the current measured one. For more advanced modelisation, see `KalmanLinker`.
