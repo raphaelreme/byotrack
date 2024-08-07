@@ -162,9 +162,13 @@ class KalmanLinker(FrameByFrameLinker):
     progress_bar_description = "Kalman filter linking"
 
     def __init__(
-        self, specs: KalmanLinkerParameters, optflow: Optional[byotrack.OpticalFlow] = None, save_all=False
+        self,
+        specs: KalmanLinkerParameters,
+        optflow: Optional[byotrack.OpticalFlow] = None,
+        features_extractor: Optional[byotrack.FeaturesExtractor] = None,
+        save_all=False,
     ) -> None:
-        super().__init__(specs, optflow, save_all)
+        super().__init__(specs, optflow, features_extractor, save_all)
 
         self.specs: KalmanLinkerParameters
         self.kalman_filter: Optional[torch_kf.KalmanFilter] = None

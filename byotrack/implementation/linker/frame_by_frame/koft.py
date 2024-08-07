@@ -126,9 +126,13 @@ class KOFTLinker(KalmanLinker):
     progress_bar_description = "KOFT linking"
 
     def __init__(
-        self, specs: KOFTLinkerParameters, optflow: Optional[byotrack.OpticalFlow] = None, save_all=False
+        self,
+        specs: KOFTLinkerParameters,
+        optflow: Optional[byotrack.OpticalFlow] = None,
+        features_extractor: Optional[byotrack.FeaturesExtractor] = None,
+        save_all=False,
     ) -> None:
-        super().__init__(specs, optflow, save_all)
+        super().__init__(specs, optflow, features_extractor, save_all)
 
         self.specs: KOFTLinkerParameters
         assert self.optflow is not None, "KOFT requires an optical flow algorithm"

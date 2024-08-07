@@ -75,9 +75,13 @@ class NearestNeighborLinker(FrameByFrameLinker):
     progress_bar_description = "Nearest Neighbor linking"
 
     def __init__(
-        self, specs: NearestNeighborParameters, optflow: Optional[byotrack.OpticalFlow] = None, save_all=False
+        self,
+        specs: NearestNeighborParameters,
+        optflow: Optional[byotrack.OpticalFlow] = None,
+        features_extractor: Optional[byotrack.FeaturesExtractor] = None,
+        save_all=False,
     ) -> None:
-        super().__init__(specs, optflow, save_all)
+        super().__init__(specs, optflow, features_extractor, save_all)
         self.specs: NearestNeighborParameters
         self.active_positions: Optional[torch.Tensor] = None
 
