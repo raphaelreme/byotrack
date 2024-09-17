@@ -37,6 +37,9 @@ class Track:
         detection_ids (torch.Tensor): Detection id for each time frame (-1 if unknown or non-linked
             to a particular detection at this time frame)
             Shape: (T,), dtype: int32
+        merge_id (int): Optional identifier of the resulting merged tracks. (This features is experimental.
+            Its goal is to handle cell divisions in a reversed temporal order)
+            Default: -1 (Merged to no one)
 
     """
 
@@ -48,12 +51,16 @@ class Track:
         points: torch.Tensor,
         identifier: Optional[int] = None,
         detection_ids: Optional[torch.Tensor] = None,
+        merge_id: int = -1,
     ) -> None:
         if identifier is None:
             self.identifier = Track._next_identifier
             Track._next_identifier += 1
         else:
+            assert identifier >= 0, "Track identifiers cannot be negative"
             self.identifier = identifier
+
+        self.merge_id = merge_id
 
         if detection_ids is None:  # All are unknown (-1)
             detection_ids = torch.full((len(points),), -1, dtype=torch.int32)
@@ -181,6 +188,7 @@ class Track:
                 "ids": Tensor (N, ), int64
                 "points": Tensor (T, N, D), float32
                 "det_ids": Tensor (T, N), int32
+                "merge_ids": Tensor (N, ), int32
             }
 
         Args:
@@ -189,10 +197,11 @@ class Track:
 
         """
         ids = torch.tensor([track.identifier for track in tracks])
+        merge_ids = torch.tensor([track.merge_id for track in tracks])
         offset = min(track.start for track in tracks)
         points = Track.tensorize(tracks)
         det_ids = Track._tensorize_det_ids(tracks)
-        torch.save({"offset": offset, "ids": ids, "points": points, "det_ids": det_ids}, path)
+        torch.save({"offset": offset, "ids": ids, "points": points, "det_ids": det_ids, "merge_ids": merge_ids}, path)
 
     @staticmethod
     def load(path: Union[str, os.PathLike]) -> Collection[Track]:
@@ -207,18 +216,20 @@ class Track:
         points: torch.Tensor = data["points"]
         ids: torch.Tensor = data["ids"]
         det_ids: torch.Tensor = data.get("det_ids", torch.full(points.shape[:2], -1, dtype=torch.int32))
+        merge_ids: torch.Tensor = data.get("merge_ids", torch.full(points.shape[1:2], -1, dtype=torch.int32))
 
         frames = torch.arange(points.shape[0])
+        defined = ~torch.isnan(points).all(dim=-1)
 
         tracks = []
 
         for i, identifier in enumerate(ids.tolist()):
-            track_points = points[:, i]
-            defined = ~torch.isnan(track_points).all(dim=-1)
-            track_points = track_points[defined]
-            track_det_ids = det_ids[:, i][defined]
-            start = cast(int, frames[defined].min().item())
-            tracks.append(Track(start + offset, track_points, identifier, track_det_ids))
+            start = cast(int, frames[defined[:, i]].min().item())
+            end = cast(int, frames[defined[:, i]].max().item())
+            merge_id = cast(int, merge_ids[i].item())
+            tracks.append(
+                Track(start + offset, points[start : end + 1, i], identifier, det_ids[start : end + 1, i], merge_id)
+            )
 
         return tracks
 

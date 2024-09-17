@@ -11,7 +11,11 @@ class Cleaner(byotrack.Refiner):
     Split tracklet when the distance between two consecutive points is greater than `max_dist`.
     And delete tracks that are shorter than `min_length`.
 
-    Warning: Does not really support tracks with nan points (will just not split when a nan is met)
+    Warning:
+        It will not split when the position of the track is NaN.
+
+    Warning:
+        `merge_id` is only set on the last splitted track, which may be deleted (if too short).
 
     Attributes:
         min_length (int): Minimum length of tracks kept
@@ -34,7 +38,11 @@ class Cleaner(byotrack.Refiner):
         Split tracklet when the distance between two consecutive points is greater than `max_dist`.
         And delete tracks that are shorter than `min_length`.
 
-        Warning: Does not really support tracks with nan points (will just not split when a nan is met)
+        Warning:
+            It will not split when the position of the track is NaN.
+
+        Warning:
+            `merge_id` is only set on the last splitted track, which may be deleted (if too short).
 
         Args:
             tracks (Collection[Track]): Tracks to clean
@@ -77,6 +85,7 @@ class Cleaner(byotrack.Refiner):
                         track.points[first:],
                         identifier=track.identifier,
                         detection_ids=track.detection_ids[first:],
+                        merge_id=track.merge_id,
                     )
                 )
 

@@ -120,7 +120,7 @@ def relabel_consecutive(segmentation: torch.Tensor) -> torch.Tensor:
             Shape: (H, W), dtype: int32
 
     Returns:
-        torch.Tensor: The same segmentation mask where labels are consecutive (from 0 to N)
+        torch.Tensor: The same segmentation mask where labels are consecutive (from 1 to N)
 
     """
     labels: torch.Tensor = torch.unique(segmentation)
@@ -150,6 +150,9 @@ class Detections:
     Bounding boxes are stored as ints (row first), thus right = left + width - 1
     The labels of the segmentation mask have to be consecutive. You can make it consecutive
     using `relabel_consecutive`.
+
+    ..Note:
+        The i_th detection has the label i+1 in the segmentation mask.
 
     Additional optional data is also expected like "confidence" or "shape" that respectively
     defines the confidence for each detection and the shape of the image (H, W).

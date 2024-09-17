@@ -117,8 +117,8 @@ def load_tracks(path: Union[str, os.PathLike]) -> List[byotrack.Track]:
 
     for track in track_group:
         identifier = None
-        if track.attrib.get("id"):
-            identifier = int(track.attrib["id"])
+        if track.attrib.get("id"):  # XXX: Find why ids have this format
+            identifier = abs(int(track.attrib["id"]))
 
         points = []
         frames = []

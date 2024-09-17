@@ -63,14 +63,21 @@ class DistStitcher(byotrack.Refiner):
                 continue
 
             # Merge multiple tracks
-
             start = min(track_list[i].start for i in connected_component)
             end = max(track_list[i].start + len(track_list[i]) for i in connected_component)
 
+            merge_ids = set(track_list[i].merge_id for i in connected_component)
+            if len(merge_ids) > 2:  # TODO: Remove the check, it should never occurs
+                raise RuntimeError("Stitching conflics with merging. Please open an Issue.")
+
             points = torch.full((end - start, dim), torch.nan)
             detection_ids = torch.full((end - start,), -1, dtype=torch.int32)
+            identifier = -1
 
             for i in connected_component:
+                if track_list[i].start == start:  # Take the identifier of the first track
+                    identifier = track_list[i].identifier
+
                 points[track_list[i].start - start : track_list[i].start - start + len(track_list[i])] = track_list[
                     i
                 ].points
@@ -78,7 +85,7 @@ class DistStitcher(byotrack.Refiner):
                     track_list[i].detection_ids
                 )
 
-            merged_tracks.append(byotrack.Track(start, points, detection_ids=detection_ids))
+            merged_tracks.append(byotrack.Track(start, points, identifier, detection_ids, max(merge_ids)))
 
         return merged_tracks
 
@@ -93,6 +100,7 @@ class DistStitcher(byotrack.Refiner):
         1. i ends at most `max_gap` frames before j starts
         2. i ends at most `max_overlap` frames after j starts
         3. i last position is at most at `max_dist` from j first position
+        4. i is not merged to any other tracks.
 
         Args:
             tracks (Collection[byotrack.Track]): Current set of tracks
@@ -111,8 +119,11 @@ class DistStitcher(byotrack.Refiner):
         first_pos = torch.cat([track.points[:1] for track in tracks])
         last_pos = torch.cat([track.points[-1:] for track in tracks])
 
+        merge_ids = torch.tensor([track.merge_id for track in tracks])
+
         skip = starts[:, None] >= starts[None, :]  # Ensure full asymmetry
         skip |= ends[:, None] > starts[None, :] + max_overlap
+        skip |= merge_ids[:, None] >= 0
 
         if max_gap > 0:
             skip |= ends[:, None] + max_gap < starts[None, :]
