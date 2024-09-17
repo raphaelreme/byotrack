@@ -116,6 +116,8 @@ def temporal_projection(
     return image
 
 
+# TODO: Add a display where we can see the tracks segmentation ?
+# And the detections with colors picked like for tracks ?
 class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
     """Interactive visualization with opencv
 
@@ -136,7 +138,7 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
         frame_shape (Tuple[int, int]): Shape of frames
         n_frames (int): Number of frames
         tracks_colors (List[Tuple[int, int, int]]): Colors to use for tracks
-            Colors are picked circularly given the track identifier.
+            Colors are picked circularly given their position in the `tracks` list.
             By default we use the hsv colormaps from matplotlib
         scale (int): Up or Down scale the display.
             Default: 1 (no scaling)
@@ -158,7 +160,8 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
 
         self.frame_shape = self._get_frame_shape()
         self.n_frames = self._get_n_frames()
-        self.tracks_colors = _colors
+
+        self.tracks_colors = _colors[:: max(1, len(_colors) // (len(tracks) + 1))]
         self.scale = 1
 
         self._frame_id = 0
