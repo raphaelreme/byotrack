@@ -63,6 +63,7 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
     def __init__(  # pylint: disable=too-many-arguments
         self,
         association_threshold: float,
+        *,
         detection_std: Union[float, torch.Tensor] = 3.0,
         flow_std: Union[float, torch.Tensor] = 1.0,
         process_std: Union[float, torch.Tensor] = 1.5,
@@ -76,15 +77,15 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
         always_measure_velocity=True,
     ):
         super().__init__(
-            association_threshold,
-            detection_std,
-            process_std,
-            kalman_order,
-            n_valid,
-            n_gap,
-            association_method,
-            cost,
-            track_building,
+            association_threshold=association_threshold,
+            detection_std=detection_std,
+            process_std=process_std,
+            kalman_order=kalman_order,
+            n_valid=n_valid,
+            n_gap=n_gap,
+            association_method=association_method,
+            cost=cost,
+            track_building=track_building,
         )
 
         self.flow_std = flow_std

@@ -216,6 +216,7 @@ class FrameByFrameLinkerParameters:  # pylint: disable=too-many-instance-attribu
     def __init__(
         self,
         association_threshold: float,
+        *,
         n_valid=3,
         n_gap=3,
         association_method: Union[str, AssociationMethod] = AssociationMethod.OPT_SMOOTH,

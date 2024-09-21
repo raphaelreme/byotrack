@@ -98,6 +98,7 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
     def __init__(
         self,
         association_threshold: float,
+        *,
         detection_std: Union[float, torch.Tensor] = 3.0,
         process_std: Union[float, torch.Tensor] = 1.5,
         kalman_order: int = 1,
@@ -107,7 +108,12 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
         cost: Union[str, Cost] = Cost.EUCLIDEAN,
         track_building: Union[str, TrackBuilding] = TrackBuilding.FILTERED,
     ):
-        super().__init__(association_threshold, n_valid, n_gap, association_method)
+        super().__init__(
+            association_threshold=association_threshold,
+            n_valid=n_valid,
+            n_gap=n_gap,
+            association_method=association_method,
+        )
 
         self.detection_std = detection_std
         self.process_std = process_std

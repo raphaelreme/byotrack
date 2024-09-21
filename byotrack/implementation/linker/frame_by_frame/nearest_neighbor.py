@@ -40,13 +40,19 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
     def __init__(
         self,
         association_threshold: float,
+        *,
         n_valid=3,
         n_gap=3,
         association_method: Union[str, AssociationMethod] = AssociationMethod.OPT_SMOOTH,
         ema=0.0,
         fill_gap=False,
     ):
-        super().__init__(association_threshold, n_valid, n_gap, association_method)
+        super().__init__(  # pylint: disable=duplicate-code
+            association_threshold=association_threshold,
+            n_valid=n_valid,
+            n_gap=n_gap,
+            association_method=association_method,
+        )
         self.ema = ema
         self.fill_gap = fill_gap
 
