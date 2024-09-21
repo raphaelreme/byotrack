@@ -10,15 +10,15 @@ class ChannelSelect:
     """Select a given channel
 
     Attributes:
-        channel (int): Channel to keep (0, 1 or 2)
+        channel (int): Channel to keep
 
     Args:
-        frame (np.ndarray): Frame of the video
-            Shape: (..., H, W, C)
+        frame (np.ndarray): Frame of a video
+            Shape: (..., C)
 
     Returns:
         np.ndarray: Filtered frame with a single channel
-            Shape: (..., H, W, 1)
+            Shape: (..., 1)
 
     """
 
@@ -39,12 +39,12 @@ class ChannelAvg:
     """Average channels into a single one
 
     Args:
-        frame (np.ndarray): Frame of the video
-            Shape: (..., H, W, C)
+        frame (np.ndarray): Frame of a video
+            Shape: (..., C)
 
     Returns:
         np.ndarray: Average of channels
-            Shape: (..., H, W, 1)
+            Shape: (..., 1)
 
     """
 
@@ -72,42 +72,44 @@ class ScaleAndNormalize:
             Default: 0 (hard clipping)
         max (np.ndarray): True maximum values (one for each channel) when using smooth clipping
             Shape: (C, )
+        compute_stats_on (int): Max number of frames to compute stats on.
+            It prevents heavy computations that can occurs with large videos.
+            Default: 50
 
     Args:
         frame (np.ndarray): Frame of the video
-            Shape: (..., H, W, C)
+            Shape: (..., C)
 
     Returns:
         np.ndarray: Normalized version of the frame in [0, 1]
-            Shape: (..., H, W, C)
+            Shape: (..., C)
 
     """
 
-    # Do not use all the frames of a video because it is both time and memory expensive
-    max_frames_for_stats = 100
-
-    def __init__(self, q_min: float, q_max: float, smooth_clip: float = 0) -> None:
+    def __init__(self, q_min: float, q_max: float, smooth_clip: float = 0, compute_stats_on: int = 50) -> None:
         self.q_min = q_min
         self.q_max = q_max
         self.mini = np.array([0.0])
         self.maxi = np.array([1.0])
         self.smooth_clip = smooth_clip
         self.max = np.array([1.0])
+        self.compute_stats_on = compute_stats_on
 
     def update_stats(self, frames: np.ndarray) -> None:
         """Update mini and maxi values based on the given frames
 
         Args:
             frames (np.ndarray): Several frames of the same video to compute the stats
-                Shape: (N, H, W, C)
+                Shape: (..., C)
 
         """
-        frames = frames[: self.max_frames_for_stats]
-        self.mini = np.quantile(frames, self.q_min, axis=(0, 1, 2))
-        self.maxi = np.quantile(frames, self.q_max, axis=(0, 1, 2))
+        axis = tuple(range(frames.ndim - 1))
+        frames = frames[: self.compute_stats_on]
+        self.mini = np.quantile(frames, self.q_min, axis=axis)
+        self.maxi = np.quantile(frames, self.q_max, axis=axis)
 
         if self.smooth_clip > 0:
-            ratio = frames.max(axis=(0, 1, 2)) / (self.maxi + (self.maxi == 0))
+            ratio = frames.max(axis=axis) / (self.maxi + (self.maxi == 0))
             self.max = 1 + 0.5 * np.log(np.maximum(1, 1 + (ratio - 1) / 0.5))
 
     def __call__(self, frame: np.ndarray) -> np.ndarray:

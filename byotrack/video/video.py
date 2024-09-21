@@ -6,7 +6,7 @@ from typing import overload, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
-from .reader import VideoReader
+from .reader import VideoReader, slice_length
 from .transforms import ChannelSelect, ChannelAvg, ScaleAndNormalize
 
 
@@ -43,15 +43,14 @@ class Video(Sequence[np.ndarray]):
     It wraps VideoReader in order to add video transformation (Channel Aggregation, Scaling, Normalization)
     and to add useful pythonic protocols (Sliceable, Indexable, Iterable).
 
-    Return images in BGR by default like opencv as frames are mostly used with opencv afterwards for display.
-    Can also return grayscale image (H, W, 1)
+    Frames are 2D or 3D with a channel axis. It behaves similarly as a 5D/4D numpy array of shape (T[, D], H, W, C).
 
     Example:
         .. code-block:: python
 
             import byotrack
 
-            # Read a video (Usually BGR)
+            # Read a video (Usually 2D RGB)
             video = byotrack.Video(video_path)
 
             # Add a transform that will aggregate channel and normalize in [0, 1] the intensities
@@ -70,17 +69,27 @@ class Video(Sequence[np.ndarray]):
 
 
     Attributes:
-        shape (Tuple[int, ...]): Shape of the video (Time, Height, Width[, Depth])
+        ndim (int): 2 or 3. Whether the video is 2D or 3D.
+        shape (Tuple[int, ...]): Shape of the video (Time, [Depth, ]Height, Width)
         channels (int): Number of channels
         reader (byotrack.VideoReader): Underlying video reader
 
     """
 
-    def __init__(self, data_source: Union[str, os.PathLike, VideoReader]) -> None:
+    def __init__(self, data_source: Union[str, os.PathLike, VideoReader], **kwargs) -> None:
+        """Constructor.
+
+
+        Args:
+            data_source (Union[str, os.PathLike, VideoReader]): Source of the data. If a path is given,
+                it will be converted in a VideoReader.
+            **kwargs: Additional arguments given to the construction of the video reader.
+
+        """
         super().__init__()
 
         if isinstance(data_source, (str, os.PathLike)):
-            self.reader = VideoReader.open(data_source)
+            self.reader = VideoReader.open(data_source, **kwargs)
         else:
             self.reader = data_source
 
@@ -93,6 +102,10 @@ class Video(Sequence[np.ndarray]):
         return tuple(
             slice_length(slice_, shape) for slice_, shape in zip(self._slices, (self.reader.length, *self.reader.shape))
         )
+
+    @property
+    def ndim(self) -> int:
+        return len(self.reader.shape)
 
     @property
     def channels(self) -> int:
@@ -114,9 +127,12 @@ class Video(Sequence[np.ndarray]):
 
         self._normalizer = None
         if transform_config.normalize:
-            frames = np.asarray(self[: min(transform_config.compute_stats_on, ScaleAndNormalize.max_frames_for_stats)])
+            frames = np.asarray(self[: transform_config.compute_stats_on])
             self._normalizer = ScaleAndNormalize(
-                transform_config.q_min, transform_config.q_max, transform_config.smooth_clip
+                transform_config.q_min,
+                transform_config.q_max,
+                transform_config.smooth_clip,
+                transform_config.compute_stats_on,
             )
             self._normalizer.update_stats(frames)
 
@@ -224,9 +240,3 @@ def compose_slice(slice_1: slice, slice_2: slice, length: int) -> slice:
             return slice(start, None, step)
 
     return slice(start, stop, step)
-
-
-def slice_length(slice_: slice, shape: int) -> int:
-    """Compute the number of element in a slice"""
-    start, stop, step = slice_.indices(shape)
-    return max((stop - start - (step > 0) + (step < 0)) // step + 1, 0)
