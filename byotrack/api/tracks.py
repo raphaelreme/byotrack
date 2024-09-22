@@ -33,7 +33,7 @@ class Track:
         identifier (int): Identifier of the track (non-unique)
         start (int): Starting frame of the track
         points (torch.Tensor): Positions (i, j) of the particle (from starting frame to ending frame)
-            Shape: (T, D), dtype: float32
+            Shape: (T, dim), dtype: float32
         detection_ids (torch.Tensor): Detection id for each time frame (-1 if unknown or non-linked
             to a particular detection at this time frame)
             Shape: (T,), dtype: int32
@@ -82,8 +82,8 @@ class Track:
             frame_id (int): id of the frame in the video
 
         Returns:
-            torch.Tensor: Position (i, j) at the given frame (NaN if unknown)
-                Shape: (D, ), dtype: float32
+            torch.Tensor: Position ([k, ]i, j) on the given frame (NaN if unknown)
+                Shape: (dim, ), dtype: float32
 
         """
         if self.start <= frame_id < self.start + len(self.points):
@@ -115,7 +115,7 @@ class Track:
 
         Returns:
             torch.Tensor: Tracks data in a single tensor
-                Shape: (T, N, D), dtype: float32
+                Shape: (T, N, dim), dtype: float32
 
         """
         if not tracks:
@@ -186,7 +186,7 @@ class Track:
             {
                 "offset": int
                 "ids": Tensor (N, ), int64
-                "points": Tensor (T, N, D), float32
+                "points": Tensor (T, N, dim), float32
                 "det_ids": Tensor (T, N), int32
                 "merge_ids": Tensor (N, ), int32
             }

@@ -28,7 +28,7 @@ class Linker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-me
 
         Args:
             video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames (array).
-                Each array is expected to have a shape (H, W, C)
+                Each array is expected to have a shape ([D, ]H, W, C)
             detections_sequence (Sequence[byotrack.Detections]): Detections for each frame
                 Detections is expected for each frame of the video, in the same order.
                 (Note that for a given frame, the Detections can be empty)
@@ -66,7 +66,7 @@ class OnlineLinker(Linker):
 
         Args:
             frame (np.ndarray): Frame of the video
-                Shape: (H, W, C), dtype: float
+                Shape: ([D, ]H, W, C), dtype: float
             detections (byotrack.Detections): Detections for the given frame
 
         """

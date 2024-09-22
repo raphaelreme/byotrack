@@ -23,7 +23,7 @@ class Tracker(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
 
         Args:
             video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames (array).
-                Each array is expected to have a shape (H, W, C)
+                Each array is expected to have a shape ([D, ]H, W, C)
 
         Returns:
             Collection[byotrack.Track]: Tracks of particles
@@ -87,6 +87,9 @@ class BatchMultiStepTracker(MultiStepTracker):  # pylint: disable=too-few-public
         self.linker: byotrack.OnlineLinker
 
     def run(self, video: Union[Sequence[np.ndarray], np.ndarray]) -> Collection[byotrack.Track]:
+        if len(video) == 0:
+            return []
+
         reader = None
         if self.detector.add_true_frames and isinstance(video, byotrack.Video):
             reader = video.reader
@@ -94,38 +97,43 @@ class BatchMultiStepTracker(MultiStepTracker):  # pylint: disable=too-few-public
         self.linker.reset()
 
         detections_sequence: Sequence[byotrack.Detections] = []
-        batch: List[np.ndarray] = []
         frame_ids: List[int] = []
 
         detect_bar = tqdm.tqdm(desc=self.detector.progress_bar_description, total=len(video))
         link_bar = tqdm.tqdm(desc=self.linker.progress_bar_description, total=len(video))
 
-        for i, frame in enumerate(video):
-            batch.append(frame[None])
-            frame_ids.append(reader.tell() if reader else i)
+        first = video[0]
+        batch = np.zeros((self.detector.batch_size, *first.shape), dtype=first.dtype)
+        batch[0] = first
+        n = 1
+        frame_ids.append(reader.tell() if reader else 0)
 
-            if len(batch) >= self.detector.batch_size:
-                detections_sequence = self.detector.detect(np.concatenate(batch, axis=0))
-                detect_bar.update(self.detector.batch_size)
+        for frame in video[1:]:
+            if n >= self.detector.batch_size:
+                detections_sequence = self.detector.detect(batch)
+                detect_bar.update(n)
 
-                for frame_id, frame, detections in zip(frame_ids, batch, detections_sequence):
-                    detections.frame_id = frame_id
-                    self.linker.update(frame[0], detections)
+                for i in range(n):
+                    detections_sequence[i].frame_id = frame_ids[i]
+                    self.linker.update(batch[i], detections_sequence[i])
                     link_bar.update()
 
                 link_bar.refresh()
 
-                batch = []
                 frame_ids = []
+                n = 0
 
-        if batch:
-            detections_sequence = self.detector.detect(np.concatenate(batch, axis=0))
-            detect_bar.update(len(batch))
+            batch[n] = frame
+            frame_ids.append(reader.tell() if reader else len(frame_ids))
+            n += 1
 
-            for frame_id, frame, detections in zip(frame_ids, batch, detections_sequence):
-                detections.frame_id = frame_id
-                self.linker.update(frame[0], detections)
-                link_bar.update()
+        detections_sequence = self.detector.detect(batch[:n])
+        detect_bar.update(n)
+
+        for i in range(n):
+            detections_sequence[i].frame_id = frame_ids[i]
+            self.linker.update(batch[i], detections_sequence[i])
+            link_bar.update()
 
         detect_bar.close()
         link_bar.close()

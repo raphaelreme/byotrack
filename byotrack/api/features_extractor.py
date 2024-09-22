@@ -18,6 +18,7 @@ class FeaturesExtractor(ABC):
 
         Args:
             frame (np.ndarray): The video frame
+                Shape: ([D, ]H, W, C)
             detections (byotrack.Detections): Detected objects on the frame, for which features should be computed
 
         Returns:
@@ -33,6 +34,7 @@ class FeaturesExtractor(ABC):
 
         Args:
             frame (np.ndarray): The video frame
+                Shape: ([D, ]H, W, C)
             detections (byotrack.Detections): Detected objects on the frame, for which features should be computed
 
         """

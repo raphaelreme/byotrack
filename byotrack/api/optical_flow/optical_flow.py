@@ -8,16 +8,18 @@ import scipy.ndimage  # type: ignore
 class OpticalFlow(ABC):
     """Optical flow algorithm (Abstract class, see implementations)
 
-    It implements or wraps an existing method.
-    In ByoTrack, frames are multidimensional floating arrays, they are
-    the inputs of the optical flow algorithm. It outputs an optical flow map which
-    is a multidimensional floating array where the first dimension is the flow for
-    each spatial dimension.
+    It implements or wraps an existing optical flow method.
+
+    In ByoTrack, frames are multidimensional arrays of shape ([D, ]H, W, C).
+    Two frames are given as input to the algorithm. It outputs an optical flow map which
+    is a multidimensional floating array (dim, [D, ]H, W) where the first dimension is the
+    flow (displacement) for each spatial dimension.
 
     For instance, with two dimensional frames (H, W, C), the computed flow map has a shape
     (2, H, W), where the first (resp. second) element of the first dimension is the displacement
     along height (resp. width). The coordinate system of ByoTrack is using the pixel index (i, j) and not
-    the pixel position (x, y) (which is often use in OpenCv)
+    the pixel position (x, y) (which is often use in OpenCV). Note that in 3D, the pixel order is (k, i, j)
+    where k stand for depth.
 
     Additionally, the wrapper allows to downscale (with a blurring) the image to speed up computations.
 
@@ -36,7 +38,7 @@ class OpticalFlow(ABC):
         # Compute the flow map from ref to mov
         flow_map = optflow.compute(ref, mov)
 
-        # flow_map[:, i, j] gives the displacement (di, dj) of the pixel (i, j) of the reference image
+        # flow_map[:, i, j] gives the displacement (di, dj) of the pixel (i, j) of the reference image (scaled)
 
         # You can warp mov into ref with warp
         mov_warp = optflow.warp(flow_map, video[1])
@@ -61,21 +63,21 @@ class OpticalFlow(ABC):
     def preprocess(self, frame: np.ndarray) -> np.ndarray:
         """Downscale a frame before running the optical flow algorithm
 
-        It blurs then downscales the frame.
+        It blurs then downscales the frame. It also converts to float32.
 
         Args:
             frame (np.ndarray): The frame to pre-preprocess
-                Shape: (H, W, C), dtype: float64
+                Shape: ([D, ]H, W, C), dtype: float
 
         Returns:
             np.ndarray: The blurred and downscaled frame
-                Shape: (H', W', C), dtype: float32
+                Shape: ([D', ]H', W', C), dtype: float32
 
         """
         downscale = np.ones(frame.ndim, np.float32)
         downscale[:-1] = self.downscale  # Do not downscale channels
 
-        blur = np.zeros(frame.ndim, np.float32)
+        blur = np.zeros(frame.ndim, np.float32)  # Do not blur along channel dimension
         if self.blur is None:
             blur[:-1] = 2 * downscale[:-1] / 6
         else:
@@ -95,14 +97,14 @@ class OpticalFlow(ABC):
 
         Args:
             reference (np.ndarray): Reference frame
-                Shape: (H', W', C), dtype: float
+                Shape: ([D', ]H', W', C), dtype: float
             moving (np.ndarray): Moving frame
-                Shape: (H', W', C), dtype: float
+                Shape: ([D', ]H', W', C), dtype: float
 
         Returns:
             np.ndarray: Optical flow map from reference to moving
-                The flow field is stored in the row first format (i, j) (!= (x, y))
-                Shape: (2, H', W'), dtype: float32
+                The flow field is stored in pixel coordinates ([dk', ]di', dj') (!= xyz)
+                Shape: (dim, [D', ]H', W'), dtype: float32
         """
 
     def flow_at(self, flow_map: np.ndarray, points: np.ndarray) -> np.ndarray:
@@ -111,16 +113,16 @@ class OpticalFlow(ABC):
         The flow_map is expected to be downscaled, but the input and outputs points are not.
 
         Args:
-            flow_map (np.ndarray): Optical flow map. Displacement (di, dj) for each pixel (i, j) in
+            flow_map (np.ndarray): Optical flow map. Displacement ([dk', ]di', dj') for each pixel ([k', ]i', j') in
                 the downscaled coordinates.
-                Shape: (2, H', W'), dtype: float32
-            points (np.ndarray): Points in the original (non-downscale) coordinates
-                where the displacement (i, j) is computed
-                Shape: (N, 2), dtype: float
+                Shape: (dim, [D', ]H', W'), dtype: float32
+            points (np.ndarray): Points ([k, ]i ,j) in the original (non-downscale) coordinates
+                Shape: (N, dim), dtype: float
 
         Returns:
-            np.ndarray: The displacements in the original coordinates (non-downscale) at the given points
-                Shape: (N, 2), dtype: float
+            np.ndarray: The displacements ([dk, ], di, dj) in the original coordinates (non-downscale)
+                at the given points.
+                Shape: (N, dim), dtype: float
         """
         if isinstance(self.downscale, (int, float)):
             downscale = np.array([self.downscale] * flow_map.shape[0])
@@ -142,17 +144,16 @@ class OpticalFlow(ABC):
         The flow_map is expected to be downscaled, but the input and outputs points are not.
 
         Args:
-            flow_map (np.ndarray): Optical flow map. Displacement (di, dj) for each pixel (i, j) in
+            flow_map (np.ndarray): Optical flow map. Displacement ([dk', ]di', dj') for each pixel ([k', ]i', j') in
                 the downscaled coordinates.
-                Shape: (2, H', W'), dtype: float32
-            points (np.ndarray): Points (i, j) in the original (non-downscale) coordinates
-                to transform with the flow
-                Shape: (N, 2), dtype: float
+                Shape: (dim, [D', ]H', W'), dtype: float32
+            points (np.ndarray): Points ([k, ]i ,j) in the original (non-downscale) coordinates
+                Shape: (N, dim), dtype: float
 
         Returns:
-            np.ndarray: New positions of the poitns (i, j) in the original (non-downscale) coordinates
+            np.ndarray: New positions of the poitns ([k, ]i, j) in the original (non-downscale) coordinates
                 once the flow is applied.
-                Shape: (N, 2), dtype: float
+                Shape: (N, dim), dtype: float
         """
         return points + self.flow_at(flow_map, points)
 
@@ -166,15 +167,15 @@ class OpticalFlow(ABC):
             Forward warping could be implemented in a future version if needed.
 
         Args:
-            flow_map (np.ndarray): Optical flow map. Displacement (di, dj) for each pixel (i, j) in
+            flow_map (np.ndarray): Optical flow map. Displacement ([dk', ]di', dj') for each pixel ([k', ]i', j') in
                 the downscaled coordinates.
-                Shape: (2, H', W'), dtype: float32
+                Shape: (dim, [D', ]H', W'), dtype: float32
             moving (np.ndarray): The moving image to warp (non-preprocessed)
-                Shape: (H, W, C), dtype: float
+                Shape: ([D, ]H, W, C), dtype: float
 
         Returns:
             np.ndarray: Warped image
-                Shape: (H, W, C), dtype: float
+                Shape: ([D, ]H, W, C), dtype: float
 
         """
         *dims, channels = moving.shape

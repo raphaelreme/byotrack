@@ -12,7 +12,7 @@ from ... import utils
 
 def _check_segmentation(segmentation: torch.Tensor) -> None:
     """Check segmentation validity (type, shape, labels)"""
-    assert len(segmentation.shape) == 2
+    assert len(segmentation.shape) in (2, 3)
     assert segmentation.dtype is torch.int32
 
     # Check that labels are in [0:N+1]
@@ -22,14 +22,14 @@ def _check_segmentation(segmentation: torch.Tensor) -> None:
 def _check_bbox(bbox: torch.Tensor) -> None:
     """Check box validity (type, shape)"""
     assert len(bbox.shape) == 2
-    assert bbox.shape[1] == 4, "Bbox should have 4 values (top, left, height, width)"
+    assert bbox.shape[1] == (4, 6), "Bbox should have 4 or 6 values: ([front, ]top, left, [depth, ]height, width)"
     assert bbox.dtype is torch.int32
 
 
 def _check_position(position: torch.Tensor) -> None:
     """Check position validity (type, shape)"""
     assert len(position.shape) == 2
-    assert position.shape[1] == 2, "Position should have 2 values (i, j)"
+    assert position.shape[1] in (2, 3), "Position should have 2 or 3 values: ([k, ]i, j)"
     assert position.dtype is torch.float32
 
 
@@ -39,49 +39,60 @@ def _check_confidence(confidence: torch.Tensor) -> None:
     assert confidence.dtype is torch.float32
 
 
-@numba.njit
+@numba.njit(parallel=False)
 def _position_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     """Return the centre of each instance in the segmentation"""
+    # A bit slower than previous version in 2D, but still fine
+
     n = segmentation.max()
-    positions = np.zeros((n, 2), dtype=np.float32)
-    m_00 = np.zeros(n, dtype=np.uint)
-    m_01 = np.zeros(n, dtype=np.uint)
-    m_10 = np.zeros(n, dtype=np.uint)
+    dim = len(segmentation.shape)
 
-    for i in range(segmentation.shape[0]):
-        for j in range(segmentation.shape[1]):
-            instance = segmentation[i, j] - 1
-            if instance != -1:
-                m_00[instance] += 1
-                m_01[instance] += i
-                m_10[instance] += j
+    m_0 = np.zeros(n, dtype=np.uint)
+    m_1 = np.zeros((n, dim), dtype=np.uint)
 
-    positions[:, 0] = m_01 / m_00
-    positions[:, 1] = m_10 / m_00
-    return positions
+    for index in np.ndindex(*segmentation.shape):
+        instance = segmentation[index] - 1
+        if instance != -1:
+            m_0[instance] += 1
+            for i in range(dim):
+                m_1[instance, i] += index[i]
+
+    return m_1.astype(np.float32) / m_0.reshape(-1, 1)
 
 
 @numba.njit
 def _bbox_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
+    # A bit slower than previous version in 2D, but still fine
+
     n = segmentation.max()
-    bbox = np.zeros((n, 4), dtype=np.int32)
-    mini = np.ones((n, 2), dtype=np.int32) * np.inf
-    maxi = np.zeros((n, 2), dtype=np.int32)
+    dim = len(segmentation.shape)
 
-    for i in range(segmentation.shape[0]):
-        for j in range(segmentation.shape[1]):
-            instance = segmentation[i, j] - 1
-            if instance != -1:
-                mini[instance] = min(mini[instance][0], i), min(mini[instance][1], j)
-                maxi[instance] = max(maxi[instance][0], i), max(maxi[instance][1], j)
+    bbox = np.zeros((n, 2 * dim), dtype=np.int32)
+    mini = np.ones((n, dim), dtype=np.int32) * np.inf
+    maxi = np.zeros((n, dim), dtype=np.int32)
 
-    bbox[:, :2] = mini
-    bbox[:, 2:] = maxi - mini + 1
+    for index in np.ndindex(*segmentation.shape):
+        instance = segmentation[index] - 1
+        if instance != -1:
+            for i in range(dim):
+                mini[instance, i] = min(mini[instance, i], index[i])
+                maxi[instance, i] = max(maxi[instance, i], index[i])
+
+    bbox[:, :dim] = mini
+    bbox[:, dim:] = maxi - mini + 1
     return bbox
 
 
+def _segmentation_from_bbox(bbox: np.ndarray, shape: Tuple[int, ...]) -> np.ndarray:
+    if len(shape) == 2:
+        return _segmentation_from_bbox_2d(bbox, shape)
+    if len(shape) == 3:
+        return _segmentation_from_bbox_3d(bbox, shape)
+    raise RuntimeError(f"Cannot create a segmentation of dimension {len(shape)}")
+
+
 @numba.njit
-def _segmentation_from_bbox(bbox: np.ndarray, shape: Tuple[int, int]) -> np.ndarray:
+def _segmentation_from_bbox_2d(bbox: np.ndarray, shape: Tuple[int, int]) -> np.ndarray:
     segmentation = np.zeros(shape, dtype=np.int32)
     for label, bbox_ in enumerate(bbox):
         segmentation[bbox_[0] : bbox_[0] + bbox_[2], bbox_[1] : bbox_[1] + bbox_[3]] = label + 1
@@ -89,7 +100,18 @@ def _segmentation_from_bbox(bbox: np.ndarray, shape: Tuple[int, int]) -> np.ndar
     return segmentation
 
 
-def _segmentation_from_position(position: torch.Tensor, shape: Tuple[int, int]) -> torch.Tensor:
+@numba.njit
+def _segmentation_from_bbox_3d(bbox: np.ndarray, shape: Tuple[int, int, int]) -> np.ndarray:
+    segmentation = np.zeros(shape, dtype=np.int32)
+    for label, bbox_ in enumerate(bbox):
+        segmentation[bbox_[0] : bbox_[0] + bbox_[3], bbox_[1] : bbox_[1] + bbox_[4], bbox[2] : bbox[2] + bbox[5]] = (
+            label + 1
+        )
+
+    return segmentation
+
+
+def _segmentation_from_position(position: torch.Tensor, shape: Tuple[int, ...]) -> torch.Tensor:
     segmentation = torch.zeros(shape, dtype=torch.int32)
     segmentation[position.round().int().T.tolist()] = torch.arange(1, position.shape[0] + 1, dtype=torch.int32)
     return segmentation
@@ -128,16 +150,26 @@ class Detections:
 
     Built from a data dict. The data has to contained one of "position",
     "bbox" or "segmentation" keys that respectively define the positions of instances center
-    (i, j), the bounding boxes of instances (top, left, height, width) or the instance
-    segmentation of the image (H, W).
+    ([k, ]i, j), the bounding boxes of instances ([front, ]top, left, [depth, ]height, width) or the instance
+    segmentation of the image ([D, ]H, W).
 
-    Positions are stored as floats (row first).
-    Bounding boxes are stored as ints (row first), thus right = left + width - 1
-    The labels of the segmentation mask have to be consecutive. You can make it consecutive
-    using `relabel_consecutive`.
+    It supports 2D and 3D detections. In 2D, the depth axis (k indice) is missing.
+
+    Note:
+        All positions/bounding boxes uses the index coordinates system (not xyz). In ByoTrack, the Z axis
+        (or depth D) is before the height and the width.
+        We usually use the following nomenclature for indices: (k (stack), i (row) and j (columns)).
+
+    Positions are stored as floats (index coordinates): (k, i, j).
+
+    Bounding boxes are stored as ints (index coordinates): (k_0, i_0, j_0, dk, di, dj). It defines
+    all the pixels (k, i, j) such that k_0 <= k < k_0 + dk, i_0 <= i <= i_0 + di, j_0 <= j < j_0 + dj.
+
+    The segmentation mask is stored as 2D or 3D integer tensor, where labels are consecutives from 1 to N+1.
+    0 is for the background.
 
     ..Note:
-        The i_th detection has the label i+1 in the segmentation mask.
+        The i_th detection in the Detections has the label i+1 in the segmentation mask.
 
     Additional optional data is also expected like "confidence" or "shape" that respectively
     defines the confidence for each detection and the shape of the image (H, W).
@@ -150,18 +182,20 @@ class Detections:
     Attributes:
         data (Dict[str, toch.Tensor]): Detections data.
         length (int): Number of detections
+        dim (int): Dimension of the detections: 2d or 3d.
         frame_id (int): Optional frame id in the original video (-1 if no video)
             In ByoTrack, detections linking do not rely on this frame_id, but rather
             on the position inside the detections_sequence. It should only be used
             for debugging/visualization.
             Default: -1
-        shape: (Tuple[int, int]): Shape of the image (H, W). (Extrapolated if not given)
-        position (torch.Tensor): Positions (i, j) of instances (center) inferred from the data
-            Shape: (N, 2), dtype: float32
+        shape: (Tuple[int, ...]): Shape of the image ([D, ]H, W). (Extrapolated if not given)
+        position (torch.Tensor): Positions (k, i, j) of instances (center) inferred from the data
+            Shape: (N, dim), dtype: float32
         bbox (torch.Tensor): Bounding boxes of instances inferred from the data
-            Shape: (N, 4), dtype: int32
+            ([front, ]top, left, [depth, ]height, width)
+            Shape: (N, 2*dim), dtype: int32
         segmentation (torch.Tensor): Segmentation inferred from the data
-            Shape: (H, W), dtype: int32
+            Shape: ([D, ]H, W), dtype: int32
         confidence (torch.Tensor): Confidence for each instance
             Shape: (N,), dtype: float32
 
@@ -169,24 +203,32 @@ class Detections:
 
     def __init__(self, data: Dict[str, torch.Tensor], frame_id: int = -1) -> None:
         self.length = -1
+        self.dim = -1
 
         if "position" in data:
             _check_position(data["position"])
             self.length = data["position"].shape[0]
+            self.dim = data["position"].shape[1]
 
         if "bbox" in data:
             _check_bbox(data["bbox"])
             length = data["bbox"].shape[0]
+            dim = data["bbox"].shape[1] // 2
 
-            assert self.length in (-1, self.length)
+            assert self.length in (-1, length)
+            assert self.dim in (-1, dim)
             self.length = length
+            self.dim = dim
 
         if "segmentation" in data:
             _check_segmentation(data["segmentation"])
             length = int(data["segmentation"].max())
+            dim = data["segmentation"].ndim
 
-            assert self.length in (-1, self.length)
+            assert self.length in (-1, length)
+            assert self.dim in (-1, dim)
             self.length = length
+            self.dim = dim
 
         if "condidence" in data:
             _check_confidence(data["confidence"])
@@ -234,7 +276,7 @@ class Detections:
 
         return confidence
 
-    def _extrapolate_shape(self) -> Tuple[int, int]:
+    def _extrapolate_shape(self) -> Tuple[int, ...]:
         """Extrapolate shape from data
 
         Etiher given in data, or from the segmentation shape, or from the shape needed to fit positions/bboxes.
@@ -243,21 +285,22 @@ class Detections:
 
         """
         if "shape" in self.data:
-            return (int(self.data["shape"][0]), int(self.data["shape"][1]))
+            shape = tuple(map(int, self.data["shape"].tolist()))
+            assert len(shape) == self.dim
+            return shape
 
         if "segmentation" in self.data:
-            return (self.data["segmentation"].shape[0], self.data["segmentation"].shape[1])
+            return self.data["segmentation"].shape
 
         if self.length == 0:
-            return (1, 1)  # No data to extrapolate it.
+            return (1, 1, 1) if self.dim == 3 else (1, 1)  # No data to extrapolate it.
 
         if "bbox" in self.data:
-            maxi = self.data["bbox"][:, :2] + self.data["bbox"][:, 2:]
-            shape = maxi.max(dim=0).values
-            return (int(shape[0]), int(shape[1]))
+            maxi = self.data["bbox"][:, : self.dim] + self.data["bbox"][:, self.dim :]
+            return tuple(map(int, maxi.max(dim=0).values))
 
-        shape = self.data["position"].max(dim=0).values.ceil().int() + 1
-        return (int(shape[0]), int(shape[1]))
+        maxi = self.data["position"].max(dim=0).values.ceil().int() + 1
+        return tuple(map(int, maxi))
 
     def _extrapolate_position(self) -> torch.Tensor:
         """Extrapolate position from data
@@ -268,7 +311,7 @@ class Detections:
         if "segmentation" in self.data:
             return torch.tensor(_position_from_segmentation(self.data["segmentation"].numpy()))
 
-        return self.data["bbox"][:, :2] + (self.data["bbox"][:, 2:] - 1) / 2
+        return self.data["bbox"][:, : self.dim] + (self.data["bbox"][:, self.dim :] - 1) / 2
 
     def _extrapolate_bbox(self) -> torch.Tensor:
         """Extrapolate bbox from data
@@ -280,7 +323,7 @@ class Detections:
             return torch.tensor(_bbox_from_segmentation(self.data["segmentation"].numpy()))
 
         bbox = torch.ones((self.length, 4), dtype=torch.int32)
-        bbox[:, :2] = self.data["position"].round().int()
+        bbox[:, : self.dim] = self.data["position"].round().int()
         return bbox
 
     def _extrapolate_segmentation(self) -> torch.Tensor:

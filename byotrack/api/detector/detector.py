@@ -25,7 +25,7 @@ class Detector(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-
 
         Args:
             video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames (array).
-                Each array is expected to have a shape (H, W, C)
+                Each array is expected to have a shape ([D, ]H, W, C)
 
         Returns:
             Sequence[byotrack.Detections]: Detections for each frame (ordered by frames)
@@ -57,24 +57,36 @@ class BatchDetector(Detector):
         self.add_true_frames = add_true_frames
 
     def run(self, video: Union[Sequence[np.ndarray], np.ndarray]) -> List[byotrack.Detections]:
+        if len(video) == 0:
+            return []
+
         reader = None
         if self.add_true_frames and isinstance(video, byotrack.Video):
             reader = video.reader
 
         detections_sequence: List[byotrack.Detections] = []
-        batch: List[np.ndarray] = []
         frame_ids: List[int] = []
+        progress_bar = tqdm.tqdm(desc=self.progress_bar_description, total=len(video))
 
-        for i, frame in enumerate(tqdm.tqdm(video, self.progress_bar_description, miniters=self.batch_size)):
-            batch.append(frame[None, ...])
-            frame_ids.append(reader.tell() if reader else i)
+        first = video[0]
+        batch = np.zeros((self.batch_size, *first.shape), dtype=first.dtype)
+        batch[0] = first
+        n = 1
+        frame_ids.append(reader.tell() if reader else 0)
 
-            if len(batch) >= self.batch_size:
-                detections_sequence.extend(self.detect(np.concatenate(batch, axis=0)))
-                batch = []
+        for frame in video[1:]:
+            if n >= self.batch_size:
+                detections_sequence.extend(self.detect(batch))
+                progress_bar.update(n)
+                n = 0
 
-        if batch:
-            detections_sequence.extend(self.detect(np.concatenate(batch, axis=0)))
+            batch[n] = frame
+            frame_ids.append(reader.tell() if reader else len(frame_ids))
+            n += 1
+
+        detections_sequence.extend(self.detect(batch[:n]))
+        progress_bar.update(n)
+        progress_bar.close()
 
         # Set frame ids
         for frame_id, detections in zip(frame_ids, detections_sequence):
@@ -92,7 +104,7 @@ class BatchDetector(Detector):
 
         Args:
             batch (np.ndarray): Batch of video frames
-                Shape: (B, H, W, C)
+                Shape: (B, [D, ]H, W, C)
 
         Returns:
             Sequence[byotrack.Detections]: Detections for each given frame

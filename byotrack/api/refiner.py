@@ -26,7 +26,7 @@ class Refiner(ABC, ParametrizedObjectMixin):  # pylint: disable=too-few-public-m
 
         Args:
             video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames (array).
-                Each array is expected to have a shape (H, W, C)
+                Each array is expected to have a shape ([D, ]H, W, C)
             tracks (Collection[byotrack.Track]): Tracks of particles
 
         Returns:
