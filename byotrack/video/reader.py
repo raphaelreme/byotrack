@@ -428,10 +428,10 @@ class TiffVideoReader(VideoReader):
         slices = tuple(slice(None) if axis not in self.ax_slice else self.ax_slice[axis] for axis in self.axes)
 
         # Compute stride and offset for the out of page dimensions
-        strides = np.cumprod((1, *true_shape[-self._page_dim - 1 : 0 : -1]))
-        offset = np.array([0 if slice_.start is None else slice_.start for slice_ in slices])[-self._page_dim - 1 :: -1]
+        strides = np.cumprod((1, *true_shape[-self._page_dim - 1 : 0 : -1]))[::-1]
+        offset = np.array([0 if slice_.start is None else slice_.start for slice_ in slices])[: -self._page_dim]
         offset = (offset * strides).sum()
-        strides *= np.array([1 if slice_.step is None else slice_.step for slice_ in slices])[-self._page_dim - 1 :: -1]
+        strides *= np.array([1 if slice_.step is None else slice_.step for slice_ in slices])[: -self._page_dim]
 
         for index in np.ndindex(*self._current.shape[: -self._page_dim]):
             index_list = list(index)
@@ -583,10 +583,10 @@ class FrameTiffLoader:  # pylint: disable=too-few-public-methods
         final_shape = tuple(slice_length(slice_, shape) for slice_, shape in zip(slices, true_shape))
 
         # Compute stride and offset for the out of page dimensions
-        strides = np.cumprod((1, *true_shape[-page_dim - 1 : 0 : -1]))
-        offset = np.array([0 if slice_.start is None else slice_.start for slice_ in slices])[-page_dim - 1 :: -1]
+        strides = np.cumprod((1, *true_shape[-page_dim - 1 : 0 : -1]))[::-1]
+        offset = np.array([0 if slice_.start is None else slice_.start for slice_ in slices])[:-page_dim]
         offset = (offset * strides).sum()
-        strides *= np.array([1 if slice_.step is None else slice_.step for slice_ in slices])[-page_dim - 1 :: -1]
+        strides *= np.array([1 if slice_.step is None else slice_.step for slice_ in slices])[:-page_dim]
 
         output = np.zeros(final_shape, dtype=serie.keyframe.dtype)
 
