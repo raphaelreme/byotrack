@@ -49,6 +49,8 @@ def temporal_projection(
     A track is displayed as the line of its consecutive positions. Track's undefined positions
     are not displayed.
 
+    3d tracks and images are not supported
+
     Args:
         tracks_tensor (torch.Tensor): Tracks tensor (See `byotrack.Track.tensorize`)
             Positions of each track at each frame. (NaN if not defined).
@@ -121,15 +123,19 @@ def temporal_projection(
 class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
     """Interactive visualization with opencv
 
+    Supports 3D stacks (but you will only see one plane at a time in 2D).
+
     Keys:
         * `space`: Pause/Unpause the video
         * w/x: Move backward/forward in the video (when paused)
+        * b/n: Move backward/forward in depth (Z axis)
         * d: Switch detections display mode (Not displayed, Mask, Segmentation) if available
         * t: Switch on/off the display of tracks if available
         * v: Switch on/off the display of the video
 
     Attributes:
         video (Sequence[np.ndarray] | np.ndarray): Optional video to display.
+            Shape: (T, [D, ], H, W, C)
             Default: () (no frames)
         detections_sequence (Sequence[byotrack.Detections]): Optional detections to display
             Default: () (no detections)
@@ -163,8 +169,11 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
 
         self.tracks_colors = _colors[:: max(1, len(_colors) // (len(tracks) + 1))]
         self.scale = 1
+        self.interpolation = cv2.INTER_NEAREST
 
         self._frame_id = 0
+        self._video_frame = self.video[self._frame_id] if len(self.video) != 0 else np.zeros((*self.frame_shape, 0))
+        self._stack_id = 0 if len(self.frame_shape) != 3 else self.frame_shape[0] // 2
         self._display_video = int(len(video) != 0)
         self._display_detections = int(bool(detections_sequence))
         self._display_tracks = int(bool(tracks))
@@ -183,31 +192,39 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
         finally:
             cv2.destroyWindow(self.window_name)
 
-    def _run(self, fps=20) -> None:  # pylint: disable=too-many-branches
+    def _run(self, fps=20) -> None:  # pylint: disable=too-many-branches,too-many-statements
         while True:
-            frame = np.zeros((*self.frame_shape, 3), dtype=np.uint8)
+            frame = np.zeros((*self.frame_shape[-2:], 3), dtype=np.uint8)
 
             if self._display_video and len(self.video) != 0:
-                _frame = self.video[self._frame_id]
+                _frame = self._video_frame
+                if len(self.frame_shape) == 3:
+                    _frame = _frame[self._stack_id]
                 _frame = _frame * 255 if np.issubdtype(_frame.dtype, np.floating) else _frame
-                frame = _frame.astype(np.uint8)
-                assert frame.shape[2] in (1, 3)
-
-                if frame.shape[2] == 1:
-                    frame = np.concatenate([frame] * 3, axis=2)
+                frame[:] = _frame.astype(np.uint8)  # We only support grayscale (C=1) and RGB (C=3)
 
             if self._display_detections and 0 <= self._frame_id < len(self.detections_sequence):
-                segmentation: np.ndarray = self.detections_sequence[self._frame_id].segmentation.clone().numpy()
+                segmentation: np.ndarray
+                if self.detections_sequence[self._frame_id].dim == 3:
+                    segmentation = self.detections_sequence[self._frame_id].segmentation[self._stack_id].clone().numpy()
+                else:
+                    segmentation = self.detections_sequence[self._frame_id].segmentation.clone().numpy()
+
                 if self._display_detections == 1:  # Display segmentation as mask
                     segmentation = segmentation != 0
                     segmentation = segmentation.astype(np.uint8)[..., None] * 255
                 else:
                     segmentation = (segmentation % 206) + 50
-                    segmentation[self.detections_sequence[self._frame_id].segmentation == 0] = 0
+
+                    if self.detections_sequence[self._frame_id].dim == 3:
+                        segmentation[self.detections_sequence[self._frame_id].segmentation[self._stack_id] == 0] = 0
+                    else:
+                        segmentation[self.detections_sequence[self._frame_id].segmentation == 0] = 0
+
                     segmentation = segmentation.astype(np.uint8)[..., None]
 
                 segmentation = np.concatenate(
-                    [segmentation, np.zeros_like(segmentation), np.zeros_like(segmentation)], axis=2
+                    [np.zeros_like(segmentation), np.zeros_like(segmentation), segmentation], axis=2
                 )
 
                 if self._display_video:
@@ -217,13 +234,21 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
                     frame = segmentation
 
             if self.scale != 1:
-                frame = cv2.resize(frame, None, fx=self.scale, fy=self.scale)  # type: ignore
+                frame = cv2.resize(  # type: ignore
+                    frame, None, fx=self.scale, fy=self.scale, interpolation=self.interpolation
+                )
 
             if self._display_tracks:
                 for track in self.tracks:
                     point = track[self._frame_id] * self.scale
                     if torch.isnan(point).any():
                         continue
+
+                    if len(point) == 3:
+                        if (point[0] / self.scale - self._stack_id).abs() > 5:
+                            continue  # Do not display tracks that are more than 5 stacks away
+
+                        point = point[1:]  # Remove depth axis
 
                     i, j = point.round().to(torch.int).tolist()
 
@@ -235,15 +260,19 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
                     )
 
             # Display the resulting frame
-            cv2.imshow(self.window_name, frame)
-            cv2.setWindowTitle(self.window_name, f"Frame {self._frame_id} / {self.n_frames}")
+            cv2.imshow(self.window_name, np.flip(frame, 2))
+
+            title = f"Frame {self._frame_id} / {self.n_frames}"
+            if len(self.frame_shape) == 3:
+                title += f", Stack {self._stack_id} / {self.frame_shape[0]}"
+            cv2.setWindowTitle(self.window_name, title)
 
             # Handle user actions
             key = cv2.waitKey(1000 // fps) & 0xFF
             if self.handle_actions(key):
                 break
 
-    def handle_actions(self, key: int) -> bool:
+    def handle_actions(self, key: int) -> bool:  # pylint: disable=too-many-branches
         """Handle inputs from user
 
         Return True to quit
@@ -263,6 +292,8 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
         if key == ord(" "):
             self._running = not self._running
 
+        old_frame_id = self._frame_id
+
         if not self._running and key == ord("w"):  # Prev
             self._frame_id = (self._frame_id - 1) % self.n_frames
 
@@ -275,6 +306,15 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
                 self._running = False
                 self._frame_id = self.n_frames - 1
 
+        if self._frame_id != old_frame_id and len(self.video) != 0:
+            self._video_frame = self.video[self._frame_id]  # Read video only once when we change change frame_id
+
+        if len(self.frame_shape) == 3 and key == ord("b"):
+            self._stack_id = (self._stack_id - 1) % self.frame_shape[0]
+
+        if len(self.frame_shape) == 3 and key == ord("n"):
+            self._stack_id = (self._stack_id + 1) % self.frame_shape[0]
+
         if key == ord("d"):
             self._display_detections = (self._display_detections + 1) % 3
 
@@ -286,23 +326,29 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
 
         return False
 
-    def _get_frame_shape(self) -> Tuple[int, int]:
-        frame_shape: Tuple[int, int] = (1, 1)
+    def _get_frame_shape(self) -> Tuple[int, ...]:
+        dim = 0
         if len(self.video) != 0:
-            frame_shape = np.broadcast_shapes(frame_shape, self.video[0].shape[:2])  # type: ignore
+            frame_shape = self.video[0].shape[:-1]
+            dim = len(frame_shape)
         if self.detections_sequence:
-            frame_shape = np.broadcast_shapes(frame_shape, self.detections_sequence[0].shape)  # type: ignore
+            if dim:
+                frame_shape = np.broadcast_shapes(frame_shape, self.detections_sequence[0].shape)
+                assert len(frame_shape) <= dim, "Unable to handle 3D detections with 2D videos"
+            else:
+                frame_shape = self.detections_sequence[0].shape
+                dim = len(frame_shape)
         if self.tracks:
             track_tensor = byotrack.Track.tensorize(self.tracks)
             positions = track_tensor[~torch.isnan(track_tensor).any(dim=2)]
             minimum: torch.Tensor = positions.min(dim=0).values.round()
             maximum: torch.Tensor = positions.max(dim=0).values.round()
 
-            if frame_shape == (1, 1):
-                size = (maximum + 20).to(torch.int).tolist()  # Add some margin
-                frame_shape = (size[0], size[1])
+            if not dim:
+                frame_shape = tuple(map(int, maximum + 20))  # Add some margin
+                dim = len(frame_shape)
 
-            if (minimum < 0).any() or maximum[0] >= frame_shape[0] or maximum[1] >= frame_shape[1]:
+            if (minimum < 0).any() or (maximum[:dim] >= torch.tensor(frame_shape)[:dim]).any():
                 print("Some tracks are out of frame")
 
         return frame_shape
@@ -327,6 +373,8 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
     The video is displayed with a uniform grid (control points) above that moves according to the computed flow map.
     If the optical flow algorithm is good, the points should moves along the video.
 
+    It only supports 2D videos.
+
     Keys:
         * `space`: Pause/Unpause the video
         * w/x: Move backward/forward in the video (when paused)
@@ -337,7 +385,8 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
         You should not use this function with too large videos. (Use slicing to reduce the size of a video)
 
     Attributes:
-        video (Sequence[np.ndarray] | np.ndarray): The video of interest
+        video (Sequence[np.ndarray] | np.ndarray): The video of interest (2D)
+            Shape: (T, H, W, C)
         optflow (byotrack.OpticalFlow): Optical flow algorithm to visualize
         grid_step (int): size (in pixels) between control points
         points (np.ndarray): Control points (grid)
@@ -367,7 +416,10 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
         # Cache
         self._flow_maps: Dict[Tuple[int, int], np.ndarray] = {}
 
-        self.frame_shape = video[0].shape[:2]
+        self.frame_shape = video[0].shape[:-1]
+        if len(self.frame_shape) != 2:
+            raise ValueError("This visualization only supports 2D videos")
+
         self.n_frames = len(video)
         self.colors = _colors
         self.scale = 1
@@ -444,7 +496,7 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
                 cv2.circle(draw, (round(j), round(i)), 3, self.colors[k % len(self.colors)])
 
             # Display the resulting frame
-            cv2.imshow(self.window_name, draw)
+            cv2.imshow(self.window_name, np.flip(draw, 2))
             cv2.setWindowTitle(self.window_name, f"Frame {self._frame_id} / {self.n_frames}")
 
             # Handle user actions
