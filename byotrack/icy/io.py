@@ -52,6 +52,9 @@ def save_detections(detections_sequence: Sequence[byotrack.Detections], path: Un
 
     """
     ## XXX: Support for 3D images
+    if detections_sequence[0].dim == 3:
+        raise NotImplementedError("Saving 3D detections into icy format is not supported yet")
+
     root = ET.Element("root")
     for frame_id, detections in enumerate(detections_sequence):
         for label, bbox in enumerate(detections.bbox):
@@ -125,7 +128,7 @@ def load_tracks(path: Union[str, os.PathLike]) -> List[byotrack.Track]:
         unused_z = True
         for point in track:
             frames.append(int(point.attrib["t"]))
-            points.append((float(point.attrib["y"]), float(point.attrib["x"]), float(point.attrib["z"])))
+            points.append((float(point.attrib["z"]), float(point.attrib["y"]), float(point.attrib["x"])))
             if float(point.attrib["z"]) > 0:
                 unused_z = False
 
@@ -193,11 +196,14 @@ def save_tracks(tracks: Collection[byotrack.Track], path: Union[str, os.PathLike
                 frame += 1
                 continue  # No detection for this frame
 
-            x = str(point[1].item())
-            y = str(point[0].item())
-            z = "-1"
-            if point.shape[0] > 2:
-                z = str(point[2].item())
+            if point.shape[0] == 3:
+                x = str(point[2].item())
+                y = str(point[1].item())
+                z = str(point[0].item())
+            else:
+                x = str(point[1].item())
+                y = str(point[0].item())
+                z = "-1"
 
             ET.SubElement(
                 track_element,

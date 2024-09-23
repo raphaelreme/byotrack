@@ -10,6 +10,8 @@ import torch
 
 import byotrack
 
+# TODO: Handle 3D ?
+
 
 def save_detections(detections_sequence: Sequence[byotrack.Detections], path: Union[str, os.PathLike]) -> None:
     """Save a sequence of detections as a stack of segmentation that can be reload by the trackmate label detector
