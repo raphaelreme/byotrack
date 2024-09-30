@@ -49,7 +49,12 @@ class ChannelAvg:
     """
 
     def __call__(self, frame: np.ndarray) -> np.ndarray:
-        return np.mean(frame, axis=-1, keepdims=True)
+        if frame.shape[-1] == 1:
+            return frame
+        if frame.dtype is np.float32:
+            np.mean(frame, axis=-1, keepdims=True, out=frame[..., :1])
+            return frame
+        return np.mean(frame, axis=-1, keepdims=True, out=np.zeros(frame[..., :1].shape, dtype=np.float32))
 
 
 class ScaleAndNormalize:
@@ -61,9 +66,9 @@ class ScaleAndNormalize:
         q_min (float): Quantile of the minimum value to consider
         q_max (float): Quantile of the maximum value to consider
         mini (np.ndarray): Minimum value kept (one for each channel)
-            Shape: (C, )
+            Shape: (C, ), dtype: float32
         maxi (np.ndarray): Maximum value kept (one for each channel)
-            Shape: (C, )
+            Shape: (C, ), dtype: float32
         smooth_clip (float): Smoothness of the clipping process
             If 0, values are clipped on mini/maxi
             Else, values above maxi are log clipped:
@@ -71,7 +76,7 @@ class ScaleAndNormalize:
             Typical values are between 0 and 1.
             Default: 0 (hard clipping)
         max (np.ndarray): True maximum values (one for each channel) when using smooth clipping
-            Shape: (C, )
+            Shape: (C, ), dtype: float32
         compute_stats_on (int): Max number of frames to compute stats on.
             It prevents heavy computations that can occurs with large videos.
             Default: 50
@@ -82,15 +87,15 @@ class ScaleAndNormalize:
 
     Returns:
         np.ndarray: Normalized version of the frame in [0, 1]
-            Shape: (..., C)
+            Shape: (..., C), dtype: float32
 
     """
 
     def __init__(self, q_min: float, q_max: float, smooth_clip: float = 0, compute_stats_on: int = 50) -> None:
         self.q_min = q_min
         self.q_max = q_max
-        self.mini = np.array([0.0])
-        self.maxi = np.array([1.0])
+        self.mini = np.array([0])
+        self.maxi = np.array([1])
         self.smooth_clip = smooth_clip
         self.max = np.array([1.0])
         self.compute_stats_on = compute_stats_on
@@ -105,22 +110,27 @@ class ScaleAndNormalize:
         """
         axis = tuple(range(frames.ndim - 1))
         frames = frames[: self.compute_stats_on]
-        self.mini = np.quantile(frames, self.q_min, axis=axis)
-        self.maxi = np.quantile(frames, self.q_max, axis=axis)
+        self.mini = np.quantile(frames, self.q_min, axis=axis).astype(frames.dtype)
+        self.maxi = np.quantile(frames, self.q_max, axis=axis).astype(frames.dtype)
 
         if self.smooth_clip > 0:
-            ratio = frames.max(axis=axis) / (self.maxi + (self.maxi == 0))
+            ratio = frames.max(axis=axis).astype(np.float32) / (self.maxi + (self.maxi == 0))
             self.max = 1 + 0.5 * np.log(np.maximum(1, 1 + (ratio - 1) / 0.5))
 
     def __call__(self, frame: np.ndarray) -> np.ndarray:
         if self.smooth_clip <= 0:  # No smooth clip
-            frame = np.clip(frame, self.mini, self.maxi)
+            np.clip(frame, self.mini, self.maxi, out=frame)
             frame -= self.mini
-            frame /= self.maxi - self.mini + (self.maxi == self.mini)  # Divide by one if mini == maxi
-            return frame
 
-        frame = (frame - self.mini) / (self.maxi - self.mini + (self.maxi == self.mini))
+            # Divide by one if mini == maxi
+            return frame.astype(np.float32) / (self.maxi - self.mini + (self.maxi == self.mini))
+
+        np.clip(frame, self.mini, None, out=frame)
+        frame -= self.mini
+        frame = frame.astype(np.float32) / (self.maxi - self.mini + (self.maxi == self.mini))
+
         # Log cliping high values
-        frame[frame > 1] = 1 + self.smooth_clip * np.log((frame[frame > 1] - 1) / self.smooth_clip + 1)
-        np.clip(frame, 0, self.max, frame)
+        mask = frame > 1
+        frame[mask] = 1 + self.smooth_clip * np.log((frame[mask] - 1) / self.smooth_clip + 1)
+        np.clip(frame, 0, self.max, out=frame)
         return frame / self.max
