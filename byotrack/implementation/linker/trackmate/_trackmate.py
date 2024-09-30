@@ -1,6 +1,6 @@
-# @String detections
-# @String parameters
-# @String tracks
+# @ String detections
+# @ String parameters
+# @ String tracks
 
 # pylint: skip-file
 # type: ignore
@@ -34,8 +34,6 @@ print("Loading detections from", detections)
 
 # Load detections as an image (As we use LabelImageDetector)
 imp = IJ.openImage(detections)
-imp.setStack(imp.getStack(), 1, 1, imp.getStackSize())
-imp.show()
 
 # ----------------------------
 # Create the model object now

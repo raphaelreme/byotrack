@@ -10,8 +10,6 @@ import torch
 
 import byotrack
 
-# TODO: Handle 3D ?
-
 
 def save_detections(detections_sequence: Sequence[byotrack.Detections], path: Union[str, os.PathLike]) -> None:
     """Save a sequence of detections as a stack of segmentation that can be reload by the trackmate label detector
@@ -22,14 +20,23 @@ def save_detections(detections_sequence: Sequence[byotrack.Detections], path: Un
         path (str | os.PathLike): Output path
 
     """
-    segmentations = np.concatenate([detections.segmentation[None].numpy() for detections in detections_sequence])
-    tifffile.imwrite(path, segmentations, photometric="minisblack")
+    dim = 2
+    if detections_sequence:
+        dim = detections_sequence[0].dim
+
+    segmentations = np.concatenate(
+        [detections.segmentation[None].numpy().astype(np.uint16) for detections in detections_sequence]
+    )
+    if dim == 2:
+        segmentations = segmentations[:, None, None, ..., None]  # ImageJ tiff format: TZCYXS
+    else:
+        segmentations = segmentations[:, :, None, ..., None]  # ImageJ tiff format: TZCYXS
+
+    tifffile.imwrite(path, segmentations, imagej=True)
 
 
-def load_tracks(path: Union[str, os.PathLike]) -> List[byotrack.Track]:
+def load_tracks(path: Union[str, os.PathLike]) -> List[byotrack.Track]:  # pylint: disable=too-many-locals
     """Load tracks saved by trackmate
-
-    Currently only 2d tracks are supported
 
     Format example:
 
@@ -65,6 +72,7 @@ def load_tracks(path: Union[str, os.PathLike]) -> List[byotrack.Track]:
     assert model is not None, "Data not found in file"
 
     # Load all spots to rebuild tracks
+    z_s = set()
     spots = {}
     for frame_spots in model.findall("AllSpots")[0]:
         for spot in frame_spots:
@@ -72,7 +80,11 @@ def load_tracks(path: Union[str, os.PathLike]) -> List[byotrack.Track]:
                 int(frame_spots.attrib["frame"]),
                 float(spot.attrib["POSITION_X"]),
                 float(spot.attrib["POSITION_Y"]),
+                float(spot.attrib["POSITION_Z"]),
             )
+            z_s.add(float(spot.attrib["POSITION_Z"]))
+
+    dim = 2 if len(z_s) == 1 else 3
 
     # Go through tracks and rebuild from edges
     for track in model.findall("AllTracks")[0].findall("Track"):
@@ -83,11 +95,11 @@ def load_tracks(path: Union[str, os.PathLike]) -> List[byotrack.Track]:
 
         old_frame = start - 1
         points = []
-        for frame, x, y in spot_data:
+        for frame, x, y, z in spot_data:
             # Extend with nan if there is a temporal gap
             assert frame > old_frame, "Splitting tracks are not supported (mutliple nodes at the same time)"
-            points.extend([[torch.nan, torch.nan]] * (frame - old_frame - 1))
-            points.append([y, x])
+            points.extend([[torch.nan] * dim] * (frame - old_frame - 1))
+            points.append([z, y, x] if dim == 3 else [y, x])
             old_frame = frame
 
         tracks.append(byotrack.Track(start, torch.tensor(points), int(track.attrib["TRACK_ID"])))

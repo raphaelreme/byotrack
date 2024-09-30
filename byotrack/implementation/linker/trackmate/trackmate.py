@@ -101,7 +101,7 @@ class TrackMateParameters:  # pylint: disable=too-many-instance-attributes
 class TrackMateLinker(byotrack.Linker):  # pylint: disable=too-few-public-methods
     """Run TrackMate [7, 8] from Fiji [6]
 
-    Wrapper around TrackMate, using Fiji headless call/
+    Wrapper around TrackMate, using Fiji headless call. Supports 2D and 3D frames.
 
     About TrackMate:
     It is a global distance minimization tracking. It supports multiple algorithms. We have wrapped the more advanced
