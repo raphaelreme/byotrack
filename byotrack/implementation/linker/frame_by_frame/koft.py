@@ -203,20 +203,19 @@ class KOFTLinker(KalmanLinker):
         self.projections = self.kalman_filter.project(self.active_states)
 
     def cost(self, _: np.ndarray, detections: byotrack.Detections) -> Tuple[torch.Tensor, float]:
-        dim = detections.position.shape[1]
         if self.active_states is None or self.kalman_filter is None:
             self.kalman_filter = torch_kf.ckf.constant_kalman_filter(
                 self.specs.detection_std,
                 self.specs.process_std,
-                dim,
+                detections.dim,
                 self.specs.kalman_order,
                 approximate=True,  # Approximate so that a flow precisely means the velocity modeled here
             )
             # Doubles the measurement space to measure velocity
-            self.kalman_filter.measurement_matrix = torch.eye(dim * 2, self.kalman_filter.state_dim)
-            self.kalman_filter.measurement_noise = torch.eye(dim * 2)
-            self.kalman_filter.measurement_noise[:dim, :dim] *= self.specs.detection_std**2
-            self.kalman_filter.measurement_noise[dim:, dim:] *= self.specs.flow_std**2
+            self.kalman_filter.measurement_matrix = torch.eye(detections.dim * 2, self.kalman_filter.state_dim)
+            self.kalman_filter.measurement_noise = torch.eye(detections.dim * 2)
+            self.kalman_filter.measurement_noise[: detections.dim, : detections.dim] *= self.specs.detection_std**2
+            self.kalman_filter.measurement_noise[detections.dim :, detections.dim :] *= self.specs.flow_std**2
 
             self.active_states = torch_kf.GaussianState(
                 torch.empty((0, self.kalman_filter.state_dim, 1)),
@@ -228,20 +227,27 @@ class KOFTLinker(KalmanLinker):
             raise RuntimeError("Projections should already be initialized.")
 
         if self.specs.cost == Cost.EUCLIDEAN:
-            return torch.cdist(self.projections.mean[:, :dim, 0], detections.position), self.specs.association_threshold
+            return (
+                torch.cdist(self.projections.mean[:, : detections.dim, 0], detections.position),
+                self.specs.association_threshold,
+            )
 
         if self.specs.cost == Cost.EUCLIDEAN_SQ:
             return (
-                torch.cdist(self.projections.mean[:, :dim, 0], detections.position).pow_(2),
+                torch.cdist(self.projections.mean[:, : detections.dim, 0], detections.position).pow_(2),
                 self.specs.association_threshold**2,
             )
 
         # Restrict projections onto positions
         # NOTE: Following KOFT official implem, we use (cov-1)[:2, :2] instead of (cov[:2, :2])-1 for the precision.
         projections = torch_kf.GaussianState(
-            self.projections.mean[:, :dim],
-            self.projections.covariance[:, :dim, :dim],
-            self.projections.precision[:, :dim, :dim] if self.projections.precision is not None else None,
+            self.projections.mean[:, : detections.dim],
+            self.projections.covariance[:, : detections.dim, : detections.dim],
+            (
+                self.projections.precision[:, : detections.dim, : detections.dim]
+                if self.projections.precision is not None
+                else None
+            ),
         )
 
         if self.specs.cost == Cost.MAHALANOBIS:
@@ -265,19 +271,17 @@ class KOFTLinker(KalmanLinker):
 
         self.last_detections = detections  # Save detections (May be required)
 
-        dim = detections.position.shape[1]
-
         # Update the state of associated tracks (unassociated tracks keep the predicted state)
         self.active_states[links[:, 0]] = self.kalman_filter.update(
             self.active_states[links[:, 0]],
             detections.position[links[:, 1]][..., None],
             torch_kf.GaussianState(
-                self.projections.mean[links[:, 0], :dim],
-                self.projections.covariance[links[:, 0], :dim, :dim],
+                self.projections.mean[links[:, 0], : detections.dim],
+                self.projections.covariance[links[:, 0], : detections.dim, : detections.dim],
                 None,  # /!\ inv(cov[:2,:2]) != inv(cov)[:2, :2] =>
             ),
-            self.kalman_filter.measurement_matrix[:dim],
-            self.kalman_filter.measurement_noise[:dim, :dim],
+            self.kalman_filter.measurement_matrix[: detections.dim],
+            self.kalman_filter.measurement_noise[: detections.dim, : detections.dim],
         )
 
         # Update active track handlers
@@ -304,8 +308,10 @@ class KOFTLinker(KalmanLinker):
             * self.kalman_filter.process_noise.max()
             * 100,
         )
-        initial_state.mean[:, :dim, 0] = unmatched_measures
-        initial_state.covariance[:, :dim, :dim] = self.kalman_filter.measurement_noise[:dim, :dim]
+        initial_state.mean[:, : detections.dim, 0] = unmatched_measures
+        initial_state.covariance[:, : detections.dim, : detections.dim] = self.kalman_filter.measurement_noise[
+            : detections.dim, : detections.dim
+        ]
 
         # Merge still active states with the initial ones of the created tracks
         self.active_states = torch_kf.GaussianState(
@@ -327,7 +333,7 @@ class KOFTLinker(KalmanLinker):
                 )
             )
         else:
-            self.all_positions.append(self.active_states.mean[:, :2, 0])
+            self.all_positions.append(self.active_states.mean[:, : detections.dim, 0])
 
         if self.save_all or self.specs.track_building == TrackBuilding.SMOOTHED:
             self.all_states.append(self.active_states)

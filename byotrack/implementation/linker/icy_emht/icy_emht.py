@@ -189,6 +189,7 @@ class IcyEMHTLinker(byotrack.Linker):  # pylint: disable=too-few-public-methods
     """Run EMHT [4] from Icy [1]
 
     This code is only a wrapper arounds Icy implementation as EMHT is painful to implement.
+    It does not supports 3D yet.
 
     About EMHT:
     It is a probabilistic tracking that uses statistical motion model on particles. It uses multiple

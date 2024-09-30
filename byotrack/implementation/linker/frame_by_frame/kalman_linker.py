@@ -219,7 +219,7 @@ class KalmanLinker(FrameByFrameLinker):
             self.kalman_filter = torch_kf.ckf.constant_kalman_filter(
                 self.specs.detection_std,
                 self.specs.process_std,
-                detections.position.shape[1],
+                detections.dim,
                 self.specs.kalman_order,
             )
             self.active_states = torch_kf.GaussianState(
@@ -309,7 +309,7 @@ class KalmanLinker(FrameByFrameLinker):
                 )
             )
         else:
-            self.all_positions.append(self.active_states.mean[:, :2, 0])
+            self.all_positions.append(self.active_states.mean[:, : detections.dim, 0])
 
         if self.save_all or self.specs.track_building == TrackBuilding.SMOOTHED:
             self.all_states.append(self.active_states)
