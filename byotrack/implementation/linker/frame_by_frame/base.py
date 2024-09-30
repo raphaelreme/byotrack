@@ -21,18 +21,22 @@ class AssociationMethod(enum.Enum):
         Select the best match between tracks and detections iteratively until
         no match can be selected below the cost limit eta. It is usually not optimal for tracking
         but it is much faster.
-    * OPT_HARD
+    * [SPARSE_]OPT_HARD
         Solve the linear association problem (see `pylapy`).
         Hard threshold the association matrix with the cost limit eta.
-    * OPT_SMOOTH
+        Use the sparse version to increase speed with numerous particles.
+    * [SPARSE_]OPT_SMOOTH
         Solve a cost_limit extended association problem (see `pylapy`)
         It relaxes the linear association problem, allowing to not link a node
         for the cost limit eta.
+        Use the sparse version to increase speed with numerous particles.
     """
 
     GREEDY = "greedy"
     OPT_HARD = "opt_hard"
     OPT_SMOOTH = "opt_smooth"
+    SPARSE_OPT_HARD = "sparse_opt_hard"
+    SPARSE_OPT_SMOOTH = "sparse_opt_smooth"
 
     def solve(self, cost: torch.Tensor, eta: float = np.inf) -> torch.Tensor:
         """Solve tracks-to-detections association
@@ -47,6 +51,11 @@ class AssociationMethod(enum.Enum):
             torch.Tensor: Links (i, j)
                 Shape: (L, 2), dtype: int32
         """
+        if self == AssociationMethod.SPARSE_OPT_HARD:
+            return torch.tensor(pylapy.LapSolver().sparse_solve(cost.numpy(), eta, hard=True).astype(np.int32))
+
+        if self == AssociationMethod.SPARSE_OPT_SMOOTH:
+            return torch.tensor(pylapy.LapSolver().sparse_solve(cost.numpy(), eta, hard=False).astype(np.int32))
 
         if self == AssociationMethod.OPT_HARD:
             cost[cost > eta] = np.inf
