@@ -8,7 +8,6 @@ from stardist.models import StarDist2D  # type: ignore
 import torch
 
 import byotrack
-from byotrack.api.detector.detections import relabel_consecutive
 
 
 class StarDistDetector(byotrack.BatchDetector):
@@ -20,6 +19,7 @@ class StarDistDetector(byotrack.BatchDetector):
     Granada, Spain, September 2018.
 
     We do not provide any code to train the stardist model. You can only use a trained or pretrained model.
+    We currently only wraps the 2D model of stardist.
 
     Note:
         This module requires `stardist` lib to be installed (with tensorflow). Please follow the instruction of the
@@ -59,7 +59,7 @@ class StarDistDetector(byotrack.BatchDetector):
             detections_list.append(
                 byotrack.Detections(
                     {
-                        "segmentation": relabel_consecutive(torch.tensor(segmentation, dtype=torch.int32)),
+                        "segmentation": torch.tensor(segmentation, dtype=torch.int32),
                         "confidence": torch.tensor(data["prob"], dtype=torch.float32),
                         # Could use points data for position (but has been rounded to int, let's be more precise)
                         # "position": torch.tensor(data["points"], dtype=torch.float32),

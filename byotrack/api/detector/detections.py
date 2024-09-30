@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Dict, List, Sequence, Tuple, Union
+from typing import Dict, List, Sequence, Tuple, Union, overload
 
 import numba  # type: ignore
 import numpy as np
@@ -14,9 +14,6 @@ def _check_segmentation(segmentation: torch.Tensor) -> None:
     """Check segmentation validity (type, shape, labels)"""
     assert len(segmentation.shape) in (2, 3)
     assert segmentation.dtype is torch.int32
-
-    # Check that labels are in [0:N+1]
-    assert torch.unique(segmentation).shape[0] == segmentation.max() + 1, "Labels are not consecutive"
 
 
 def _check_bbox(bbox: torch.Tensor) -> None:
@@ -117,32 +114,79 @@ def _segmentation_from_position(position: torch.Tensor, shape: Tuple[int, ...]) 
     return segmentation
 
 
-def relabel_consecutive(segmentation: torch.Tensor) -> torch.Tensor:
+@numba.njit(parallel=True)
+def _fast_unique(segmentation: np.ndarray) -> np.ndarray:
+    """Fast np.unique/torch.unique
+
+    It is 30 to 60 times faster than its counterparts, but it assumes that seg.max() is small
+    before the number of pixels of the image (which is always the case in practice).
+    """
+    segmentation = segmentation.reshape(-1)
+    unique = np.zeros(segmentation.max() + 1, dtype=np.bool_)
+
+    for i in numba.prange(segmentation.size):  # pylint: disable=not-an-iterable
+        unique[segmentation[i]] = True
+
+    return np.arange(segmentation.max() + 1)[unique]
+
+
+@numba.njit(parallel=True)
+def _fast_relabel(segmentation: np.ndarray):
+    """Inplace fast relabel
+
+    It assumes that seg.max() is small before the number of pixels of the image (which is always the case in practice).
+    """
+    segmentation = segmentation.reshape(-1)
+    unique = np.zeros(segmentation.max() + 1, dtype=segmentation.dtype)
+
+    for i in numba.prange(segmentation.size):  # pylint: disable=not-an-iterable
+        unique[segmentation[i]] = 1
+
+    unique[unique > 0] = np.arange(unique.sum())
+
+    for i in numba.prange(segmentation.size):  # pylint: disable=not-an-iterable
+        if segmentation[i]:
+            segmentation[i] = unique[segmentation[i]]
+
+
+@overload
+def relabel_consecutive(segmentation: torch.Tensor, inplace=True) -> torch.Tensor: ...
+
+
+@overload
+def relabel_consecutive(segmentation: np.ndarray, inplace=True) -> np.ndarray: ...
+
+
+def relabel_consecutive(segmentation: Union[torch.Tensor, np.ndarray], inplace=True) -> Union[torch.Tensor, np.ndarray]:
     """Relabel a segmentation mask so that labels are consecutives
 
     For N instances, labels are 0 for background and then [1:N] for each instance.
 
     Args:
-        segmentation (torch.Tensor): Segmentation mask
-            Shape: (H, W), dtype: int32
+        segmentation (torch.Tensor | np.ndarray): Segmentation mask
+            Shape: (*S), dtype: int32
+        inplace (bool): Modify in place the segmentation mask
+            Default: True
 
     Returns:
-        torch.Tensor: The same segmentation mask where labels are consecutive (from 1 to N)
+        torch.Tensor | np.ndarray: The same segmentation mask where labels are consecutive (from 1 to N)
 
     """
-    labels: torch.Tensor = torch.unique(segmentation)
-    max_label = labels.max().item()
+    seg_np: np.ndarray
+    if isinstance(segmentation, torch.Tensor):
+        if not inplace:
+            segmentation = segmentation.clone()
 
-    assert isinstance(max_label, int)
+        seg_np = segmentation.numpy()  # Shares the same data with segmentation that will be modify in place
+    else:
+        if not inplace:
+            segmentation = segmentation.copy()
 
-    if max_label + 1 == labels.shape[0]:
-        return segmentation  # Nothing to do
+        seg_np = segmentation
 
-    # Has to go to int64 has torch does not support indexing with int32 yet
-    mapping = torch.zeros(max_label + 1, dtype=torch.int64)
-    mapping[labels.to(torch.int64)] = torch.arange(labels.shape[0])
+    _fast_relabel(seg_np)
 
-    return mapping[segmentation.to(torch.int64)].to(torch.int32)
+    return segmentation
 
 
 class Detections:
@@ -222,6 +266,7 @@ class Detections:
 
         if "segmentation" in data:
             _check_segmentation(data["segmentation"])
+            relabel_consecutive(data["segmentation"])  # Relabel inplace
             length = int(data["segmentation"].max())
             dim = data["segmentation"].ndim
 
