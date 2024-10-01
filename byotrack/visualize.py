@@ -534,3 +534,60 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
             self.points = self._grid
 
         return False
+
+
+def flow_to_rgb(flow: np.ndarray, clip: Optional[float] = None) -> np.ndarray:
+    """Converts a 2D optical flow into a RBG map
+
+    The angle is converted into a color, the magnitude into luminosity.
+    (Follow what is done by OpenCV for visualization)
+
+    See `get_flow_wheel` to get the color wheel for each direction.
+
+    Args:
+        flow (np.ndarray): Flow to convert to rgb
+            Shape: (2, H, W)
+        clip (Optional[float]): Clip the magnitude to this maximum value
+            Default: None
+
+    Returns:
+        np.ndarray: RGB flow visualization
+            Shape: (H, W, 3)
+
+    """
+    hsv = np.zeros((*flow.shape[1:], 3), dtype=np.uint8)
+
+    magnitude, angle = cv2.cartToPolar(flow[1], flow[0])
+    if clip is not None:
+        magnitude = np.clip(magnitude, 0, clip)
+    else:
+        clip = magnitude.max()
+
+    hsv[..., 0] = angle * 180 / np.pi / 2
+    hsv[..., 1] = 255
+    hsv[..., 2] = magnitude / clip * 255
+
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+
+
+def get_flow_wheel(size=128, mask=True) -> np.ndarray:
+    """Build the color wheel that is used for `flow_to_rgb`
+
+    Args:
+        size (int): The generated wheel will have 2 * size + 1 width and height.
+            Default: 128
+        mask (bool): Mask values outside of the circle centered on the middle.
+            Default: True
+
+    Returns:
+        np.ndarray: Color wheel
+            Shape: (2 * size + 1, 2 * size + 1, 3)
+
+    """
+    wheel = np.indices((2 * size, 2 * size), dtype=np.float32) - size
+
+    if mask:
+        mask = np.sqrt(np.sum(wheel**2, axis=0)) > size
+        wheel[:, mask] = 0
+
+    return flow_to_rgb(wheel, size)
