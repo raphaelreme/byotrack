@@ -408,7 +408,7 @@ class Detections:
             path (str | os.PathLike): Input path
 
         """
-        data = torch.load(path, map_location="cpu")
+        data = torch.load(path, map_location="cpu", weights_only=True)
         assert isinstance(data, dict)
         frame_id = data.pop("frame_id")
 

@@ -211,7 +211,7 @@ class Track:
             path (str | os.PathLike): Input path
 
         """
-        data: dict = torch.load(path, map_location="cpu")
+        data: dict = torch.load(path, map_location="cpu", weights_only=True)
         offset: int = data.get("offset", 0)
         points: torch.Tensor = data["points"]
         ids: torch.Tensor = data["ids"]
