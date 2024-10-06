@@ -164,7 +164,7 @@ def relabel_consecutive(segmentation: Union[torch.Tensor, np.ndarray], inplace=T
 
     Args:
         segmentation (torch.Tensor | np.ndarray): Segmentation mask
-            Shape: (*S), dtype: int32
+            Shape: ([D, ]H, W), dtype: int32
         inplace (bool): Modify in place the segmentation mask
             Default: True
 
@@ -212,7 +212,7 @@ class Detections:
     The segmentation mask is stored as 2D or 3D integer tensor, where labels are consecutives from 1 to N+1.
     0 is for the background.
 
-    ..Note:
+    Note:
         The i_th detection in the Detections has the label i+1 in the segmentation mask.
 
     Additional optional data is also expected like "confidence" or "shape" that respectively

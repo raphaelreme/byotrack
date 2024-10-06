@@ -4,15 +4,16 @@
 
 ![pipeline](docs/source/images/tracking.svg)
 
-**ByoTrack** is a Python library that enables tracking of biological object in videos.
+**ByoTrack** is a Python library that enables tracking of biological object in videos (2D or 3D).
 
 Many bioimage informatics tools already implement their own tracking tools (Icy [1], ImageJ [6], ...) but most of them are implemented in Java which makes it difficult for non-Java developers to experiment with the code. It is also difficult to integrate deep learning algorithms (mainly developed in Python) into these software.
 
-We provide a unified python API for tracking that can be easily extended with new (and old) algorithms. We also provide implementations of well-known algorithms following our API.
+We provide a unified python API for tracking that can be easily extended with new (and old) algorithms. We also provide implementations of well-known algorithms following our API. ByoTrack is based on numpy, pytorch and numba allowing fast computations with the access to the full python ecosystem.
 
 Overview:
 * Video
-    * Able to read classical format (supported by opencv) + tiff
+    * Able to read most classical format (supported by opencv) + tiff
+    * Supports 2D and 3D.
 * Particle Tracking
     * MultiStepTracker (Detect / Link / Refine)
 * Particle Detections

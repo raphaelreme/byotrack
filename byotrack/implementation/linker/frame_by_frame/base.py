@@ -21,11 +21,11 @@ class AssociationMethod(enum.Enum):
         Select the best match between tracks and detections iteratively until
         no match can be selected below the cost limit eta. It is usually not optimal for tracking
         but it is much faster.
-    * [SPARSE_]OPT_HARD
+    * OPT_HARD | SPARSE_OPT_HARD
         Solve the linear association problem (see `pylapy`).
         Hard threshold the association matrix with the cost limit eta.
         Use the sparse version to increase speed with numerous particles.
-    * [SPARSE_]OPT_SMOOTH
+    * OPT_SMOOTH | SPARSE_OPT_SMOOTH
         Solve a cost_limit extended association problem (see `pylapy`)
         It relaxes the linear association problem, allowing to not link a node
         for the cost limit eta.

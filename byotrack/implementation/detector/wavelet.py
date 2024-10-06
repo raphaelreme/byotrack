@@ -80,17 +80,17 @@ class B3SplineUWT(torch.nn.Module):
 
         Args:
             x (torch.Tensor): Input multidimensional images without channel dimension
-                Shape: (B, *S)
+                Shape: (B, [D, ]H, W)
 
         Returns:
             torch.Tensor: Parameters [w_1, ..., w_J, c_J] or only w_J
-                Shape: (B, J + 1, *S) or (B, *S) if `return_all` is False
+                Shape: (B, J + 1, [D, ]H, W) or (B, [D, ]H, W) if `return_all` is False
 
         """
         batch, *spatial = x.shape
         assert len(spatial) == self.dim, f"The module was constructed for {self.dim}D images. Input is {len(spatial)}D."
 
-        x = x[:, None]  # Add a channel dim: (B, 1, *S)
+        x = x[:, None]  # Add a channel dim: (B, 1, [D, ]H, W)
         y = x
 
         if self.return_all:
@@ -157,17 +157,17 @@ class B3SplineUWTApprox1(torch.nn.Module):
 
         Args:
             x (torch.Tensor): Input images without channel dimension
-                Shape: (B, *S)
+                Shape: (B, [D, ]H, W)
 
         Returns:
             torch.Tensor: Parameters [w_1, ..., w_J, c_J] or only [w_J]
-                Shape: (B, J + 1, *S) or (B, *S) if `return_all` is False
+                Shape: (B, J + 1, [D, ]H, W) or (B, [D, ]H, W) if `return_all` is False
 
         """
         batch, *spatial = x.shape
         assert len(spatial) == self.dim, f"The module was constructed for {self.dim}D images. Input is {len(spatial)}D."
 
-        x = x[:, None]  # Add a channel dim: (B, 1, *S)
+        x = x[:, None]  # Add a channel dim: (B, 1, [D, ]H, W)
         y = x
 
         if self.return_all:
@@ -259,17 +259,17 @@ class B3SplineUWTApprox2(torch.nn.Module):
 
         Args:
             x (torch.Tensor): Input images without channel dimension
-                Shape: (B, *S)
+                Shape: (B, [D, ]H, W)
 
         Returns:
             torch.Tensor: Parameters [w_1, ..., w_J, c_J] or only [w_J]
-                Shape: (B, J + 1, *S) or (B, *S) if `return_all` is False
+                Shape: (B, J + 1, [D, ]H, W) or (B, [D, ]H, W) if `return_all` is False
 
         """
         batch, *spatial = x.shape
         assert len(spatial) == self.dim, f"The module was constructed for {self.dim}D images. Input is {len(spatial)}D."
 
-        x = x[:, None]  # Add a channel dim: (B, 1, *S)
+        x = x[:, None]  # Add a channel dim: (B, 1, [D, ]H, W)
         y = x
 
         if self.return_all:
@@ -378,7 +378,7 @@ class WaveletDetector(byotrack.BatchDetector):
         inputs = torch.tensor(batch, dtype=torch.float32)[..., 0].to(self.device)
         coefficients: torch.Tensor = self.b3swt(inputs)
 
-        # Thresholding. Shape: (B, *S)
+        # Thresholding. Shape: (B, [D, ]H, W)
         masks = (coefficients >= self.compute_threshold(coefficients)).cpu().numpy()
 
         # Instance segmentation by connected components
@@ -410,7 +410,7 @@ class WaveletDetector(byotrack.BatchDetector):
 
         Args:
             coefficients (torch.Tensor): Coefficients of the UWT
-                Shape: (B, *S)
+                Shape: (B, [D, ]H, W)
 
         Returns:
             torch.Tensor: Threshold for each scale

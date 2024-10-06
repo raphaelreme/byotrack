@@ -120,12 +120,11 @@ class VideoReader(metaclass=MetaVideoReader):
     def read(self) -> Tuple[np.ndarray, bool]:
         """Consume a frame. Is equivalent to retrieve + grab
 
-        As in this implementation there is always a current frame. It reverses open cv implementation
+        As in this implementation there is always a current frame. It reverses OpenCV implementation
         It first retrieves then grab next frame
 
         Returns:
-            np.ndarray: The current frame
-                Shape: ([D, ]H, W, C)
+            np.ndarray: The current frame - Shape: ([D, ]H, W, C)
             bool: Whether there is a next frame to read
 
         """
@@ -282,9 +281,10 @@ class TiffVideoReader(VideoReader):
 
     Axes are inferred from the tifffile metadata and convert into (T, [D, ]H, W, C) (<=> T[Z]YXC).
     We may not support all formats, or your specific metadata can be wrong/missing. In this case,
-    you can also provide the expected axes of the tifffile using an ordered string:
+    you can also provide the expected axes of the tifffile using an ordered string.
+
     For example: "TYX" for 2D videos without channel, "TCZYX" for 3D videos with channels
-        (ordered by time, channel then stack), "ZTYX" for 3D videos without channels (ordered by stack then time).
+    (ordered by time, channel then stack), "ZTYX" for 3D videos without channels (ordered by stack then time).
 
     Note:
         With tifffile syntax, we use X for width, Y for height, Z for depth and
@@ -485,8 +485,9 @@ class FrameTiffLoader:  # pylint: disable=too-few-public-methods
 
     We may not support all formats, or your specific metadata can be wrong/missing. In this case,
     you can also provide the expected axes of the tifffile using an ordered string.
+
     For example: "YX" for 2D videos without channel, "CZYX" for 3D videos with channels
-        (ordered by channel then stack).
+    (ordered by channel then stack).
 
     Note:
         With tifffile syntax, we use X for width, Y for height, Z for depth and

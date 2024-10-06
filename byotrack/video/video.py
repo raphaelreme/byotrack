@@ -69,7 +69,7 @@ class Video(Sequence[np.ndarray]):
 
 
     Attributes:
-        ndim (int): 2 or 3. Whether the video is 2D or 3D.
+        ndim (int): Either 4 (2D) or 5 (3D). (T, H, W, C) in 2D or (T, D, H, W, C) in 3D.
         shape (Tuple[int, ...]): Shape of the video (Time, [Depth, ]Height, Width)
         channels (int): Number of channels
         reader (byotrack.VideoReader): Underlying video reader
@@ -105,7 +105,7 @@ class Video(Sequence[np.ndarray]):
 
     @property
     def ndim(self) -> int:
-        return len(self.reader.shape)
+        return 2 + len(self.reader.shape)
 
     @property
     def channels(self) -> int:
