@@ -4,7 +4,7 @@ from typing import List, Union
 import warnings
 
 import numpy as np
-from stardist.models import StarDist2D  # type: ignore
+from stardist.models import StarDist2D, StarDist3D  # type: ignore
 import torch
 
 import byotrack
@@ -34,7 +34,7 @@ class StarDistDetector(byotrack.BatchDetector):
 
     progress_bar_description = "Detections (StarDist)"
 
-    def __init__(self, model: StarDist2D, **kwargs) -> None:
+    def __init__(self, model: Union[StarDist2D, StarDist3D], **kwargs) -> None:
         super().__init__(**kwargs)
 
         if self.batch_size != 1:  # TODO: Stardist do not give a straightforward implem for batch size > 1
@@ -71,28 +71,39 @@ class StarDistDetector(byotrack.BatchDetector):
         return detections_list
 
     @staticmethod
-    def from_pretrained(name: str, **kwargs) -> "StarDistDetector":
+    def from_pretrained(name: str, dim=2, **kwargs) -> "StarDistDetector":
         """Load a pretrained StarDist from the paper
 
         Args:
             name (str): A valid identifier (From the official github)
+            dim (int): Image dimension (2d or 3d). Will load the model using the correct StarDist class.
+                Default: 2 (Use StarDist2D)
             **kwargs: Additional detector arguments. (See `byotrack.BatchDetector`)
 
         Returns:
             StarDistDetector
         """
-        return StarDistDetector(StarDist2D.from_pretrained(name), **kwargs)
+        if dim == 2:
+            return StarDistDetector(StarDist2D.from_pretrained(name), **kwargs)
+
+        return StarDistDetector(StarDist3D.from_pretrained(name), **kwargs)
 
     @staticmethod
-    def from_trained(train_dir: Union[str, os.PathLike], **kwargs) -> "StarDistDetector":
+    def from_trained(train_dir: Union[str, os.PathLike], dim=2, **kwargs) -> "StarDistDetector":
         """Load a trained StarDist from a local folder
 
         Args:
             train_dir (str | os.PathLike): The training folder of the model
+            dim (int): Image dimension (2d or 3d). Will load the model using the correct StarDist class.
+                Default: 2 (Use StarDist2D)
             **kwargs: Additional detector arguments. (See `byotrack.BatchDetector`)
 
         Returns:
             StarDistDetector
         """
         path = pathlib.Path(train_dir)
-        return StarDistDetector(StarDist2D(None, path.name, str(path.parent)), **kwargs)
+
+        if dim == 2:
+            return StarDistDetector(StarDist2D(None, path.name, str(path.parent)), **kwargs)
+
+        return StarDistDetector(StarDist3D(None, path.name, str(path.parent)), **kwargs)
