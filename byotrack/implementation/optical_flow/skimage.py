@@ -6,7 +6,9 @@ from byotrack import OpticalFlow
 
 
 class SkimageOpticalFlow(OpticalFlow):
-    """Wraps Scikit-Image optical flow implementations
+    """Wraps Scikit-Image optical flow implementations.
+
+    It supports 3D optical flow.
 
     Usage:
 
@@ -48,5 +50,5 @@ class SkimageOpticalFlow(OpticalFlow):
         reference = reference.mean(axis=-1)
         moving = moving.mean(axis=-1)
 
-        # Flow map is already at the right format (2, H', W') with coordinates (i, j)
+        # Flow map is already at the right format (dim, [D, ]H', W') with coordinates ([k, ]i, j)
         return self.method(reference, moving, **self.parameters).astype(np.float32)

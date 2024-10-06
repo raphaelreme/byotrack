@@ -10,7 +10,7 @@ class OpenCVOpticalFlow(OpticalFlow):
     """Wraps Open-CV optical flow implementations
 
     Currently ByoTrack only supports dense optical flow which computes
-    the displacement of every pixel of the reference image.
+    the displacement of every pixel of the reference image. And OpenCV only supports 2D images.
 
     Usage:
 

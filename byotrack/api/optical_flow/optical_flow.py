@@ -132,7 +132,7 @@ class OpticalFlow(ABC):
         flow = np.empty_like(points)
 
         for axis in range(flow_map.shape[0]):
-            flow[:, axis] = scipy.ndimage.map_coordinates(flow_map[axis], points.T / downscale[axis])
+            flow[:, axis] = scipy.ndimage.map_coordinates(flow_map[axis], points.T / downscale[axis], mode="nearest")
 
         flow *= downscale
 
@@ -179,8 +179,8 @@ class OpticalFlow(ABC):
 
         """
         *dims, channels = moving.shape
-        points = np.indices(dims, np.float32).reshape(2, -1).transpose()
-        points = self.transform(flow_map, points).transpose().reshape(2, *dims)
+        points = np.indices(dims, np.float32).reshape(len(dims), -1).transpose()
+        points = self.transform(flow_map, points).transpose().reshape(len(dims), *dims)
 
         return np.concatenate(
             [
