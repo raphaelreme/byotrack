@@ -66,6 +66,7 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
     Attributes:
         association_threshold (float): This is the main hyperparameter, it defines the threshold on the distance used
             not to link tracks with detections. It prevents to link with false positive detections.
+            Default: 5 pixels
         detection_std (Union[float, torch.Tensor]): Expected measurement noise on the detection process.
             The detection process is modeled with a Gaussian noise with this given std. (You can provide a different
             noise for each dimension). See `torch_kf.ckf.constant_kalman_filter`.
@@ -97,7 +98,7 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
 
     def __init__(
         self,
-        association_threshold: float,
+        association_threshold: float = 5.0,
         *,
         detection_std: Union[float, torch.Tensor] = 3.0,
         process_std: Union[float, torch.Tensor] = 1.5,
@@ -124,11 +125,11 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
             track_building if isinstance(track_building, TrackBuilding) else TrackBuilding[track_building.upper()]
         )
 
-    detection_std: Union[float, torch.Tensor]
-    process_std: Union[float, torch.Tensor]
-    kalman_order: int
-    cost: Cost
-    track_building: TrackBuilding
+    detection_std: Union[float, torch.Tensor] = 3.0
+    process_std: Union[float, torch.Tensor] = 1.5
+    kalman_order: int = 1
+    cost: Cost = Cost.EUCLIDEAN
+    track_building: TrackBuilding = TrackBuilding.FILTERED
 
 
 class KalmanLinker(FrameByFrameLinker):

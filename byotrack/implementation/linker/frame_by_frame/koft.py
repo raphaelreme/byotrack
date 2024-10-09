@@ -94,9 +94,9 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
 
         assert self.kalman_order >= 1, "With KOFT, the velocity is measured and thus should be modeled."
 
-    flow_std: Union[float, torch.Tensor]
-    extract_flows_on_detections: bool
-    always_measure_velocity: bool
+    flow_std: Union[float, torch.Tensor] = 1.0
+    extract_flows_on_detections: bool = False
+    always_measure_velocity: bool = True
 
 
 class KOFTLinker(KalmanLinker):

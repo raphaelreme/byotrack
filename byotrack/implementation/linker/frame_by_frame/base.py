@@ -213,6 +213,7 @@ class FrameByFrameLinkerParameters:  # pylint: disable=too-many-instance-attribu
     Attributes:
         association_threshold (float): This is the main hyperparameter, it defines the threshold on the distance used
             not to link tracks with detections. It prevents to link with false positive detections.
+            Default: 5 pixels
         n_valid (int): Number of frames with a correct association required to validate the track at its creation.
             Default: 3
         n_gap (int): Number of frames with no association before the track termination.
@@ -224,7 +225,7 @@ class FrameByFrameLinkerParameters:  # pylint: disable=too-many-instance-attribu
 
     def __init__(
         self,
-        association_threshold: float,
+        association_threshold: float = 5.0,
         *,
         n_valid=3,
         n_gap=3,
@@ -239,10 +240,10 @@ class FrameByFrameLinkerParameters:  # pylint: disable=too-many-instance-attribu
             else AssociationMethod[association_method.upper()]
         )
 
-    association_threshold: float
-    n_valid: int
-    n_gap: int
-    association_method: AssociationMethod
+    association_threshold: float = 5.0
+    n_valid: int = 3
+    n_gap: int = 3
+    association_method: AssociationMethod = AssociationMethod.OPT_SMOOTH
 
 
 class FrameByFrameLinker(byotrack.OnlineLinker):

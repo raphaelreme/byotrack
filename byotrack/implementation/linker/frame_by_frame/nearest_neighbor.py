@@ -16,6 +16,7 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
     Attributes:
         association_threshold (float): This is the main hyperparameter, it defines the threshold on the distance used
             not to link tracks with detections. It prevents to link with false positive detections.
+            Default: 5 pixels
         n_valid (int): Number of frames with a correct association required to validate the track at its creation.
             Default: 3
         n_gap (int): Number of frames with no association before the track termination.
@@ -39,7 +40,7 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
 
     def __init__(
         self,
-        association_threshold: float,
+        association_threshold: float = 5.0,
         *,
         n_valid=3,
         n_gap=3,
@@ -56,8 +57,8 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
         self.ema = ema
         self.fill_gap = fill_gap
 
-    ema: float
-    fill_gap: bool
+    ema: float = 0.0
+    fill_gap: bool = False
 
 
 class NearestNeighborLinker(FrameByFrameLinker):

@@ -119,8 +119,8 @@ class EMHTParameters:  # pylint: disable=too-many-instance-attributes
             </root>
 
         Args:
-            detections_sequence (Sequence[byotrack.Detections]): Detections (Some parameters requires to
-                know the number of detections)
+            detections_sequence (Sequence[byotrack.Detections]): Detections (Required to set default values
+                for some parameters)
 
         Returns:
             xml.etree.ElementTree.ElementTree: Xml tree of the configuration
