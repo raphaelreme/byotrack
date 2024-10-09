@@ -137,7 +137,7 @@ def load_tracks(path: Union[str, os.PathLike]) -> List[byotrack.Track]:
         end = max(frames) + 1
 
         points_tensor = torch.full((end - start, 3 - unused_z), torch.nan, dtype=torch.float32)
-        points_tensor[torch.tensor(frames) - start] = torch.tensor(points)[:, : 3 - unused_z]
+        points_tensor[torch.tensor(frames) - start] = torch.tensor(points)[:, unused_z:]
 
         tracks.append(byotrack.Track(start, points_tensor, identifier))
 
