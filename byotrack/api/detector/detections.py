@@ -19,7 +19,7 @@ def _check_segmentation(segmentation: torch.Tensor) -> None:
 def _check_bbox(bbox: torch.Tensor) -> None:
     """Check box validity (type, shape)"""
     assert len(bbox.shape) == 2
-    assert bbox.shape[1] == (4, 6), "Bbox should have 4 or 6 values: ([front, ]top, left, [depth, ]height, width)"
+    assert bbox.shape[1] in (4, 6), "Bbox should have 4 or 6 values: ([front, ]top, left, [depth, ]height, width)"
     assert bbox.dtype is torch.int32
 
 
