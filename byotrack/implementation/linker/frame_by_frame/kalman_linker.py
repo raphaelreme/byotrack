@@ -220,8 +220,8 @@ class KalmanLinker(FrameByFrameLinker):
             self.kalman_filter = torch_kf.ckf.constant_kalman_filter(
                 self.specs.detection_std,
                 self.specs.process_std,
-                detections.dim,
-                self.specs.kalman_order,
+                dim=detections.dim,
+                order=self.specs.kalman_order,
             )
             self.active_states = torch_kf.GaussianState(
                 torch.empty((0, self.kalman_filter.state_dim, 1)),
@@ -261,7 +261,9 @@ class KalmanLinker(FrameByFrameLinker):
 
         # Update the state of associated tracks (unassociated tracks keep the predicted state)
         self.active_states[links[:, 0]] = self.kalman_filter.update(
-            self.active_states[links[:, 0]], detections.position[links[:, 1]][..., None], self.projections[links[:, 0]]
+            self.active_states[links[:, 0]],
+            detections.position[links[:, 1]][..., None],
+            projection=self.projections[links[:, 0]],
         )
 
         # Update active track handlers

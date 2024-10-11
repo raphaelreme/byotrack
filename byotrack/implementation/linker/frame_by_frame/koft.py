@@ -207,8 +207,8 @@ class KOFTLinker(KalmanLinker):
             self.kalman_filter = torch_kf.ckf.constant_kalman_filter(
                 self.specs.detection_std,
                 self.specs.process_std,
-                detections.dim,
-                self.specs.kalman_order,
+                dim=detections.dim,
+                order=self.specs.kalman_order,
                 approximate=True,  # Approximate so that a flow precisely means the velocity modeled here
             )
             # Doubles the measurement space to measure velocity
@@ -275,13 +275,13 @@ class KOFTLinker(KalmanLinker):
         self.active_states[links[:, 0]] = self.kalman_filter.update(
             self.active_states[links[:, 0]],
             detections.position[links[:, 1]][..., None],
-            torch_kf.GaussianState(
+            projection=torch_kf.GaussianState(
                 self.projections.mean[links[:, 0], : detections.dim],
                 self.projections.covariance[links[:, 0], : detections.dim, : detections.dim],
                 None,  # /!\ inv(cov[:2,:2]) != inv(cov)[:2, :2] =>
             ),
-            self.kalman_filter.measurement_matrix[: detections.dim],
-            self.kalman_filter.measurement_noise[: detections.dim, : detections.dim],
+            measurement_matrix=self.kalman_filter.measurement_matrix[: detections.dim],
+            measurement_noise=self.kalman_filter.measurement_noise[: detections.dim, : detections.dim],
         )
 
         # Update active track handlers
