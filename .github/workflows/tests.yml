@@ -21,11 +21,15 @@ jobs:
             os: macos-latest
           - python-version: "3.8"  # Tensorflow install fails for python3.8 and macos-latest
             os: macos-latest
+          - python-version: "3.7"  # Not supported on ubuntu latest any longer
+            os: ubuntu-latest
         include:  # So run those legacy versions on Intel CPUs.
           - python-version: "3.7"
             os: macos-13
           - python-version: "3.8"
             os: macos-13
+          - python-version: "3.7"
+            os: ubuntu-22.04
 
     steps:
       - name: Set git to use LF
