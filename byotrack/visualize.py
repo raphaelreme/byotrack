@@ -469,6 +469,10 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
         while True:
             self._frame_id += self._running
 
+            if self._frame_id >= self.n_frames:
+                self._running = False
+                self._frame_id = self.n_frames - 1
+
             frame = self.video[self._frame_id]
 
             if src_frame_id != self._frame_id:  # Change of frame, let's update
