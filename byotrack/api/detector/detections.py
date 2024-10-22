@@ -101,7 +101,7 @@ def _segmentation_from_bbox_2d(bbox: np.ndarray, shape: Tuple[int, int]) -> np.n
 def _segmentation_from_bbox_3d(bbox: np.ndarray, shape: Tuple[int, int, int]) -> np.ndarray:
     segmentation = np.zeros(shape, dtype=np.int32)
     for label, bbox_ in enumerate(bbox):
-        segmentation[bbox_[0] : bbox_[0] + bbox_[3], bbox_[1] : bbox_[1] + bbox_[4], bbox[2] : bbox[2] + bbox[5]] = (
+        segmentation[bbox_[0] : bbox_[0] + bbox_[3], bbox_[1] : bbox_[1] + bbox_[4], bbox_[2] : bbox_[2] + bbox_[5]] = (
             label + 1
         )
 
