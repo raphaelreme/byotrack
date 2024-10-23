@@ -195,8 +195,58 @@ class KalmanLinker(FrameByFrameLinker):
 
     def collect(self) -> List[byotrack.Track]:
         if self.specs.track_building == TrackBuilding.SMOOTHED:
-            # TODO: Implement RTS + Add a tracker
-            raise NotImplementedError("Smoothing is not implemented yet")
+            assert self.active_states is not None and self.kalman_filter is not None
+
+            dim = self.kalman_filter.state_dim
+            tracks_handlers = [
+                handler
+                for handler in self.inactive_tracks + self.active_tracks
+                if handler.track_state in (handler.TrackState.VALID, handler.TrackState.FINISHED)
+            ]
+
+            states = torch_kf.GaussianState(
+                torch.full((len(self.all_states), len(tracks_handlers), dim, 1), torch.nan),
+                torch.zeros((len(self.all_states), len(tracks_handlers), dim, dim)),
+            )
+            is_defined = torch.full((len(self.all_states), len(tracks_handlers)), False)
+
+            for t, states_ in enumerate(self.all_states):
+                for i, handler in enumerate(tracks_handlers):
+                    time_offset = t - handler.start
+                    if 0 <= time_offset < len(handler):
+                        states[t, i] = states_[handler.track_ids[time_offset]]
+                        is_defined[t, i] = True
+
+            # Iterate backward to update all states (Update done for active t where t+1 is defined)
+            for t in range(len(self.all_states) - 2, -1, -1):
+                mask = is_defined[t + 1] & is_defined[t]
+                cov_at_process = states.covariance[t, mask] @ self.kalman_filter.process_matrix.mT
+                predicted_covariance = (
+                    self.kalman_filter.process_matrix @ cov_at_process + self.kalman_filter.process_noise
+                )
+
+                kalman_gain = cov_at_process @ predicted_covariance.inverse().mT
+                states.mean[t, mask] += kalman_gain @ (
+                    states.mean[t + 1, mask] - self.kalman_filter.process_matrix @ states.mean[t, mask]
+                )
+                states.covariance[t, mask] += (
+                    kalman_gain @ (states.covariance[t + 1, mask] - predicted_covariance) @ kalman_gain.mT
+                )
+
+            dim = self.all_positions[0].shape[-1]  # For KOFT, using kf.measure_dim would not work
+            tracks = []
+            for i, handler in enumerate(tracks_handlers):
+                tracks.append(
+                    byotrack.Track(
+                        handler.start,
+                        states.mean[handler.start : handler.start + len(handler), i, :dim, 0],
+                        handler.identifier,
+                        torch.tensor(handler.detection_ids[: len(handler)], dtype=torch.int32),
+                    )
+                )
+
+            return tracks
+
         return super().collect()
 
     def motion_model(self) -> None:
