@@ -11,10 +11,12 @@ import torch
 import byotrack
 
 
-def save_detections(detections_sequence: Sequence[byotrack.Detections], path: Union[str, os.PathLike]) -> None:
+def save_detections(  # pylint: disable=too-many-locals
+    detections_sequence: Sequence[byotrack.Detections], path: Union[str, os.PathLike]
+) -> None:
     """Save a sequence of detections as valid rois for icy
 
-    Format example:
+    Format example (2D):
 
     .. code-block:: xml
 
@@ -42,6 +44,34 @@ def save_detections(detections_sequence: Sequence[byotrack.Detections], path: Un
             ...
         </root>
 
+    Format example (3D):
+
+    .. code-block:: xml
+
+        <root>
+            <roi>
+                <classname>plugins.kernel.roi.roi3d.ROI3DArea</classname>
+                <id>30</id>
+                <name>spot #0</name>
+                <selected>false</selected>
+                <readOnly>false</readOnly>
+                <properties>None</properties>
+                <color>-16711936</color>
+                <stroke>2</stroke>
+                <opacity>0.3</opacity>
+                <showName>false</showName>
+                <t>0</t>
+                <c>-1</c>
+                <slice>
+                    <classname>plugins.kernel.roi.roi2d.ROI2DArea</classname>
+                    ...  # See 2D format
+                </slice>
+                ...
+            </roi>
+            ...
+        </root>
+
+
     Only needed tags are filled in the current implementation
 
     Args:
@@ -51,30 +81,53 @@ def save_detections(detections_sequence: Sequence[byotrack.Detections], path: Un
         path (str | os.PathLike): Output path
 
     """
-    ## XXX: Support for 3D images
-    if detections_sequence[0].dim == 3:
-        raise NotImplementedError("Saving 3D detections into icy format is not supported yet")
+    dim = detections_sequence[0].dim
 
     root = ET.Element("root")
     for frame_id, detections in enumerate(detections_sequence):
         for label, bbox in enumerate(detections.bbox):
             roi = ET.SubElement(root, "roi")
-            i, j, height, width = bbox.tolist()
-            mask = detections.segmentation[i : i + height, j : j + width] == label + 1
+            if dim == 2:
+                i, j, height, width = bbox.tolist()
+                mask = detections.segmentation[i : i + height, j : j + width] == label + 1
 
-            ET.SubElement(roi, "classname").text = "plugins.kernel.roi.roi2d.ROI2DArea"
-            ET.SubElement(roi, "t").text = str(frame_id)
-            ET.SubElement(roi, "z").text = "0"
-            ET.SubElement(roi, "boundsX").text = str(j)
-            ET.SubElement(roi, "boundsY").text = str(i)
-            ET.SubElement(roi, "boundsW").text = str(width)
-            ET.SubElement(roi, "boundsH").text = str(height)
+                ET.SubElement(roi, "classname").text = "plugins.kernel.roi.roi2d.ROI2DArea"
+                ET.SubElement(roi, "t").text = str(frame_id)
+                ET.SubElement(roi, "z").text = "0"
+                ET.SubElement(roi, "boundsX").text = str(j)
+                ET.SubElement(roi, "boundsY").text = str(i)
+                ET.SubElement(roi, "boundsW").text = str(width)
+                ET.SubElement(roi, "boundsH").text = str(height)
 
-            # The mask is converted into bytes and zipped
-            compressed_bytes = zlib.compress(bytes(mask.reshape(height * width).numpy()), 2)
+                # The mask is converted into bytes and zipped
+                compressed_bytes = zlib.compress(bytes(mask.reshape(height * width).numpy()), 2)
 
-            # and then converted to the good string format: byte:byte:...:byte
-            ET.SubElement(roi, "boolMaskData").text = ":".join(map(lambda byte: hex(byte)[2:], compressed_bytes))
+                # and then converted to the good string format: byte:byte:...:byte
+                ET.SubElement(roi, "boolMaskData").text = ":".join(map(lambda byte: hex(byte)[2:], compressed_bytes))
+            else:
+                ET.SubElement(roi, "classname").text = "plugins.kernel.roi.roi3d.ROI3DArea"
+                ET.SubElement(roi, "t").text = str(frame_id)
+
+                k, i, j, depth, height, width = bbox.tolist()
+                for z in range(k, k + depth):
+                    slice_ = ET.SubElement(roi, "slice")
+                    mask = detections.segmentation[z, i : i + height, j : j + width] == label + 1
+
+                    ET.SubElement(slice_, "classname").text = "plugins.kernel.roi.roi2d.ROI2DArea"
+                    ET.SubElement(slice_, "t").text = str(frame_id)
+                    ET.SubElement(slice_, "z").text = str(z)
+                    ET.SubElement(slice_, "boundsX").text = str(j)
+                    ET.SubElement(slice_, "boundsY").text = str(i)
+                    ET.SubElement(slice_, "boundsW").text = str(width)
+                    ET.SubElement(slice_, "boundsH").text = str(height)
+
+                    # The mask is converted into bytes and zipped
+                    compressed_bytes = zlib.compress(bytes(mask.reshape(height * width).numpy()), 2)
+
+                    # and then converted to the good string format: byte:byte:...:byte
+                    ET.SubElement(slice_, "boolMaskData").text = ":".join(
+                        map(lambda byte: hex(byte)[2:], compressed_bytes)
+                    )
 
     ET.ElementTree(root).write(path)
 
