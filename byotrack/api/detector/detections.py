@@ -142,7 +142,7 @@ def _fast_relabel(segmentation: np.ndarray):
     for i in numba.prange(segmentation.size):  # pylint: disable=not-an-iterable
         unique[segmentation[i]] = 1
 
-    unique[unique > 0] = np.arange(unique.sum())
+    unique[unique > 0] = np.arange(unique.sum(), dtype=segmentation.dtype)
 
     for i in numba.prange(segmentation.size):  # pylint: disable=not-an-iterable
         if segmentation[i]:
@@ -164,7 +164,7 @@ def relabel_consecutive(segmentation: Union[torch.Tensor, np.ndarray], inplace=T
 
     Args:
         segmentation (torch.Tensor | np.ndarray): Segmentation mask
-            Shape: ([D, ]H, W), dtype: int32
+            Shape: ([D, ]H, W), dtype: int
         inplace (bool): Modify in place the segmentation mask
             Default: True
 

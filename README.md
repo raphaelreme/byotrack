@@ -30,6 +30,10 @@ Overview:
 * Optical Flow
     * Support for Open-CV and Scikit-Image algorithms. Can be used for particle linking, track stitching
     and interpolations.
+* Datasets
+    * Support for some datasets. Currently only one is provided: Cell Tracking Challenge (CTC) [10]. More to come...
+* Metrics:
+    * Support for some segmentation/detection/tracking metrics. Currently, only CTC metrics are provided. More to come...
 
 
 ## Install
@@ -154,3 +158,5 @@ In coming...
       "Particle tracking in biological images with optical-flow enhanced
       kalman filtering", in International Symposium on Biomedical Imaging
       (ISBI2024).
+* [10] M. Maška, V. Ulman, D. Svoboda, P. Matula, et al., "A benchmark for
+       comparison of cell tracking algorithms", in Bioinformatics, 2014.

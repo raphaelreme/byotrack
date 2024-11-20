@@ -45,6 +45,7 @@ References
 * **[7]** K. Jaqaman, D. Loerke, M. Mettlen, et al., "Robust single-particle tracking in live-cell time-lapse sequences.", Nature Methods, 5(8), 695-702, 2008.
 * **[8]** J.-Y. Tinevez, N. Perry, J. Schindelin, et al., "TrackMate: An open and extensible platform for single-particle tracking.", Methods, 115, 80-90, 2017.
 * **[9]** R. Reme, A. Newson, E. Angelini, J.-C. Olivo-Marin and T. Lagache, "Particle tracking in biological images with optical-flow enhanced kalman filtering", in International Symposium on Biomedical Imaging (ISBI2024).
+* **[10]** M. Maška, V. Ulman, D. Svoboda, P. Matula, et al., "A benchmark for comparison of cell tracking algorithms", in Bioinformatics, 2014.
 
 Contents
 --------
@@ -89,6 +90,18 @@ Contents
    implementation/linkers/linkers
    implementation/refiners/refiners
    implementation/optical_flows/optical_flows
+
+.. toctree::
+   :glob:
+   :caption: Datasets
+
+   datasets/ctc
+
+.. toctree::
+   :glob:
+   :caption: Metrics
+
+   metrics/ctc
 
 .. toctree::
    :glob:
