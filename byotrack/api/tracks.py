@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import os
-from typing import cast, Collection, Optional, Sequence, Tuple, Union
+from typing import cast, Collection, Dict, List, Optional, Sequence, Tuple, Union
+import warnings
 
 import numpy as np
 import torch
@@ -22,6 +23,40 @@ def _check_detection_ids(detection_ids: torch.Tensor, size: int) -> None:
     assert detection_ids.dtype is torch.int32
 
 
+def _check_tracks(tracks: Collection[Track]):
+    """Check consistency of a Collection of tracks. See `Track.check_tracks`"""
+    id_to_track = {track.identifier: track for track in tracks}
+    merge_count: Dict[int, int] = {}
+    parent_count: Dict[int, int] = {}
+
+    assert len(id_to_track) == len(tracks), "Found duplicated identifiers"
+
+    for track in tracks:
+        if track.parent_id != -1:
+            parent = id_to_track[track.parent_id]
+            end = parent.start + len(parent)
+            assert track.start == end, (
+                f"Track {parent.identifier} (Last frame: {end - 1} splits into track {track.identifier}. "
+                f"But track {track.identifier} starts at {track.start} != {end}."
+            )
+
+            parent_count[track.parent_id] = parent_count.get(track.parent_id, 0) + 1
+        if track.merge_id != -1:
+            child = id_to_track[track.merge_id]
+            end = track.start + len(track)
+            assert end == child.start, (
+                f"Track {track.identifier} (Last frame: {end - 1}) merges into track {child.identifier}. "
+                f"But track {child.identifier} starts at {child.start} != {end}."
+            )
+            merge_count[track.merge_id] = merge_count.get(track.merge_id, 0) + 1
+
+    for merge_id, count in merge_count.items():
+        assert count == 2, f"Track {merge_id} is the results of {count} ! = 2 tracks."
+
+    for parent_id, count in parent_count.items():
+        assert count == 2, f"{parent_id} splits into {count} ! = 2 tracks."
+
+
 class Track:
     """Track for a given particle
 
@@ -37,9 +72,15 @@ class Track:
         detection_ids (torch.Tensor): Detection id for each time frame (-1 if unknown or non-linked
             to a particular detection at this time frame)
             Shape: (T,), dtype: int32
-        merge_id (int): Optional identifier of the resulting merged tracks. (This features is experimental.
-            Its goal is to handle cell divisions in a reversed temporal order)
+        merge_id (int): Optional identifier to the merged track. This allows to handle 2-way merges
+            (such as cell divisions in a reversed temporal order). The target track
+            should start on the frame following the end of this track. This should not be used
+            to do tracklet stitching (See `DistStitcher` for such use cases)
             Default: -1 (Merged to no one)
+        parent_id (int) Optional identifier to a parent track. This allows to handle 2-way splits (such as
+            cell divisions). The parent track should end one frame before the start of this track.
+            This should not be used to do tracklet stitching (See `DistStitcher` for such use cases)
+            Default: -1
 
     """
 
@@ -51,7 +92,9 @@ class Track:
         points: torch.Tensor,
         identifier: Optional[int] = None,
         detection_ids: Optional[torch.Tensor] = None,
+        *,
         merge_id: int = -1,
+        parent_id: int = -1,
     ) -> None:
         if identifier is None:
             self.identifier = Track._next_identifier
@@ -61,6 +104,7 @@ class Track:
             self.identifier = identifier
 
         self.merge_id = merge_id
+        self.parent_id = parent_id
 
         if detection_ids is None:  # All are unknown (-1)
             detection_ids = torch.full((len(points),), -1, dtype=torch.int32)
@@ -189,6 +233,7 @@ class Track:
                 "points": Tensor (T, N, dim), float32
                 "det_ids": Tensor (T, N), int32
                 "merge_ids": Tensor (N, ), int32
+                "parent_ids": Tensor (N, ), int32
             }
 
         Args:
@@ -198,13 +243,24 @@ class Track:
         """
         ids = torch.tensor([track.identifier for track in tracks])
         merge_ids = torch.tensor([track.merge_id for track in tracks])
+        parent_ids = torch.tensor([track.parent_id for track in tracks])
         offset = min(track.start for track in tracks)
         points = Track.tensorize(tracks)
         det_ids = Track._tensorize_det_ids(tracks)
-        torch.save({"offset": offset, "ids": ids, "points": points, "det_ids": det_ids, "merge_ids": merge_ids}, path)
+        torch.save(
+            {
+                "offset": offset,
+                "ids": ids,
+                "points": points,
+                "det_ids": det_ids,
+                "merge_ids": merge_ids,
+                "parent_ids": parent_ids,
+            },
+            path,
+        )
 
     @staticmethod
-    def load(path: Union[str, os.PathLike]) -> Collection[Track]:
+    def load(path: Union[str, os.PathLike]) -> List[Track]:  # pylint: disable=too-many-locals
         """Load a collection of tracks from path
 
         Args:
@@ -217,6 +273,7 @@ class Track:
         ids: torch.Tensor = data["ids"]
         det_ids: torch.Tensor = data.get("det_ids", torch.full(points.shape[:2], -1, dtype=torch.int32))
         merge_ids: torch.Tensor = data.get("merge_ids", torch.full(points.shape[1:2], -1, dtype=torch.int32))
+        parent_ids: torch.Tensor = data.get("parent_ids", torch.full(points.shape[1:2], -1, dtype=torch.int32))
 
         frames = torch.arange(points.shape[0])
         defined = ~torch.isnan(points).all(dim=-1)
@@ -227,11 +284,76 @@ class Track:
             start = cast(int, frames[defined[:, i]].min().item())
             end = cast(int, frames[defined[:, i]].max().item())
             merge_id = cast(int, merge_ids[i].item())
+            parent_id = cast(int, parent_ids[i].item())
             tracks.append(
-                Track(start + offset, points[start : end + 1, i], identifier, det_ids[start : end + 1, i], merge_id)
+                Track(
+                    start + offset,
+                    points[start : end + 1, i],
+                    identifier,
+                    det_ids[start : end + 1, i],
+                    merge_id=merge_id,
+                    parent_id=parent_id,
+                )
             )
 
+        Track.check_tracks(tracks, warn=True)
+
         return tracks
+
+    @staticmethod
+    def check_tracks(tracks: Collection[Track], warn=False):
+        """Performs additional consistency checks that cannot be done at the Track level
+
+        It will check that each track in the Collection has a different identifier.
+        And it will check that merge_ids and parent_ids are correctly defined:
+
+        1. 2 tracks should have the same merge id to a third one starting right after the two ended.
+        2. 2 tracks should have the same parent id to a third one finishing right before the two started.
+
+        Args:
+            tracks (Collection[Track]): Collection of tracks to check
+            warn (bool): Will only raise a warning instead of an Exception
+
+        """
+        if warn:
+            try:
+                _check_tracks(tracks)
+            except (IndexError, AssertionError) as err:
+                warnings.warn(f"Inconsistent tracks: {err}")
+        else:
+            _check_tracks(tracks)
+
+    @staticmethod
+    def reverse(tracks: Collection[Track], video_length=-1) -> List[Track]:
+        """Reverse tracks in time.
+
+        It will keep the same order for tracks and the same identifiers. Points are in reversed orders.
+        A merge id becomes a parent id (and vice versa).
+
+        Args:
+            tracks (Collection[Track]): Collection of tracks to reverse
+            video_length (int): Optional length of the video. If not provided, it is inferred
+                from the last tracked object.
+                Default: -1 (inferred from tracks)
+
+        """
+        if video_length == -1:
+            video_length = max(track.start + len(track) for track in tracks)
+
+        reversed_tracks = []
+        for track in tracks:
+            reversed_tracks.append(
+                Track(
+                    video_length - (track.start + len(track)),
+                    torch.flip(track.points, (0,)),
+                    track.identifier,
+                    torch.flip(track.detection_ids, (0,)),
+                    merge_id=track.parent_id,
+                    parent_id=track.merge_id,
+                )
+            )
+
+        return reversed_tracks
 
 
 def update_detection_ids(  # pylint: disable=too-many-locals

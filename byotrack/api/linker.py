@@ -102,4 +102,9 @@ class OnlineLinker(Linker):
 
         progress_bar.close()
 
-        return self.collect()
+        tracks = self.collect()
+
+        # Check produced tracks
+        byotrack.Track.check_tracks(tracks, warn=True)
+
+        return tracks

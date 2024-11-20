@@ -35,7 +35,12 @@ class DistStitcher(byotrack.Refiner):
 
         dist = self.dist(video, tracks)
         links = self.lap_solver.solve(dist, self.eta)
-        return self.merge(tracks, links)
+        tracks = self.merge(tracks, links)
+
+        # Check produced tracks
+        byotrack.Track.check_tracks(tracks, warn=True)
+
+        return tracks
 
     @staticmethod
     def merge(tracks: Collection[byotrack.Track], links: np.ndarray) -> List[byotrack.Track]:
@@ -67,8 +72,10 @@ class DistStitcher(byotrack.Refiner):
             end = max(track_list[i].start + len(track_list[i]) for i in connected_component)
 
             merge_ids = set(track_list[i].merge_id for i in connected_component)
-            if len(merge_ids) > 2:  # TODO: Remove the check, it should never occurs
-                raise RuntimeError("Stitching conflics with merging. Please open an Issue.")
+            parent_ids = set(track_list[i].parent_id for i in connected_component)
+            assert (
+                len(merge_ids) <= 2 and len(parent_ids) <= 2
+            ), "Cannot stitch a Track which splits/merges with another. This should not occur, please open an Issue"
 
             points = torch.full((end - start, dim), torch.nan)
             detection_ids = torch.full((end - start,), -1, dtype=torch.int32)
@@ -85,7 +92,11 @@ class DistStitcher(byotrack.Refiner):
                     track_list[i].detection_ids
                 )
 
-            merged_tracks.append(byotrack.Track(start, points, identifier, detection_ids, max(merge_ids)))
+            merged_tracks.append(
+                byotrack.Track(
+                    start, points, identifier, detection_ids, merge_id=max(merge_ids), parent_id=max(parent_ids)
+                )
+            )
 
         return merged_tracks
 
@@ -95,12 +106,14 @@ class DistStitcher(byotrack.Refiner):
     ) -> torch.Tensor:
         """Compute a boolean mask that indicate which distance should be skipped
 
-        Based on simple rules, prevents the computation of most distances. Let i, j two tracks:
+        Based on simple rules, prevents the computation of most distances. Let i, j two tracks
+        the dist is computed only when: (Note that we compute the mask of "non-computation")
 
         1. i ends at most `max_gap` frames before j starts
         2. i ends at most `max_overlap` frames after j starts
         3. i last position is at most at `max_dist` from j first position
-        4. i is not merged to any other tracks.
+        4. i is not splitted or merged to any other tracks.
+        5. j is not a continuation from a merge or a split of any other tracks.
 
         Args:
             tracks (Collection[byotrack.Track]): Current set of tracks
@@ -119,11 +132,21 @@ class DistStitcher(byotrack.Refiner):
         first_pos = torch.cat([track.points[:1] for track in tracks])
         last_pos = torch.cat([track.points[-1:] for track in tracks])
 
-        merge_ids = torch.tensor([track.merge_id for track in tracks])
+        # Get in or our splits/merges
+        id_to_pos = {track.identifier: i for i, track in enumerate(tracks)}
+
+        merge_out = torch.tensor([track.merge_id for track in tracks]) >= 0
+        merge_in = torch.full((len(tracks),), False)
+        merge_in[[id_to_pos[track.merge_id] for track in tracks if track.merge_id != -1]] = True
+
+        split_in = torch.tensor([track.parent_id for track in tracks]) >= 0
+        split_out = torch.full((len(tracks),), False)
+        split_out[[id_to_pos[track.parent_id] for track in tracks if track.parent_id != -1]] = True
 
         skip = starts[:, None] >= starts[None, :]  # Ensure full asymmetry
         skip |= ends[:, None] > starts[None, :] + max_overlap
-        skip |= merge_ids[:, None] >= 0
+        skip |= (split_out | merge_out)[:, None]
+        skip |= (split_in | merge_in)[None, :]
 
         if max_gap > 0:
             skip |= ends[:, None] + max_gap < starts[None, :]

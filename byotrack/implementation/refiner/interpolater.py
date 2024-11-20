@@ -63,6 +63,13 @@ class ForwardBackwardInterpolater(byotrack.Refiner):  # pylint: disable=too-few-
                 start = track.start
                 points = propagation_matrix[start : start + len(track), i]
                 detection_ids = track.detection_ids.clone()
-            new_tracks.append(byotrack.Track(start, points, track.identifier, detection_ids, track.merge_id))
+            new_tracks.append(
+                byotrack.Track(
+                    start, points, track.identifier, detection_ids, merge_id=track.merge_id, parent_id=track.parent_id
+                )
+            )
+
+        # Check produced tracks
+        byotrack.Track.check_tracks(new_tracks, warn=True)
 
         return new_tracks

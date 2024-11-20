@@ -104,6 +104,9 @@ class MultiStepTracker(Tracker):  # pylint: disable=too-few-public-methods
         for refiner in self.refiners:
             tracks = refiner.run(video, tracks)
 
+        # Check produced tracks
+        byotrack.Track.check_tracks(tracks, warn=True)
+
         return tracks
 
 
@@ -197,5 +200,8 @@ class BatchMultiStepTracker(MultiStepTracker):  # pylint: disable=too-few-public
         tracks = self.linker.collect()
         for refiner in self.refiners:
             tracks = refiner.run(video, tracks)
+
+        # Check produced tracks
+        byotrack.Track.check_tracks(tracks, warn=True)
 
         return tracks

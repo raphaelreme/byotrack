@@ -29,7 +29,12 @@ class Cleaner(byotrack.Refiner):
         self.max_dist = max_dist
 
     def run(self, video, tracks: Collection[byotrack.Track]) -> List[byotrack.Track]:
-        return self.clean_tracks(tracks, self.min_length, self.max_dist)
+        tracks = self.clean_tracks(tracks, self.min_length, self.max_dist)
+
+        # Check produced tracks
+        byotrack.Track.check_tracks(tracks, warn=True)
+
+        return tracks
 
     @staticmethod
     def clean_tracks(tracks: Collection[byotrack.Track], min_length: int, max_dist: float) -> List[byotrack.Track]:
@@ -42,6 +47,7 @@ class Cleaner(byotrack.Refiner):
             It will not split when the position of the track is NaN.
 
         Warning:
+            `parent_id` is only set on the first splitted track, which may be deleted (if too short).
             `merge_id` is only set on the last splitted track, which may be deleted (if too short).
 
         Args:
@@ -73,6 +79,7 @@ class Cleaner(byotrack.Refiner):
                                 track.points[first : i + 1],
                                 identifier=track.identifier,
                                 detection_ids=track.detection_ids[first : i + 1],
+                                parent_id=track.parent_id if first == 0 else -1,
                             )
                         )
                         first = i + 1
