@@ -2,6 +2,7 @@
 
 import dataclasses
 from typing import Optional, Tuple, Union
+import warnings
 
 import numpy as np
 import torch
@@ -44,6 +45,11 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
             It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH)
             Default: OPT_SMOOTH
+        anisotropy (Tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
+            for each axis, depth first). This will be used to scale distances. It will only impact
+            EUCLIDEAN[_SQ] costs. For probabilistic cost, anisotropy should be already integrated
+            in the different std of the kalman filter.
+            Default: (1., 1., 1.)
         cost_method (CostMethod): The cost method to use. It can be provided as a string.
             See `CostMethod`. It also indicates what is the correct unit of `association_threshold`.
             Default: EUCLIDEAN
@@ -71,6 +77,7 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
         n_valid=3,
         n_gap=3,
         association_method: Union[str, AssociationMethod] = AssociationMethod.OPT_SMOOTH,
+        anisotropy: Tuple[float, float, float] = (1.0, 1.0, 1.0),
         cost: Union[str, Cost] = Cost.EUCLIDEAN,
         track_building: Union[str, TrackBuilding] = TrackBuilding.FILTERED,
         extract_flows_on_detections=False,
@@ -84,9 +91,15 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
             n_valid=n_valid,
             n_gap=n_gap,
             association_method=association_method,
+            anisotropy=anisotropy,
             cost=cost,
             track_building=track_building,
         )
+
+        if isinstance(flow_std, float) and min(anisotropy) != max(anisotropy):
+            warnings.warn(
+                "A single flow_std is provided, but the images are anisotrope. Consider giving one std by dimension."
+            )
 
         self.flow_std = flow_std
         self.extract_flows_on_detections = extract_flows_on_detections
@@ -226,15 +239,21 @@ class KOFTLinker(KalmanLinker):
         if self.projections is None:
             raise RuntimeError("Projections should already be initialized.")
 
+        anisotropy = torch.tensor(self.specs.anisotropy)[: detections.dim]
+
         if self.specs.cost == Cost.EUCLIDEAN:
             return (
-                torch.cdist(self.projections.mean[:, : detections.dim, 0], detections.position),
+                torch.cdist(
+                    self.projections.mean[:, : detections.dim, 0] * anisotropy, detections.position * anisotropy
+                ),
                 self.specs.association_threshold,
             )
 
         if self.specs.cost == Cost.EUCLIDEAN_SQ:
             return (
-                torch.cdist(self.projections.mean[:, : detections.dim, 0], detections.position).pow_(2),
+                torch.cdist(
+                    self.projections.mean[:, : detections.dim, 0] * anisotropy, detections.position * anisotropy
+                ).pow_(2),
                 self.specs.association_threshold**2,
             )
 

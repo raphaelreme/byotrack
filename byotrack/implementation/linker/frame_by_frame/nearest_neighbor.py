@@ -45,6 +45,7 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
         n_valid=3,
         n_gap=3,
         association_method: Union[str, AssociationMethod] = AssociationMethod.OPT_SMOOTH,
+        anisotropy: Tuple[float, float, float] = (1.0, 1.0, 1.0),
         ema=0.0,
         fill_gap=False,
     ):
@@ -53,6 +54,7 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
             n_valid=n_valid,
             n_gap=n_gap,
             association_method=association_method,
+            anisotropy=anisotropy,
         )
         self.ema = ema
         self.fill_gap = fill_gap
@@ -110,7 +112,12 @@ class NearestNeighborLinker(FrameByFrameLinker):
         if self.active_positions is None:
             self.active_positions = torch.empty((0, detections.position.shape[1]))
 
-        return torch.cdist(self.active_positions, detections.position), self.specs.association_threshold
+        anisotropy = torch.tensor(self.specs.anisotropy)[: -detections.dim]
+
+        return (
+            torch.cdist(self.active_positions * anisotropy, detections.position * anisotropy),
+            self.specs.association_threshold,
+        )
 
     def post_association(self, _: np.ndarray, detections: byotrack.Detections, links: torch.Tensor):
         if self.active_positions is None:

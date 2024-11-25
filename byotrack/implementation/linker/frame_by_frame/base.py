@@ -221,6 +221,10 @@ class FrameByFrameLinkerParameters:  # pylint: disable=too-many-instance-attribu
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
             It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH)
             Default: OPT_SMOOTH
+        anisotropy (Tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
+            for each axis, depth first). This will be used to scale distances.
+            Default: (1., 1., 1.)
+
     """
 
     def __init__(
@@ -230,6 +234,7 @@ class FrameByFrameLinkerParameters:  # pylint: disable=too-many-instance-attribu
         n_valid=3,
         n_gap=3,
         association_method: Union[str, AssociationMethod] = AssociationMethod.OPT_SMOOTH,
+        anisotropy: Tuple[float, float, float] = (1.0, 1.0, 1.0),
     ):
         self.association_threshold = association_threshold
         self.n_valid = n_valid
@@ -239,11 +244,13 @@ class FrameByFrameLinkerParameters:  # pylint: disable=too-many-instance-attribu
             if isinstance(association_method, AssociationMethod)
             else AssociationMethod[association_method.upper()]
         )
+        self.anisotropy = anisotropy
 
     association_threshold: float = 5.0
     n_valid: int = 3
     n_gap: int = 3
     association_method: AssociationMethod = AssociationMethod.OPT_SMOOTH
+    anisotropy: Tuple[float, float, float] = (1.0, 1.0, 1.0)
 
 
 class FrameByFrameLinker(byotrack.OnlineLinker):
