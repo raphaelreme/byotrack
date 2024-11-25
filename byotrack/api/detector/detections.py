@@ -38,7 +38,7 @@ def _check_confidence(confidence: torch.Tensor) -> None:
 
 @numba.njit(parallel=False)
 def _position_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
-    """Return the centre of each instance in the segmentation"""
+    """Return the center (mean) of each instance in the segmentation"""
     # A bit slower than previous version in 2D, but still fine
 
     n = segmentation.max()
@@ -55,6 +55,42 @@ def _position_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
                 m_1[instance, i] += index[i]
 
     return m_1.astype(np.float32) / m_0.reshape(-1, 1)
+
+
+@numba.njit(parallel=False)
+def _median_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
+    """Return the center (median) of each instance in the segmentation"""
+
+    # Flatten space axes
+    flat_segmentation = segmentation.reshape(-1)
+
+    n = segmentation.max()
+    counts = np.zeros(n, dtype=np.uint)
+
+    for i in range(flat_segmentation.shape[0]):
+        instance = flat_segmentation[i] - 1
+        if instance != -1:
+            counts[instance] += 1
+
+    m = np.max(counts)
+
+    # Reset counts and allocate position
+    counts[:] = 0
+    positions = np.empty((n, m, len(segmentation.shape)), dtype=np.uint)
+
+    for index in np.ndindex(*segmentation.shape):
+        instance = segmentation[index] - 1
+        if instance != -1:
+            positions[instance, counts[instance]] = index
+            counts[instance] += 1
+
+    # Compute medians
+    median = np.zeros((n, len(segmentation.shape)), dtype=np.float32)
+    for instance in range(n):
+        for axis in range(len(segmentation.shape)):
+            median[instance, axis] = np.median(positions[instance, : counts[instance], axis])
+
+    return median
 
 
 @numba.njit
@@ -242,12 +278,15 @@ class Detections:
             Shape: ([D, ]H, W), dtype: int32
         confidence (torch.Tensor): Confidence for each instance
             Shape: (N,), dtype: float32
+        use_median_position (bool): Use median instead of mean to compute positions from segmentation.
+            Default: True (Usually more robust)
 
     """
 
-    def __init__(self, data: Dict[str, torch.Tensor], frame_id: int = -1) -> None:
+    def __init__(self, data: Dict[str, torch.Tensor], frame_id: int = -1, use_median_position=True) -> None:
         self.length = -1
         self.dim = -1
+        self._use_median_position = use_median_position
 
         if "position" in data:
             _check_position(data["position"])
@@ -321,6 +360,20 @@ class Detections:
 
         return confidence
 
+    @property
+    def use_median_position(self) -> bool:
+        return self._use_median_position
+
+    @use_median_position.setter
+    def use_median_position(self, value: bool) -> None:
+        if value is self._use_median_position:
+            return
+
+        self._use_median_position = value
+
+        # Invalidate computed positions
+        self._lazy_extrapolated_data.pop("position")
+
     def _extrapolate_shape(self) -> Tuple[int, ...]:
         """Extrapolate shape from data
 
@@ -354,6 +407,8 @@ class Detections:
 
         """
         if "segmentation" in self.data:
+            if self.use_median_position:
+                return torch.tensor(_median_from_segmentation(self.data["segmentation"].numpy()))
             return torch.tensor(_position_from_segmentation(self.data["segmentation"].numpy()))
 
         return self.data["bbox"][:, : self.dim] + (self.data["bbox"][:, self.dim :] - 1) / 2
