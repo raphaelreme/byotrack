@@ -1,6 +1,6 @@
 from abc import abstractmethod
 import dataclasses
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 import warnings
 
 import enum
@@ -67,7 +67,7 @@ class AssociationMethod(enum.Enum):
         return torch.tensor(greedy_assignment_solver(cost.numpy(), eta).astype(np.int32))
 
 
-class TrackHandler:
+class TrackHandler:  # pylint: disable=too-many-instance-attributes
     """Handle a track during the tracking procedure
 
     It accumulates the track data at each new association and store the optional motion model data.
@@ -91,6 +91,9 @@ class TrackHandler:
         detection_ids (List[int]): Identifiers of the associated detection (-1 if None)
         track_ids (List[int]): Index of the track at each frame in the `linker.active_tracks` list.
             It allows the linker to store data as tensor and be able to rebuild tracks at the end.
+        merge_id (int): Identifier to an optional merged track handler (See `Tracks.merge_id`)
+        parent_id (int): Identifier to an optional parent track handler (See `Tracks.parent_id`)
+        is_split (bool): Just to know if the track splits
 
     """
 
@@ -122,8 +125,14 @@ class TrackHandler:
         self.last_association = 0
         self.detection_ids: List[int] = []
         self.track_ids: List[int] = []
+        self.merge_id = -1
+        self.parent_id = -1
+        self.is_split = False
 
     def __len__(self) -> int:
+        if self.merge_id != -1 or self.is_split:
+            return len(self.detection_ids)  # Last points counts
+
         return len(self.detection_ids) - self.last_association
 
     def is_active(self) -> bool:
@@ -210,13 +219,16 @@ class OnlineFlowExtractor:
 class FrameByFrameLinkerParameters:  # pylint: disable=too-many-instance-attributes
     """Parameters of the abstract FrameByFrameLinker
 
+    Note:
+        The merging and splitting features is still experimental.
+
     Attributes:
         association_threshold (float): This is the main hyperparameter, it defines the threshold on the distance used
             not to link tracks with detections. It prevents to link with false positive detections.
             Default: 5 pixels
-        n_valid (int): Number of frames with a correct association required to validate the track at its creation.
+        n_valid (int): Number associated detections required to validate the track after its creation.
             Default: 3
-        n_gap (int): Number of frames with no association before the track termination.
+        n_gap (int): Number of consecutive frames without association before the track termination.
             Default: 3
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
             It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH)
@@ -224,6 +236,12 @@ class FrameByFrameLinkerParameters:  # pylint: disable=too-many-instance-attribu
         anisotropy (Tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
             for each axis, depth first). This will be used to scale distances.
             Default: (1., 1., 1.)
+        split_factor (float): Allow splitting of tracks, using a second association step.
+            The association threshold in this case is `split_factor * association_threshold`.
+            Default: 0.0 (No splits)
+        merge_factor (float): Allow merging of tracks, using a second association step.
+            The association threshold in this case is `merge_factor * association_threshold`.
+            Default: 0.0 (No merges)
 
     """
 
@@ -235,6 +253,8 @@ class FrameByFrameLinkerParameters:  # pylint: disable=too-many-instance-attribu
         n_gap=3,
         association_method: Union[str, AssociationMethod] = AssociationMethod.OPT_SMOOTH,
         anisotropy: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+        split_factor: float = 0.0,
+        merge_factor: float = 0.0,
     ):
         self.association_threshold = association_threshold
         self.n_valid = n_valid
@@ -245,24 +265,32 @@ class FrameByFrameLinkerParameters:  # pylint: disable=too-many-instance-attribu
             else AssociationMethod[association_method.upper()]
         )
         self.anisotropy = anisotropy
+        self.split_factor = split_factor
+        self.merge_factor = merge_factor
+
+        if merge_factor >= 1.0 or split_factor >= 1.0:
+            warnings.warn("Merge or split factors should be lower than 1")
 
     association_threshold: float = 5.0
     n_valid: int = 3
     n_gap: int = 3
     association_method: AssociationMethod = AssociationMethod.OPT_SMOOTH
     anisotropy: Tuple[float, float, float] = (1.0, 1.0, 1.0)
+    split_factor: float = 0.0
+    merge_factor: float = 0.0
 
 
 class FrameByFrameLinker(byotrack.OnlineLinker):
     """Links detections online using frame-by-frame association
 
-    Abstract class for frame-by-frame linker. It decomposes the update step in 5 parts:
+    Abstract class for frame-by-frame linker. It decomposes the update step in 6 parts:
 
-    1. Optional optical flow computations (Handled by this class)
+    1. Optional optical flow computations (Handled by this class with the `optflow` given)
     2. Motion modeling to predict track positions (`motion_model`)
-    3. Track-to-detection cost computation (`cost`)
-    4. Solving the linear association problem (Handled by this class)
-    5. Post matching update to handle tracks (`post_association`)
+    3. Features extraction (handled by this class with the `features_extractor` given)
+    4. Track-to-detection cost computation (`cost`)
+    5. Solving the linear association problem (handled in `associate`)
+    6. Post matching update to handle tracks (`post_association`)
 
     The association relies on the AssociationMethod enum and tracks handling is done with
     TrackHandler.
@@ -287,6 +315,10 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
         active_tracks (List[TrackHandler]): Current track handlers
         all_positions (List[torch.Tensor]): Positions of the active tracks at each seen frames.
             Using the valid track handlers `track_ids`, it allows the reconstruction of tracks.
+        split_links (torch.Tensor): Current split_links
+            shape: (L', 2), dtype: int32
+        merge_links (torch.Tensor): Current merge_links
+            shape: (L'', 2), dtype: int32
 
     """
 
@@ -306,6 +338,8 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
         self.inactive_tracks: List[TrackHandler] = []
         self.active_tracks: List[TrackHandler] = []
         self.all_positions: List[torch.Tensor] = []
+        self.split_links = torch.zeros((0, 2), dtype=torch.int32)
+        self.merge_links = torch.zeros((0, 2), dtype=torch.int32)
 
     def reset(self) -> None:
         super().reset()
@@ -315,6 +349,8 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
         self.inactive_tracks = []
         self.active_tracks = []
         self.all_positions = []
+        self.split_links = torch.zeros((0, 2), dtype=torch.int32)
+        self.merge_links = torch.zeros((0, 2), dtype=torch.int32)
 
     def collect(self) -> List[byotrack.Track]:
         tracks = []
@@ -337,6 +373,8 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
                     points,
                     handler.identifier,
                     torch.tensor(handler.detection_ids[: len(handler)], dtype=torch.int32),
+                    parent_id=handler.parent_id,
+                    merge_id=handler.merge_id,
                 )
             )
         return tracks
@@ -382,6 +420,9 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
         Finally, it is also responsible to register the position of each active track in `all_positions`
         for the current time frame.
 
+        See `update_active_tracks` which can be called inside this implementation to handle tracks termination
+        and creation.
+
         Args:
             frame (np.ndarray): The current frame of the video
                 Shape: (H, W, C), dtype: float
@@ -391,7 +432,201 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
 
         """
 
-    def update_active_tracks(self, links: torch.Tensor) -> torch.Tensor:
+    def update_active_tracks(  # pylint: disable=too-many-branches,too-many-statements,too-many-locals
+        self, links: torch.Tensor, detections: byotrack.Detections
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Updates tracks handler and creates new ones for extra detections
+
+        Tracks that are terminated are stored inside `inactive_tracks` and dropped from `active_tracks`.
+        It can be called inside `post_association` to facilitate the code.
+
+        It also handles merges and splits. In the case of some specific merges, it may change a few links.
+        The updated links are returned, with a still_active mask for tracks and a new_track mask
+        for detections.
+
+        Args:
+            links (torch.Tensor): The links made between active tracks and the detections
+                Shape: (L, 2), dtype: int32
+            detections (byotrack.Detections): Detections for the given frame
+
+        Returns:
+            torch.Tensor: Updated links (in case of some specific merges)
+                Shape: (L, 2), dtype: int32
+            torch.Tensor: Boolean tensor indicating True for still active tracks
+                Shape: (N_tracks), dtype: bool
+            torch.Tensor: Boolean tensor indicating True for newly created tracks from detections
+                Shape: (N_dets), dtype: bool
+
+        """
+        if self.split_links.shape[0] + self.merge_links.shape[0] == 0:  # Fall back to old simpler version
+            return links, self._update_active_tracks(links), self._handle_extra_detections(detections, links)
+
+        # Ugly to handle merge and splits smoothly... If you do not care about that, read only the old simpler version
+        # Or even use offline split and merge strategies.
+
+        # Find unmatched measures
+        unmatched = torch.full((len(detections),), True)
+        unmatched[links[:, 1]] = False
+
+        # Create new tracks from unmatched measures
+        new_tracks: List[TrackHandler] = []
+        for i in torch.arange(len(detections))[unmatched].tolist():
+            track = TrackHandler(
+                self.specs.n_valid,
+                self.specs.n_gap,
+                self.frame_id,
+                len(self.inactive_tracks) + len(self.active_tracks) + len(new_tracks),
+            )
+            track.update(self.frame_id, i)
+            new_tracks.append(track)
+
+        # Lots of useful identifiers mapping
+        det_to_new_track = torch.full((len(detections),), -1, dtype=torch.int32)
+        det_to_new_track[torch.arange(len(detections))[unmatched]] = torch.arange(len(new_tracks), dtype=torch.int32)
+
+        track_to_det = torch.full((len(self.active_tracks),), -1, dtype=torch.int32)
+        track_to_det[links[:, 0]] = links[:, 1]
+        det_to_track = torch.full((len(detections),), -1, dtype=torch.int32)
+        det_to_track[links[:, 1]] = links[:, 0]
+
+        track_to_det_split = torch.full((len(self.active_tracks),), -1, dtype=torch.int32)
+        track_to_det_split[self.split_links[:, 0]] = self.split_links[:, 1]
+
+        track_to_det_merge = torch.full((len(self.active_tracks),), -1, dtype=torch.int32)
+        track_to_det_merge[self.merge_links[:, 0]] = self.merge_links[:, 1]
+        det_to_track_merge = torch.full((len(detections),), -1, dtype=torch.int32)
+        det_to_track_merge[self.merge_links[:, 1]] = self.merge_links[:, 0]
+
+        # Update active tracks (for merges and splits, they are still active but replaced by a new handler)
+        active_mask = torch.full((len(self.active_tracks),), False)
+        still_active: List[TrackHandler] = []
+        merges_to_ref: List[TrackHandler] = []
+        det_to_merge_id: Dict[int, int] = {}
+        identifier = len(self.inactive_tracks) + len(self.active_tracks) + len(new_tracks)
+
+        for i, track in enumerate(self.active_tracks):
+            if track_to_det_split[i] != -1:  # The track splits
+                # For the corner case of a hypothetical track, it is now valid (afterall we found 2 detections for it)
+                track.track_state = TrackHandler.TrackState.FINISHED
+                track.is_split = True
+                self.inactive_tracks.append(track)
+
+                # Replace by a new VALID handler
+                other = TrackHandler(self.specs.n_valid, self.specs.n_gap, self.frame_id, identifier)
+                other.track_state = TrackHandler.TrackState.VALID
+                identifier += 1
+
+                # Set parent for both new tracks
+                other.parent_id = track.identifier
+                new_tracks[det_to_new_track[track_to_det_split[i]]].parent_id = track.identifier
+
+                # Swap other with track (the splitted one is finished)
+                track = other
+
+            if track_to_det[i] == -1 and track_to_det_merge[i] != -1:  # The track is the second branch of a merge
+                assert det_to_track[track_to_det_merge[i]] != -1
+                # Get the first branch
+                other = self.active_tracks[det_to_track[track_to_det_merge[i]]]
+
+                # If hypothetical, nothing to do, we do not merge with hypothetical tracks
+                if track.track_state != TrackHandler.TrackState.HYPOTHETICAL:
+                    if other.track_state == TrackHandler.TrackState.HYPOTHETICAL:
+                        # If other is hypothetical, we do not merge but we swap the link
+                        # This invalidate some mappings for both 'track' and 'other', but it is fine.
+                        # If 2nd branch is first to be executed this way, the 1st branch will not be executed
+                        track_to_det[det_to_track[track_to_det_merge[i]]] = -1
+                        track_to_det[i] = track_to_det_merge[i]
+                    else:  # Merge (as this is the second track, the track is just dropped)
+                        track.merge_id = int(track_to_det_merge[i])  # This is not merge id yet
+                        merges_to_ref.append(track)  # It will be updated once all tracks has been processed
+
+                        track.track_state = TrackHandler.TrackState.FINISHED
+                        self.inactive_tracks.append(track)
+                        continue  # It does itw own specific update, the track cannot be updated any more.
+
+            if track_to_det[i] != -1 and det_to_track_merge[track_to_det[i]] != -1:  # First branch of a merge
+                other = self.active_tracks[det_to_track_merge[track_to_det[i]]]
+
+                # If other is hypothetical, nothing to do, we do not merge with hypothetical tracks
+                if other.track_state != TrackHandler.TrackState.HYPOTHETICAL:
+                    if track.track_state == TrackHandler.TrackState.HYPOTHETICAL:
+                        # If track is hypothetical, we do not merge but we swap the link
+                        # If 1st branch is first to be executed this way, the 2nd branch will not be executed
+                        track_to_det[det_to_track_merge[track_to_det[i]]] = track_to_det[i]
+                        track_to_det[i] = -1
+                    else:  # Merge: Create a new track and stop the former one
+                        # Replace by a new VALID handler
+                        other = TrackHandler(self.specs.n_valid, self.specs.n_gap, self.frame_id, identifier)
+                        other.track_state = TrackHandler.TrackState.VALID
+                        identifier += 1
+
+                        track.merge_id = other.identifier
+                        det_to_merge_id[int(track_to_det[i])] = other.identifier
+
+                        # Terminate old track
+                        track.track_state = TrackHandler.TrackState.FINISHED
+                        self.inactive_tracks.append(track)
+
+                        # Swap other with track (the merged one is finished)
+                        track = other  # Will be updated and kept in active
+
+            # Update track (classical link/no link, or a newly created one at a split/merge event)
+            track.update(self.frame_id, int(track_to_det[i].item()))
+
+            # Check if track is still active
+            if track.is_active():
+                still_active.append(track)
+                active_mask[i] = True
+            elif track.track_state == TrackHandler.TrackState.FINISHED or self.save_all:
+                self.inactive_tracks.append(track)
+            elif track.track_state == TrackHandler.TrackState.INVALID and track.parent_id != -1:
+                # We have to undo the splitting if a splitted track is not validated
+                # Let's find the finished parent track handler and the valid other child handler
+                # and concatenate back the data in a single valid track handler
+                # This is slow, this should not occurs often. To be really faster it requires other data structures
+                # To be changed if it is necessary
+                parent = [other for other in self.inactive_tracks if other.identifier == track.parent_id][0]
+                child = [
+                    other for other in self.active_tracks + self.inactive_tracks if other.parent_id == track.parent_id
+                ][0]
+
+                self.inactive_tracks.remove(parent)
+
+                if child.is_active():
+                    child_index = self.active_tracks.index(child)
+                else:
+                    child_index = self.inactive_tracks.index(child)
+
+                concatenated_handler = TrackHandler(
+                    self.specs.n_valid, self.specs.n_gap, parent.start, child.identifier
+                )
+                concatenated_handler.track_state = child.track_state
+                concatenated_handler.last_association = child.last_association
+                concatenated_handler.parent_id = parent.parent_id
+                concatenated_handler.merge_id = child.merge_id
+                concatenated_handler.track_ids = parent.track_ids + child.track_ids
+                concatenated_handler.detection_ids = parent.detection_ids + child.detection_ids
+                concatenated_handler.is_split = child.is_split
+
+                # Replace child by concatenated
+                if concatenated_handler.is_active():
+                    self.active_tracks[child_index] = concatenated_handler
+                else:
+                    self.inactive_tracks[child_index] = concatenated_handler
+
+        # Relabel merges
+        for track in merges_to_ref:
+            track.merge_id = det_to_merge_id[track.merge_id]
+
+        # Relabel links
+        links[:, 0] = torch.arange(len(track_to_det))[track_to_det != -1]
+        links[:, 1] = track_to_det[track_to_det != -1]
+
+        self.active_tracks = still_active + new_tracks
+
+        return links, active_mask, unmatched
+
+    def _update_active_tracks(self, links: torch.Tensor) -> torch.Tensor:
         """Calls `update` for active tracks and return a boolean mask that indicates which track is still active
 
         Tracks that are terminated are stored inside `inactive_tracks` and dropped from `active_tracks`.
@@ -424,36 +659,112 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
 
         return active_mask
 
-    def handle_extra_detections(self, detections: byotrack.Detections, links: torch.Tensor) -> torch.Tensor:
+    def _handle_extra_detections(self, detections: byotrack.Detections, links: torch.Tensor) -> torch.Tensor:
         """Handle extra detections by creating new track handlers
 
-        It can be called inside `post_association` to create track handlers from extra detections. It will
-        return the extra detections positions and ids to be further used by `post_association`.
+        It can be called inside `post_association` to create track handlers from extra detections. It
+        returns a boolean mask indicating a track creating for each detection.
 
         Args:
             detections (byotrack.Detections): Detections for the given frame
             links (torch.Tensor): The links made between active tracks and the detections
                 Shape: (L, 2), dtype: int32
 
+        Returns:
+            torch.Tensor: Boolean tensor indicating True for newly created tracks from detections
+                Shape: (N_dets), dtype: bool
+
         """
         # Find unmatched measures
         unmatched = torch.full((len(detections),), True)
         unmatched[links[:, 1]] = False
-        unmatched_ids = torch.arange(len(detections))[unmatched]
-        # unmatched_measures = detections.position[unmatched]
 
         # Create a new active track for each unmatched measure
-        for i in range(unmatched_ids.shape[0]):
+        for i in torch.arange(len(detections))[unmatched].tolist():
             handler = TrackHandler(
                 self.specs.n_valid, self.specs.n_gap, self.frame_id, len(self.inactive_tracks) + len(self.active_tracks)
             )
-            handler.update(self.frame_id, int(unmatched_ids[i]))
+            handler.update(self.frame_id, i)
             self.active_tracks.append(handler)
 
         return unmatched
 
+    def update_detections(self, detections: byotrack.Detections) -> byotrack.Detections:
+        """Optional modification of the currrent detections based on the current state
+
+        This is called by `update` after the motion modeling but before the cost/association.
+
+        By default, it does not change anything.
+
+        Args:
+            detections (byotrack.Detections): Detections at the current frame
+
+        Returns:
+            byotrack.Detections: The (optionally modified) detections to use at this current frame
+
+        """
+        return detections
+
+    def associate(self, frame: np.ndarray, detections: byotrack.Detections) -> torch.Tensor:
+        """Produces links between the current tracks and detections
+
+        Optionnally it handles merges and splits by assocating a second time.
+
+        Args:
+            frame (np.ndarray): Current frame
+            detections (byotrack.Detections): Current detections
+
+        Returns:
+            torch.Tensor: Links (i, j)
+                Shape: (L, 2), dtype: int32
+        """
+
+        cost, threshold = self.cost(frame, detections)
+        links = self.specs.association_method.solve(cost, threshold)
+
+        if self.specs.merge_factor == 0 and self.specs.split_factor == 0:
+            return links  # No merge or splits
+
+        unmatched_detections = torch.full((len(detections),), True)
+        unmatched_detections[links[:, 1]] = False
+        unmatched_tracks = torch.full((len(self.active_tracks),), True)
+        unmatched_tracks[links[:, 0]] = False
+        valid_tracks = torch.tensor(
+            [(track.track_state == TrackHandler.TrackState.VALID) for track in self.active_tracks], dtype=torch.bool
+        )
+
+        if self.specs.merge_factor > 0:
+            # We simply do a 2nd association between unassociated VALID tracks with associated detections
+            tracks_mask = unmatched_tracks & valid_tracks
+            self.merge_links = self.specs.association_method.solve(
+                cost[tracks_mask][:, ~unmatched_detections], threshold * self.specs.merge_factor
+            )
+
+            # Relabel
+            self.merge_links[:, 0] = torch.arange(len(self.active_tracks))[tracks_mask][self.merge_links[:, 0]]
+            self.merge_links[:, 1] = torch.arange(len(detections))[~unmatched_detections][self.merge_links[:, 1]]
+
+        if self.specs.split_factor > 0:
+            # We simply do a 2nd association between associated tracks with unassociated detections
+            self.split_links = self.specs.association_method.solve(
+                cost[~unmatched_tracks][:, unmatched_detections], threshold * self.specs.split_factor
+            )
+
+            # Relabel
+            self.split_links[:, 0] = torch.arange(len(self.active_tracks))[~unmatched_tracks][self.split_links[:, 0]]
+            self.split_links[:, 1] = torch.arange(len(detections))[unmatched_detections][self.split_links[:, 1]]
+
+        return links
+
     def update(self, frame: np.ndarray, detections: byotrack.Detections) -> None:
         self.frame_id += 1
+
+        # Compute the flow map if optflow given
+        if self.optflow is not None:
+            self.optflow.update(frame)
+
+        self.motion_model()
+        detections = self.update_detections(detections)
 
         # Compute features if the extractor is given and register inside the detections
         # Do not recompute the features if some are already registered
@@ -465,14 +776,7 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
                 remove_feats = True
                 self.features_extractor.register(frame, detections)
 
-        # Compute the flow map if optflow given
-        if self.optflow is not None:
-            self.optflow.update(frame)
-
-        self.motion_model()
-        cost, threshold = self.cost(frame, detections)
-        links = self.specs.association_method.solve(cost, threshold)
-
+        links = self.associate(frame, detections)
         self.post_association(frame, detections, links)
 
         assert len(self.all_positions[-1]) == len(

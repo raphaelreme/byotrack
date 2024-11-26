@@ -13,17 +13,23 @@ from .base import AssociationMethod, FrameByFrameLinker, FrameByFrameLinkerParam
 class NearestNeighborParameters(FrameByFrameLinkerParameters):
     """Parameters of NearestNeighborLinker
 
+    Note:
+        The merging and splitting features is still experimental.
+
     Attributes:
         association_threshold (float): This is the main hyperparameter, it defines the threshold on the distance used
             not to link tracks with detections. It prevents to link with false positive detections.
             Default: 5 pixels
-        n_valid (int): Number of frames with a correct association required to validate the track at its creation.
+        n_valid (int): Number associated detections required to validate the track after its creation.
             Default: 3
-        n_gap (int): Number of frames with no association before the track termination.
+        n_gap (int): Number of consecutive frames without association before the track termination.
             Default: 3
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
             It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH)
             Default: OPT_SMOOTH
+        anisotropy (Tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
+            for each axis, depth first). This will be used to scale distances.
+            Default: (1., 1., 1.)
         ema (float): Optional exponential moving average to reduce detection noise. Detection positions are smoothed
             using this EMA. Should be smaller than 1. It use: x_{t+1} = ema x_{t} + (1 - ema) det(t)
             As motion is not modeled, EMA may introduce lag that will hinder tracking. It is more effective with
@@ -35,6 +41,12 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
             ForwardBackward interpolation using the same optical flow: it will produce
             smoother interpolations.
             Default: False
+        split_factor (float): Allow splitting of tracks, using a second association step.
+            The association threshold in this case is `split_factor * association_threshold`.
+            Default: 0.0 (No splits)
+        merge_factor (float): Allow merging of tracks, using a second association step.
+            The association threshold in this case is `merge_factor * association_threshold`.
+            Default: 0.0 (No merges)
 
     """
 
@@ -48,6 +60,8 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
         anisotropy: Tuple[float, float, float] = (1.0, 1.0, 1.0),
         ema=0.0,
         fill_gap=False,
+        split_factor: float = 0.0,
+        merge_factor: float = 0.0,
     ):
         super().__init__(  # pylint: disable=duplicate-code
             association_threshold=association_threshold,
@@ -55,6 +69,8 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
             n_gap=n_gap,
             association_method=association_method,
             anisotropy=anisotropy,
+            split_factor=split_factor,
+            merge_factor=merge_factor,
         )
         self.ema = ema
         self.fill_gap = fill_gap
@@ -123,17 +139,14 @@ class NearestNeighborLinker(FrameByFrameLinker):
         if self.active_positions is None:
             self.active_positions = torch.empty((0, detections.position.shape[1]))
 
+        # Update handlers
+        links, active_mask, unmatched = self.update_active_tracks(links, detections)
+
         # Update tracks positions with detections
         # Optionally using an EMA to reduce detections noise
         self.active_positions[links[:, 0]] -= (1.0 - self.specs.ema) * (
             self.active_positions[links[:, 0]] - detections.position[links[:, 1]]
         )
-
-        # Update active track handlers
-        active_mask = self.update_active_tracks(links)
-
-        # Create new track handlers for unmatched detections
-        unmatched = self.handle_extra_detections(detections, links)
 
         # Merge still active positions and new ones
         self.active_positions = torch.cat((self.active_positions[active_mask], detections.position[unmatched]))

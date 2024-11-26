@@ -64,6 +64,9 @@ class TrackBuilding(enum.Enum):
 class KalmanLinkerParameters(FrameByFrameLinkerParameters):
     """Parameters of KalmanLinker
 
+    Note:
+        The merging and splitting features is still experimental.
+
     Attributes:
         association_threshold (float): This is the main hyperparameter, it defines the threshold on the distance used
             not to link tracks with detections. It prevents to link with false positive detections.
@@ -80,9 +83,9 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
         kalman_order (int): Order of the Kalman filter to use.
             0 for brownian motions, 1 for directed brownian motion, 2 for accelerated brownian motions, etc...
             Default: 1
-        n_valid (int): Number of frames with a correct association required to validate the track at its creation.
+        n_valid (int): Number associated detections required to validate the track after its creation.
             Default: 3
-        n_gap (int): Number of frames with no association before the track termination.
+        n_gap (int): Number of consecutive frames without association before the track termination.
             Default: 3
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
             It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH)
@@ -99,6 +102,12 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
             Either from detections, or from filtered/smoothed positions computed by the
             Kalman filter. See `TrackBuilding`. It can be provided as a string.
             Default: FILTERED
+        split_factor (float): Allow splitting of tracks, using a second association step.
+            The association threshold in this case is `split_factor * association_threshold`.
+            Default: 0.0 (No splits)
+        merge_factor (float): Allow merging of tracks, using a second association step.
+            The association threshold in this case is `merge_factor * association_threshold`.
+            Default: 0.0 (No merges)
 
     """
 
@@ -115,6 +124,8 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
         anisotropy: Tuple[float, float, float] = (1.0, 1.0, 1.0),
         cost: Union[str, Cost] = Cost.EUCLIDEAN,
         track_building: Union[str, TrackBuilding] = TrackBuilding.FILTERED,
+        split_factor: float = 0.0,
+        merge_factor: float = 0.0,
     ):
         super().__init__(
             association_threshold=association_threshold,
@@ -122,6 +133,8 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
             n_gap=n_gap,
             anisotropy=anisotropy,
             association_method=association_method,
+            split_factor=split_factor,
+            merge_factor=merge_factor,
         )
 
         if isinstance(detection_std, float) and min(anisotropy) != max(anisotropy):
@@ -259,6 +272,8 @@ class KalmanLinker(FrameByFrameLinker):
                         states.mean[handler.start : handler.start + len(handler), i, :dim, 0],
                         handler.identifier,
                         torch.tensor(handler.detection_ids[: len(handler)], dtype=torch.int32),
+                        merge_id=handler.merge_id,
+                        parent_id=handler.parent_id,
                     )
                 )
 
@@ -331,6 +346,9 @@ class KalmanLinker(FrameByFrameLinker):
         if self.active_states is None or self.kalman_filter is None or self.projections is None:
             raise RuntimeError("The linker should already be initialized.")
 
+        # Update handlers
+        links, active_mask, unmatched = self.update_active_tracks(links, detections)
+
         # Update the state of associated tracks (unassociated tracks keep the predicted state)
         self.active_states[links[:, 0]] = self.kalman_filter.update(
             self.active_states[links[:, 0]],
@@ -338,11 +356,7 @@ class KalmanLinker(FrameByFrameLinker):
             projection=self.projections[links[:, 0]],
         )
 
-        # Update active track handlers
-        active_mask = self.update_active_tracks(links)
-
-        # Create new track handlers for unmatched detections
-        unmatched = self.handle_extra_detections(detections, links)
+        # Create new states for unmatched measures
         unmatched_measures = detections.position[unmatched]
 
         # Build the initial states for tracks:

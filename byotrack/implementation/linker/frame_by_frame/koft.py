@@ -19,6 +19,9 @@ from .kalman_linker import Cost, KalmanLinker, KalmanLinkerParameters, TrackBuil
 class KOFTLinkerParameters(KalmanLinkerParameters):
     """Parameters of KOFTLinker
 
+    Note:
+        The merging and splitting features is still experimental.
+
     Attributes:
         association_threshold (float): This is the main hyperparameter, it defines the threshold on the distance used
             not to link tracks with detections. It prevents to link with false positive detections.
@@ -38,9 +41,9 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
         kalman_order (int): Order of the Kalman filter to use. 0 is not supported.
             1 for directed brownian motion, 2 for accelerated brownian motions, etc...
             Default: 1
-        n_valid (int): Number of frames with a correct association required to validate the track at its creation.
+        n_valid (int): Number associated detections required to validate the track after its creation.
             Default: 3
-        n_gap (int): Number of frames with no association before the track termination.
+        n_gap (int): Number of consecutive frames without association before the track termination.
             Default: 3
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
             It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH)
@@ -48,7 +51,7 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
         anisotropy (Tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
             for each axis, depth first). This will be used to scale distances. It will only impact
             EUCLIDEAN[_SQ] costs. For probabilistic cost, anisotropy should be already integrated
-            in the different std of the kalman filter.
+            in the stds of the kalman filter (providing one std for each dimension).
             Default: (1., 1., 1.)
         cost_method (CostMethod): The cost method to use. It can be provided as a string.
             See `CostMethod`. It also indicates what is the correct unit of `association_threshold`.
@@ -57,6 +60,12 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
             Either from detections, or from filtered/smoothed positions computed by the
             Kalman filter. See `TrackBuilding`. It can be provided as a string.
             Default: FILTERED
+        split_factor (float): Allow splitting of tracks, using a second association step.
+            The association threshold in this case is `split_factor * association_threshold`.
+            Default: 0.0 (No splits)
+        merge_factor (float): Allow merging of tracks, using a second association step.
+            The association threshold in this case is `merge_factor * association_threshold`.
+            Default: 0.0 (No merges)
         extract_flows_on_detections (bool): If True it extracts the optical flow at the detection location if possible.
             Otherwise it extract the flow from the curent estimate of the track position.
             Default: False
@@ -66,7 +75,7 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
 
     """
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(  # pylint: disable=too-many-arguments, too-many-locals
         self,
         association_threshold: float,
         *,
@@ -80,6 +89,8 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
         anisotropy: Tuple[float, float, float] = (1.0, 1.0, 1.0),
         cost: Union[str, Cost] = Cost.EUCLIDEAN,
         track_building: Union[str, TrackBuilding] = TrackBuilding.FILTERED,
+        split_factor: float = 0.0,
+        merge_factor: float = 0.0,
         extract_flows_on_detections=False,
         always_measure_velocity=True,
     ):
@@ -94,6 +105,8 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
             anisotropy=anisotropy,
             cost=cost,
             track_building=track_building,
+            split_factor=split_factor,
+            merge_factor=merge_factor,
         )
 
         if isinstance(flow_std, float) and min(anisotropy) != max(anisotropy):
@@ -148,9 +161,9 @@ class KOFTLinker(KalmanLinker):
     ) -> None:
         super().__init__(specs, optflow, features_extractor, save_all)
 
+        self.optflow: OnlineFlowExtractor
         self.specs: KOFTLinkerParameters
         assert self.optflow is not None, "KOFT requires an optical flow algorithm"
-        self.optflow: OnlineFlowExtractor
 
         self.last_detections = byotrack.Detections(data={"position": torch.empty((0, 2))})
         self.n_initial = 0
@@ -290,6 +303,9 @@ class KOFTLinker(KalmanLinker):
 
         self.last_detections = detections  # Save detections (May be required)
 
+        # Update handlers
+        links, active_mask, unmatched = self.update_active_tracks(links, detections)
+
         # Update the state of associated tracks (unassociated tracks keep the predicted state)
         self.active_states[links[:, 0]] = self.kalman_filter.update(
             self.active_states[links[:, 0]],
@@ -303,11 +319,7 @@ class KOFTLinker(KalmanLinker):
             measurement_noise=self.kalman_filter.measurement_noise[: detections.dim, : detections.dim],
         )
 
-        # Update active track handlers
-        active_mask = self.update_active_tracks(links)
-
-        # Create new track handlers for unmatched detections
-        unmatched = self.handle_extra_detections(detections, links)
+        # Create new states for unmatched measures
         unmatched_measures = detections.position[unmatched]
         self.n_initial = unmatched_measures.shape[0]
 
