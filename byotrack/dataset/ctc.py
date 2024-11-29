@@ -286,6 +286,8 @@ def _fast_disk_2d(
     positions: np.ndarray,
     identifiers: np.ndarray,
     radius: np.ndarray,
+    *,
+    overwrite=False,
 ):
     """Fast inplace drawing of disk in 2D
 
@@ -300,6 +302,8 @@ def _fast_disk_2d(
             Shape: (n,), dtype: uint16
         radius (np.ndarray): Radius of each disk
             Shape: (n, ), dtype: float32
+        overwrite (bool): Overwrite pixels that are already written (!=0)
+            Default: False
 
     """
     positions_round = np.round(positions).astype(np.int64)
@@ -315,6 +319,9 @@ def _fast_disk_2d(
             if not 0 <= i < segmentation.shape[0] or not 0 <= j < segmentation.shape[1]:
                 continue
 
+            if not overwrite and segmentation[i, j] != 0 and best_dist[i, j] == np.inf:
+                continue
+
             delta = pos - positions[k]
             dist = delta @ delta
 
@@ -325,12 +332,15 @@ def _fast_disk_2d(
 
 
 @numba.njit(parallel=True)
-def _fast_disk_3d(
+def _fast_disk_3d(  # pylint: disable=too-many-locals
     segmentation: np.ndarray,
     bbox: np.ndarray,
     positions: np.ndarray,
     identifiers: np.ndarray,
     radius: np.ndarray,
+    *,
+    anisoptropy=1.0,
+    overwrite=False,
 ):
     """Fast inplace drawing of disk in 3D
 
@@ -345,6 +355,11 @@ def _fast_disk_3d(
             Shape: (n,), dtype: uint16
         radius (np.ndarray): Radius of each disk
             Shape: (n, ), dtype: float32
+        anisotropy (float): Relative size of a pixel along the depth dimension
+            versus height/width dimensions.
+            Default: 1.0
+        overwrite (bool): Overwrite pixels that are already written (!=0)
+            Default: False
 
     """
     positions_round = np.round(positions).astype(np.int64)
@@ -364,7 +379,11 @@ def _fast_disk_3d(
             ):
                 continue
 
+            if not overwrite and segmentation[z, i, j] != 0 and best_dist[z, i, j] == np.inf:
+                continue
+
             delta = pos - positions[k]
+            delta[0] *= anisoptropy  # Increase distance in Z by the anisotropy
             dist = delta @ delta
 
             if dist <= radius[k]:
@@ -378,6 +397,9 @@ def draw_disk(
     positions: np.ndarray,
     identifiers: np.ndarray,
     radius: np.ndarray,
+    *,
+    anisotropy=1.0,
+    overwrite=False,
 ):
     """Draw disks on the segmentation
 
@@ -390,21 +412,27 @@ def draw_disk(
             Shape: (n,), dtype: uint16
         radius (np.ndarray): Radius of each disk
             Shape: (n, ), dtype: float32)
+        anisotropy (float): Relative size of a pixel along the depth dimension
+            versus height/width dimensions.
+            Default: 1.0
+        overwrite (bool): Overwrite pixels that are already written (!=0)
+            Default: False
+
     """
     # Wrapped to redirect in 2D/3D and numba does not support np.indices in 3.8
     if segmentation.ndim == 3:
         thresh = round(radius.max())
         bbox: np.ndarray = np.indices((thresh * 2 + 1, thresh * 2 + 1, thresh * 2 + 1)).transpose(1, 2, 3, 0) - thresh
         bbox = bbox.reshape(-1, 3)
-        _fast_disk_3d(segmentation, bbox, positions, identifiers, radius)
+        _fast_disk_3d(segmentation, bbox, positions, identifiers, radius, anisoptropy=anisotropy, overwrite=overwrite)
     else:
         thresh = int(round(radius.max()))
         bbox = np.indices((thresh * 2 + 1, thresh * 2 + 1)).transpose(1, 2, 0) - thresh
         bbox = bbox.reshape(-1, 2)
-        _fast_disk_2d(segmentation, bbox, positions, identifiers, radius)
+        _fast_disk_2d(segmentation, bbox, positions, identifiers, radius, overwrite=overwrite)
 
 
-def save_tracks(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+def save_tracks(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements,too-many-arguments
     path: Union[str, os.PathLike],
     tracks: Collection[byotrack.Track],
     detections_sequence: Sequence[byotrack.Detections] = (),
@@ -415,6 +443,8 @@ def save_tracks(  # pylint: disable=too-many-branches,too-many-locals,too-many-s
     last=0,
     shape: Optional[Tuple[int, ...]] = None,
     n_digit=4,
+    anisotropy=1.0,
+    overwrite_detections=False,
 ):
     """Save tracks in the CTC format [10]
 
@@ -453,6 +483,11 @@ def save_tracks(  # pylint: disable=too-many-branches,too-many-locals,too-many-s
             Default: None
         n_digit (int): Number of digit used to encode time in file names.
             Default: 4
+        anisotropy (float): Relative size of a pixel along the depth dimension
+            versus height/width dimensions.
+            Default: 1.0
+        overwrite_detections (bool): Overwrite the segmentation of objects with disk.
+            Default: False (Disk are only drawn on background)
 
     """
     path = pathlib.Path(path)
@@ -517,6 +552,8 @@ def save_tracks(  # pylint: disable=too-many-branches,too-many-locals,too-many-s
                 torch.stack(disk_positions).numpy(),
                 np.array(disk_ids, dtype=np.uint16) + 1,
                 np.full(len(disk_ids), default_radius, dtype=np.float32),
+                anisotropy=anisotropy,
+                overwrite=overwrite_detections,
             )
 
             # Safety checks because CTC is quite restrictive
