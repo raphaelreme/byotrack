@@ -123,7 +123,6 @@ class TrackMateLinker(byotrack.Linker):  # pylint: disable=too-few-public-method
 
     Note:
         This implementation requires Fiji to be installed (https://imagej.net/downloads)
-        And tifffile library (https://github.com/cgohlke/tifffile#quickstart)
 
     Note:
         In case of missed detections, positions are filled with nan. To fill nan with true values, use an Interpolator
@@ -144,7 +143,7 @@ class TrackMateLinker(byotrack.Linker):  # pylint: disable=too-few-public-method
         Args:
             fiji_path (str | os.PathLike): Path to the fiji executable
                 The executable can be found inside the installation folder of Fiji.
-                Linux: Fiji.app/ImageJ-<os>.exe
+                Linux: Fiji.app/ImageJ-<os>
                 Windows: Fiji.app/ImageJ-<os>.exe
                 MacOs: Fiji.app/Contents/MacOs/ImageJ-<os>
 

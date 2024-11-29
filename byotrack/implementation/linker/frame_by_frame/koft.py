@@ -297,22 +297,19 @@ class KOFTLinker(KalmanLinker):
         cost = -projections[:, None].log_likelihood(detections.position[None, ..., None])
         return cost, -torch.log(torch.tensor(self.specs.association_threshold)).item()
 
-    def post_association(self, _: np.ndarray, detections: byotrack.Detections, links: torch.Tensor):
+    def post_association(self, _: np.ndarray, detections: byotrack.Detections, active_mask: torch.Tensor):
         if self.active_states is None or self.kalman_filter is None or self.projections is None:
             raise RuntimeError("The linker should already be initialized.")
 
         self.last_detections = detections  # Save detections (May be required)
 
-        # Update handlers
-        links, active_mask, unmatched = self.update_active_tracks(links, detections)
-
         # Update the state of associated tracks (unassociated tracks keep the predicted state)
-        self.active_states[links[:, 0]] = self.kalman_filter.update(
-            self.active_states[links[:, 0]],
-            detections.position[links[:, 1]][..., None],
+        self.active_states[self._links[:, 0]] = self.kalman_filter.update(
+            self.active_states[self._links[:, 0]],
+            detections.position[self._links[:, 1]][..., None],
             projection=torch_kf.GaussianState(
-                self.projections.mean[links[:, 0], : detections.dim],
-                self.projections.covariance[links[:, 0], : detections.dim, : detections.dim],
+                self.projections.mean[self._links[:, 0], : detections.dim],
+                self.projections.covariance[self._links[:, 0], : detections.dim, : detections.dim],
                 None,  # /!\ inv(cov[:2,:2]) != inv(cov)[:2, :2] =>
             ),
             measurement_matrix=self.kalman_filter.measurement_matrix[: detections.dim],
@@ -320,7 +317,7 @@ class KOFTLinker(KalmanLinker):
         )
 
         # Create new states for unmatched measures
-        unmatched_measures = detections.position[unmatched]
+        unmatched_measures = detections.position[self._unmatched_detections]
         self.n_initial = unmatched_measures.shape[0]
 
         # Build the initial states for tracks:

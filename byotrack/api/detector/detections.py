@@ -36,6 +36,32 @@ def _check_confidence(confidence: torch.Tensor) -> None:
     assert confidence.dtype is torch.float32
 
 
+@numba.njit
+def _compute_mass(segmentation: np.ndarray) -> np.ndarray:
+    """Extract the number of pixels of each object in the segmentation
+
+    Args:
+        segmentation (np.ndarray): Segmentation mask
+
+    Returns:
+        np.ndarray: Mass for each object
+            Shape (n,), dtype: int32
+
+    """
+    n = segmentation.max()
+    mass = np.zeros(n, dtype=np.int32)
+
+    # Ravel in 1D
+    segmentation = segmentation.reshape(-1)
+
+    for i in range(segmentation.shape[0]):
+        instance = segmentation[i] - 1
+        if instance != -1:
+            mass[instance] += 1
+
+    return mass
+
+
 @numba.njit(parallel=False)
 def _position_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     """Return the center (mean) of each instance in the segmentation"""
@@ -278,6 +304,8 @@ class Detections:
             Shape: ([D, ]H, W), dtype: int32
         confidence (torch.Tensor): Confidence for each instance
             Shape: (N,), dtype: float32
+        mass (torch.Tensor): Size of each object in pixel, inferred from the data.
+            Shape: (N,), dtype: int32
         use_median_position (bool): Use median instead of mean to compute positions from segmentation.
             Default: True (Usually more robust)
 
@@ -361,6 +389,15 @@ class Detections:
         return confidence
 
     @property
+    def mass(self) -> torch.Tensor:
+        mass = self.data.get("mass", self._lazy_extrapolated_data.get("mass"))
+        if mass is None:
+            mass = self._extrapolate_mass()
+            self._lazy_extrapolated_data["confidence"] = mass
+
+        return mass
+
+    @property
     def use_median_position(self) -> bool:
         return self._use_median_position
 
@@ -442,6 +479,15 @@ class Detections:
     def _extrapolate_confidence(self) -> torch.Tensor:
         """Extrapolate confidence"""
         return torch.ones(self.length)
+
+    def _extrapolate_mass(self) -> torch.Tensor:
+        if "segmentation" in self.data:
+            return torch.tensor(_compute_mass(self.data["segmentation"].numpy()), dtype=torch.int32)
+
+        if "bbox" in self.data:
+            return self.data["bbox"][:, self.dim :].prod(dim=-1)
+
+        return torch.ones(self.length, dtype=torch.int32)
 
     def __len__(self) -> int:
         return self.length

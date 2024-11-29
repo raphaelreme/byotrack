@@ -135,21 +135,20 @@ class NearestNeighborLinker(FrameByFrameLinker):
             self.specs.association_threshold,
         )
 
-    def post_association(self, _: np.ndarray, detections: byotrack.Detections, links: torch.Tensor):
+    def post_association(self, _: np.ndarray, detections: byotrack.Detections, active_mask: torch.Tensor):
         if self.active_positions is None:
             self.active_positions = torch.empty((0, detections.position.shape[1]))
 
-        # Update handlers
-        links, active_mask, unmatched = self.update_active_tracks(links, detections)
-
         # Update tracks positions with detections
         # Optionally using an EMA to reduce detections noise
-        self.active_positions[links[:, 0]] -= (1.0 - self.specs.ema) * (
-            self.active_positions[links[:, 0]] - detections.position[links[:, 1]]
+        self.active_positions[self._links[:, 0]] -= (1.0 - self.specs.ema) * (
+            self.active_positions[self._links[:, 0]] - detections.position[self._links[:, 1]]
         )
 
         # Merge still active positions and new ones
-        self.active_positions = torch.cat((self.active_positions[active_mask], detections.position[unmatched]))
+        self.active_positions = torch.cat(
+            (self.active_positions[active_mask], detections.position[self._unmatched_detections])
+        )
 
         self.all_positions.append(self.active_positions.clone())
 

@@ -61,7 +61,7 @@ class MassExtractor(FeaturesExtractor):
     """Extract the mass of each detection (number of pixels)"""
 
     def __call__(self, frame: np.ndarray, detections: byotrack.Detections):
-        torch.tensor(compute_mass(detections.segmentation.numpy()), dtype=torch.float32)
+        return detections.mass
 
 
 class IntensityExtractor(FeaturesExtractor):
@@ -69,31 +69,6 @@ class IntensityExtractor(FeaturesExtractor):
 
     def __call__(self, frame: np.ndarray, detections: byotrack.Detections):
         torch.tensor(compute_intensity(detections.segmentation.numpy(), frame.sum(axis=-1)), dtype=torch.float32)
-
-
-@numba.njit
-def compute_mass(segmentation: np.ndarray) -> np.ndarray:
-    """Extract the number of pixels of each detection
-
-    Args:
-        segmentation (np.ndarray): Segmentation mask
-
-    Returns:
-        np.ndarray: Mass for each object
-
-    """
-    n = segmentation.max()
-    mass = np.zeros(n, dtype=np.uint)
-
-    # Ravel in 1D
-    segmentation = segmentation.reshape(-1)
-
-    for i in range(segmentation.shape[0]):
-        instance = segmentation[i] - 1
-        if instance != -1:
-            mass[instance] += 1
-
-    return mass
 
 
 @numba.njit
