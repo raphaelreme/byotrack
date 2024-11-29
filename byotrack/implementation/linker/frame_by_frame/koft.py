@@ -38,7 +38,7 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
             order-th derivative can change between two consecutive frames. A common rule of thumb is to use
             3 * process_std ~= max_t(| x^(order)(t) - x^(order)(t+1)|). It can be provided for each dimension).
             Default: 1.5 pixels / frame^order
-        kalman_order (int): Order of the Kalman filter to use. 0 is not supported.
+        kalman_order (int): Order of the Kalman filter to use. 0 is for brownian motion (it predicts a 0 velocity)
             1 for directed brownian motion, 2 for accelerated brownian motions, etc...
             Default: 1
         n_valid (int): Number associated detections required to validate the track after its creation.
@@ -117,8 +117,6 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
         self.flow_std = flow_std
         self.extract_flows_on_detections = extract_flows_on_detections
         self.always_measure_velocity = always_measure_velocity
-
-        assert self.kalman_order >= 1, "With KOFT, the velocity is measured and thus should be modeled."
 
     flow_std: Union[float, torch.Tensor] = 1.0
     extract_flows_on_detections: bool = False
@@ -234,9 +232,13 @@ class KOFTLinker(KalmanLinker):
                 self.specs.detection_std,
                 self.specs.process_std,
                 dim=detections.dim,
-                order=self.specs.kalman_order,
+                order=self.specs.kalman_order + (self.specs.kalman_order == 0),
                 approximate=True,  # Approximate so that a flow precisely means the velocity modeled here
             )
+            if self.specs.kalman_order == 0:
+                # In order 0, we still model velocity, but we always predict it at 0
+                self.kalman_filter.process_matrix[detections.dim :, detections.dim :] = 0
+
             # Doubles the measurement space to measure velocity
             self.kalman_filter.measurement_matrix = torch.eye(detections.dim * 2, self.kalman_filter.state_dim)
             self.kalman_filter.measurement_noise = torch.eye(detections.dim * 2)
