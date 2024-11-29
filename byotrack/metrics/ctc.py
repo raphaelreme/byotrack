@@ -8,6 +8,7 @@ In the future, we may wrap the Fiji plugin to access BIO metrics.
 import os
 import pathlib
 import platform
+import re
 import shutil
 import subprocess
 import tempfile
@@ -16,6 +17,7 @@ import warnings
 
 
 import byotrack
+from byotrack import fiji
 from byotrack.dataset import ctc
 from byotrack.utils import sorted_alphanumeric
 
@@ -39,6 +41,7 @@ class CTCSoftwareRunner:  # pylint: disable=too-few-public-methods
         ctc_software (pathlib.Path): Path to the ctc software folder.
             It should be the root folder containing Win/Linux/Mac subfolders with their executables.
         system (str): The user system in the CTC nomenclature. One of Linux, Mac or Win.
+        last_log (str): Logs of the last computed metrics
 
     """
 
@@ -46,6 +49,7 @@ class CTCSoftwareRunner:  # pylint: disable=too-few-public-methods
 
     def __init__(self, ctc_software: Union[str, os.PathLike]):
         self.ctc_software = pathlib.Path(ctc_software)
+        self.last_log = ""
 
         self.system = platform.system()
         if self.system == "Darwin":
@@ -99,6 +103,8 @@ class CTCSoftwareRunner:  # pylint: disable=too-few-public-methods
                 "Cannot parse outputs, the CTC software probably found an error: " + output_string
             ) from exc
 
+        self.last_log = (pathlib.Path(dataset) / f"{seq:02}_RES" / f"{metric}_log.txt").read_text("utf-8")
+
         return value
 
 
@@ -128,10 +134,6 @@ class CTCMetrics(CTCSoftwareRunner):
     It will store the logs of the last called metric in `self.last_log`
 
     """
-
-    def __init__(self, ctc_software):
-        super().__init__(ctc_software)
-        self.last_log = ""
 
     def compute_tracking_metric(
         self,
@@ -191,8 +193,6 @@ class CTCMetrics(CTCSoftwareRunner):
             else:
                 raise ValueError("Without any detections, `shape` must be provided")
 
-        if detections_sequence:
-            shape = detections_sequence[0].shape
         with tempfile.TemporaryDirectory(prefix="ByoTrack-CTC-Metrics") as output_dir:
             output_path = pathlib.Path(output_dir)
             ground_truth_path = output_path / "01_GT" / ("SEG" if metric == "SEG" else "TRA")
@@ -216,10 +216,7 @@ class CTCMetrics(CTCSoftwareRunner):
                     **kwargs,
                 )
 
-            results = self.run(metric, output_path, 1)
-            self.last_log = (output_path / "01_RES" / f"{metric}_log.txt").read_text("utf-8")
-
-            return results
+            return self.run(metric, output_path, 1)
 
     def compute_detection_metric(
         self,
@@ -268,10 +265,7 @@ class CTCMetrics(CTCSoftwareRunner):
                     ground_truth_path, ground_truth_detections_sequence, as_res=False, as_seg=metric == "SEG"
                 )
 
-            results = self.run(metric, output_path, 1)
-            self.last_log = (output_path / "01_RES" / f"{metric}_log.txt").read_text("utf-8")
-
-            return results
+            return self.run(metric, output_path, 1)
 
     @staticmethod
     def copy_ground_truth(
@@ -351,3 +345,147 @@ class CTCMetrics(CTCSoftwareRunner):
         for path in res_tiff_paths if is_res else gt_track_tiff_paths:
             frame_id = int(path.stem[4 if is_res else 9 :])
             shutil.copy(path, target_path / f"man_{'seg' if as_seg else 'track'}{frame_id:04}.tif")
+
+
+class BioMetrics:
+    """Wrapper around the CTC "Biological measures" Fiji plugin [10]
+
+    It allows the computations of BIO metrics for the Cell Tracking Challenge [10].
+
+    Note:
+        This implementation requires Fiji to be installed (https://imagej.net/downloads)
+        with the CTC plugins (https://github.com/CellTrackingChallenge/fiji-plugins)
+
+    Attributes:
+        runner (byotrack.fiji.FijiRunner): Fiji runner
+        last_metrics (Tuple[float, float, float, float]): Sub metrics information for the last computed BIO
+            It consists of ("CT", "TF", "BC(i)", "CCA"). Their average gives the BIO metric.
+
+    """
+
+    plugin_name = "Biological measures"
+    # Reg exp for parsing outputs: find the last 4 numbers in the output line such in the format 'a, b, c, d]]'
+    output_regexp = re.compile(r"([+-]?\d*\.\d+), ([+-]?\d*\.\d+), ([+-]?\d*\.\d+), ([+-]?\d*\.\d+)]]$")
+
+    def __init__(self, fiji_path: Union[str, os.PathLike]) -> None:
+        """Constructor
+
+        Args:
+            fiji_path (str | os.PathLike): Path to the fiji executable
+                The executable can be found inside the installation folder of Fiji.
+                Linux: Fiji.app/ImageJ-<os>
+                Windows: Fiji.app/ImageJ-<os>.exe
+                MacOs: Fiji.app/Contents/MacOs/ImageJ-<os>
+
+        """
+        self.runner = fiji.FijiRunner(fiji_path, capture_outputs=True)
+        self.last_metrics = (0.0, 0.0, 0.0, 0.0)
+
+    def run(self, dataset: Union[str, os.PathLike], seq=1, n_digit=4) -> float:
+        """Run the CTC "Biological measures" plugin on the given dataset.
+
+        The dataset should already have results stored in it. It expects the CTC format.
+
+        Args:
+            metric (str): The metric to evaluate. One of (TRA, DET, SEG).
+            dataset (Union[str, os.PathLike]): Path to the dataset to evaluate.
+            seq (int): Sequence to evaluate inside the dataset.
+                The plugin will compare {dataset}/{seq:02}_RES with {dataset}/{seq:02}_GT
+                Default: 1
+            n_digit (int): Number of digits used to encode time in file names.
+                It is dataset dependant, but in ByoTrack, by default we use 4 digits.
+                Default: 4
+
+        Returns:
+            float: The evaluated metric
+
+        """
+        path = pathlib.Path(dataset)
+
+        # Let's do output redirection
+        self.runner.run(
+            "Biological measures", resPath=path / f"{seq:02}_RES", gtPath=path / f"{seq:02}_GT", noOfDigits=n_digit
+        )
+
+        line = self.runner.last_outputs.stdout.decode().strip().split("\n")[-1]
+        match = self.output_regexp.search(line)
+        if not match:
+            raise RuntimeError("Cannot parse outputs, the CTC software probably found an error: " + line)
+
+        self.last_metrics = tuple(  # type: ignore
+            (float(group) if float(group) >= 0.0 else 0.0) for group in match.groups()
+        )
+
+        return sum(self.last_metrics) / 4
+
+    def compute(
+        self,
+        tracks: Collection[byotrack.Track],
+        ground_truth_tracks: Union[str, os.PathLike, Collection[byotrack.Track]],
+        *,
+        detections_sequence: Sequence[byotrack.Detections] = (),
+        ground_truth_detections_sequence: Sequence[byotrack.Detections] = (),
+        **kwargs,
+    ) -> float:
+        """Compute BIO metric for the given tracks and ground truthes.
+
+        It will create a temporary folder, to store the tracks and ground-truthes in the right format and then
+        execute the CTC plugins. The temporary folder is removed at the end.
+
+        See `run` to simply compute the metric of an already existing folder.
+
+        Note:
+            In CTC, matching of predicted tracks with GT ones is done based on a kind of IOU.
+            Therefore, it may be useful to provide the detections_sequence associated with the tracks.
+            You may also tweak the `default_radius` arguments (in kwargs). (See `ctc.save_tracks`)
+
+        Args:
+            tracks (Collection[byotrack.Track]): Predicted tracks to evaluate.
+            ground_truth_tracks (Union[str, os.PathLike, Collection[byotrack.Track]]): Ground truth data.
+                It is either a path to the GT tracks folder, which will be copied in our temporary folder.
+                Or it is a list of ByoTrack.Track, that will be saved in the temporary folder.
+            detections_sequence (Sequence[byotrack.Detections]): Optional detections, used when saving the tracks.
+                Default: ()  # No detections and tracks segmentations will be disk of radius `default_radius`.
+            ground_truth_detections_sequence (Sequence[byotrack.Detections]): Optional detections for ground-truth.
+                When saving the GT tracks, these detections are used. See `ctc.save_tracks`.
+                Default: ()  # No detections and tracks segmentations will be disk of radius `default_radius`.
+            **kwargs: Additional arguments to provide to the `ctc.save_tracks` function.
+                'shape': Provide the shape of saved image. It is mandatory if no detections is provided.
+                'default_radius': Radius of the disk drawn for tracks that have no detections.
+                'last': Last frame to consider. (Typically to shorten the sequences,
+                or if no object is tracked on the last frames, this will enforce the creation of empty tiff files)
+
+        """
+        if "shape" in kwargs:
+            shape = kwargs.pop("shape")
+        else:
+            if detections_sequence:
+                shape = detections_sequence[0].shape
+            elif ground_truth_detections_sequence:
+                shape = ground_truth_detections_sequence[0].shape
+            else:
+                raise ValueError("Without any detections, `shape` must be provided")
+
+        with tempfile.TemporaryDirectory(prefix="ByoTrack-CTC-Metrics") as output_dir:
+            output_path = pathlib.Path(output_dir)
+            ground_truth_path = output_path / "01_GT" / "TRA"
+            ctc.save_tracks(
+                output_path / "01_RES", tracks, detections_sequence, as_res=True, shape=shape, n_digit=4, **kwargs
+            )
+            if isinstance(ground_truth_tracks, (str, os.PathLike)):
+                if ground_truth_detections_sequence:
+                    warnings.warn(
+                        "When using a saved GT folder, it will be copied and ground-truth detections are ignored"
+                    )
+                CTCMetrics.copy_ground_truth(ground_truth_tracks, ground_truth_path)
+            else:
+                ctc.save_tracks(
+                    ground_truth_path,
+                    ground_truth_tracks,
+                    ground_truth_detections_sequence,
+                    as_res=False,
+                    shape=shape,
+                    **kwargs,
+                )
+
+            return self.run(output_path, 1)
