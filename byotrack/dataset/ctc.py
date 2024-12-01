@@ -170,10 +170,10 @@ def load_tracks(  # pylint: disable=too-many-locals,too-many-branches,too-many-s
             parent = tracks_meta[track_id][2] - 1  # Offset of 1 in identifiers
 
             if min(data[0]) < start:
-                raise ValueError("Found track before for it started")
+                raise ValueError(f"Found track {track_id} on frame {min(data[0])} before for it started")
 
             if max(data[0]) > last:
-                raise ValueError("Found track before for it started")
+                raise ValueError(f"Found track {track_id} on frame {max(data[0])} after for it ended")
         else:
             start, last = min(data[0]), max(data[0])
             parent = -1
@@ -516,7 +516,7 @@ def save_tracks(  # pylint: disable=too-many-branches,too-many-locals,too-many-s
         disk_ids = []
 
         if has_detections:
-            det_to_track_ids = np.zeros(detections_sequence[frame_id].length, dtype=np.uint16)
+            det_to_track_ids = np.zeros(detections_sequence[frame_id].length, dtype=np.uint16) - 1
 
         for track in tracks:
             position = track[frame_id]
