@@ -345,6 +345,7 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
         self._split_links = torch.zeros((0, 2), dtype=torch.int32)
         self._merge_links = torch.zeros((0, 2), dtype=torch.int32)
         self._unmatched_detections = torch.full((0,), True)
+        self._next_identifier = 0
 
     def reset(self) -> None:
         super().reset()
@@ -359,6 +360,7 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
         self._split_links = torch.zeros((0, 2), dtype=torch.int32)
         self._merge_links = torch.zeros((0, 2), dtype=torch.int32)
         self._unmatched_detections = torch.full((0,), True)
+        self._next_identifier = 0
 
     def collect(self) -> List[byotrack.Track]:
         tracks = []
@@ -470,8 +472,9 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
                 self.specs.n_valid,
                 self.specs.n_gap,
                 self.frame_id,
-                len(self.inactive_tracks) + len(self.active_tracks) + len(new_tracks),
+                self._next_identifier,
             )
+            self._next_identifier += 1
             track.update(self.frame_id, i)
             new_tracks.append(track)
 
@@ -499,7 +502,6 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
         still_active: List[TrackHandler] = []
         merges_to_ref: List[TrackHandler] = []
         det_to_merge_id: Dict[int, int] = {}
-        identifier = len(self.inactive_tracks) + len(self.active_tracks) + len(new_tracks)
 
         for i, track in enumerate(self.active_tracks):
             if track_to_det_split[i] != -1:  # The track splits
@@ -509,9 +511,9 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
                 self.inactive_tracks.append(track)
 
                 # Replace by a new VALID handler
-                other = TrackHandler(self.specs.n_valid, self.specs.n_gap, self.frame_id, identifier)
+                other = TrackHandler(self.specs.n_valid, self.specs.n_gap, self.frame_id, self._next_identifier)
+                self._next_identifier += 1
                 other.track_state = TrackHandler.TrackState.VALID
-                identifier += 1
 
                 # Set parent for both new tracks
                 other.parent_id = track.identifier
@@ -553,9 +555,9 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
                         track_to_det[i] = -1
                     else:  # Merge: Create a new track and stop the former one
                         # Replace by a new VALID handler
-                        other = TrackHandler(self.specs.n_valid, self.specs.n_gap, self.frame_id, identifier)
+                        other = TrackHandler(self.specs.n_valid, self.specs.n_gap, self.frame_id, self._next_identifier)
+                        self._next_identifier += 1
                         other.track_state = TrackHandler.TrackState.VALID
-                        identifier += 1
 
                         track.merge_id = other.identifier
                         det_to_merge_id[int(track_to_det[i])] = other.identifier
@@ -576,40 +578,9 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
                 active_mask[i] = True
             elif track.track_state == TrackHandler.TrackState.FINISHED or self.save_all:
                 self.inactive_tracks.append(track)
-            elif track.track_state == TrackHandler.TrackState.INVALID and track.parent_id != -1:
-                # We have to undo the splitting if a splitted track is not validated
-                # Let's find the finished parent track handler and the valid other child handler
-                # and concatenate back the data in a single valid track handler
-                # This is slow, this should not occurs often. To be really faster it requires other data structures
-                # To be changed if it is necessary
-                parent = [other for other in self.inactive_tracks if other.identifier == track.parent_id][0]
-                child = [
-                    other for other in self.active_tracks + self.inactive_tracks if other.parent_id == track.parent_id
-                ][0]
 
-                self.inactive_tracks.remove(parent)
-
-                if child.is_active():
-                    child_index = self.active_tracks.index(child)
-                else:
-                    child_index = self.inactive_tracks.index(child)
-
-                concatenated_handler = TrackHandler(
-                    self.specs.n_valid, self.specs.n_gap, parent.start, child.identifier
-                )
-                concatenated_handler.track_state = child.track_state
-                concatenated_handler.last_association = child.last_association
-                concatenated_handler.parent_id = parent.parent_id
-                concatenated_handler.merge_id = child.merge_id
-                concatenated_handler.track_ids = parent.track_ids + child.track_ids
-                concatenated_handler.detection_ids = parent.detection_ids + child.detection_ids
-                concatenated_handler.is_split = child.is_split
-
-                # Replace child by concatenated
-                if concatenated_handler.is_active():
-                    self.active_tracks[child_index] = concatenated_handler
-                else:
-                    self.inactive_tracks[child_index] = concatenated_handler
+            if track.track_state == TrackHandler.TrackState.INVALID and track.parent_id != -1:
+                self._undo_split(track, still_active)
 
         # Relabel merges
         for track in merges_to_ref:
@@ -646,9 +617,54 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
             elif track.track_state == TrackHandler.TrackState.FINISHED or self.save_all:
                 self.inactive_tracks.append(track)
 
+            if track.track_state == TrackHandler.TrackState.INVALID and track.parent_id != -1:
+                self._undo_split(track, still_active)
+
         self.active_tracks = still_active
 
         return active_mask
+
+    def _undo_split(self, track: TrackHandler, still_active: List[TrackHandler]):
+        """Undo a split if one of the child track is invalidated.
+
+        It finds the finished parent track handler and the valid other child handler and
+        concatenates them back together in a single valid track handler.
+
+        This is quite slow, but this should not occur often.
+        """
+        # This is slow, this should not occurs often. To be really faster it requires other data structures
+        # To be changed if it is necessary
+
+        # Find parent and sibling
+        parent = [other for other in self.inactive_tracks if other.identifier == track.parent_id][0]
+        child = [other for other in self.active_tracks + self.inactive_tracks if other.parent_id == track.parent_id][0]
+
+        # Remove parent from inactive tracks
+        self.inactive_tracks.remove(parent)
+
+        if child.is_active():
+            # By construction, the valid child is in still_active (because added before the hypothetical child)
+            # So no need to check self.active_tracks
+            # if child not in still_active:
+            #     still_active = self.active_tracks  # In the loop, we haven't found
+            child_index = still_active.index(child)
+        else:
+            child_index = self.inactive_tracks.index(child)
+
+        concatenated_handler = TrackHandler(self.specs.n_valid, self.specs.n_gap, parent.start, child.identifier)
+        concatenated_handler.track_state = child.track_state
+        concatenated_handler.last_association = child.last_association
+        concatenated_handler.parent_id = parent.parent_id
+        concatenated_handler.merge_id = child.merge_id
+        concatenated_handler.track_ids = parent.track_ids + child.track_ids
+        concatenated_handler.detection_ids = parent.detection_ids + child.detection_ids
+        concatenated_handler.is_split = child.is_split
+
+        # Replace child by concatenated
+        if concatenated_handler.is_active():
+            still_active[child_index] = concatenated_handler
+        else:
+            self.inactive_tracks[child_index] = concatenated_handler
 
     def _handle_extra_detections(self, detections: byotrack.Detections):
         """Handle extra detections by creating new track handlers
@@ -659,9 +675,8 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
         """
         # Create a new active track for each unmatched measure
         for i in torch.arange(len(detections))[self._unmatched_detections].tolist():
-            handler = TrackHandler(
-                self.specs.n_valid, self.specs.n_gap, self.frame_id, len(self.inactive_tracks) + len(self.active_tracks)
-            )
+            handler = TrackHandler(self.specs.n_valid, self.specs.n_gap, self.frame_id, self._next_identifier)
+            self._next_identifier += 1
             handler.update(self.frame_id, i)
             self.active_tracks.append(handler)
 
