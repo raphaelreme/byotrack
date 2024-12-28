@@ -91,7 +91,11 @@ def _median_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     flat_segmentation = segmentation.reshape(-1)
 
     n = segmentation.max()
+    median = np.zeros((n, len(segmentation.shape)), dtype=np.float32)
     counts = np.zeros(n, dtype=np.uint)
+
+    if n == 0:
+        return median
 
     for i in range(flat_segmentation.shape[0]):
         instance = flat_segmentation[i] - 1
@@ -111,7 +115,6 @@ def _median_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
             counts[instance] += 1
 
     # Compute medians
-    median = np.zeros((n, len(segmentation.shape)), dtype=np.float32)
     for instance in range(n):
         for axis in range(len(segmentation.shape)):
             median[instance, axis] = np.median(positions[instance, : counts[instance], axis])
