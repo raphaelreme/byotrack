@@ -31,7 +31,9 @@ Overview:
     * Support for Open-CV and Scikit-Image algorithms. Can be used for particle linking, track stitching
     and interpolations.
 * Datasets
-    * Support for some datasets. Currently only one is provided: Cell Tracking Challenge (CTC) [10]. More to come...
+    * Supports for loading annotations/video from datasets.
+    * Cell Tracking Challenge (CTC) [10]
+    * SINETRA [11]
 * Metrics:
     * Support for some segmentation/detection/tracking metrics. Currently, only CTC metrics are provided. More to come...
 
@@ -160,3 +162,6 @@ In coming...
       (ISBI2024).
 * [10] M. Maška, V. Ulman, D. Svoboda, P. Matula, et al., "A benchmark for
        comparison of cell tracking algorithms", in Bioinformatics, 2014.
+* [11] R. Reme, A. Newson, E. Angelini, J.-C. Olivo-Marin and T. Lagache,
+       "SINETRA: a Versatile Framework for Evaluating Single Neuron Tracking
+       in Behaving Animals", arXiv preprint arXiv:2411.09462, 2024.

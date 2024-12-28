@@ -46,6 +46,7 @@ References
 * **[8]** J.-Y. Tinevez, N. Perry, J. Schindelin, et al., "TrackMate: An open and extensible platform for single-particle tracking.", Methods, 115, 80-90, 2017.
 * **[9]** R. Reme, A. Newson, E. Angelini, J.-C. Olivo-Marin and T. Lagache, "Particle tracking in biological images with optical-flow enhanced kalman filtering", in International Symposium on Biomedical Imaging (ISBI2024).
 * **[10]** M. Maška, V. Ulman, D. Svoboda, P. Matula, et al., "A benchmark for comparison of cell tracking algorithms", in Bioinformatics, 2014.
+* **[11]** R. Reme, A. Newson, E. Angelini, J.-C. Olivo-Marin and T. Lagache, "SINETRA: a Versatile Framework for Evaluating Single Neuron Tracking in Behaving Animals", arXiv preprint arXiv:2411.09462, 2024.
 
 Contents
 --------
@@ -96,6 +97,7 @@ Contents
    :caption: Datasets
 
    datasets/ctc
+   datasets/sinetra
 
 .. toctree::
    :glob:

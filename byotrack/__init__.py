@@ -1,27 +1,44 @@
 """ByoTrack
 
-Unified python API for biological particle tracking.
+Unified python API for biological particle tracking (2D/3D).
 
-We provide a unified python API for tracking that can be easily
-extended with new (and old) algorithms. We also provide
-implementations of well-known algorithms following our API.
+Many bioimage informatics tools already implement their own tracking tools (Icy [1], ImageJ [6], ...)
+but most of them are implemented in Java which makes it difficult for non-Java developers to experiment
+with the code. It is also difficult to integrate deep learning algorithms (mainly developed in Python)
+into these software.
+
+We provide a unified python API for tracking that can be easily extended with new (and old) algorithms.
+We also provide implementations of well-known algorithms following our API. ByoTrack is based on numpy,
+pytorch and numba allowing fast computations with the access to the full python ecosystem.
 
 Overview:
 * Video
-    * Able to read classical format (supported by opencv) + tiff
+    * Able to read most classical format (supported by opencv) + tiff
+    * Supports 2D and 3D.
 * Particle Tracking
     * MultiStepTracker (Detect / Link / Refine)
 * Particle Detections
     * Wavelet Detector [2] (Similar as the one in Icy [1] but coded in pytorch)
-    * Stardist [3] (Inference only. Training should be done with the official implementation)
+    * Stardist [3] (Inference only. Training should be done with the
+        [official implementation](https://github.com/stardist/stardist))
 * Particle Linking
+    * Nearest neighbors using optical flow, kalman filters or both (KOFT) [9]
     * EMHT [4] (Wraps the implementation in Icy [1], requires Icy to be installed)
-    * u-track / TrackMate [7] (Wraps TrackMate [6, 8] implementation in ImageJ/Fiji, requires Fiji to be installed)
+    * u-track / TrackMate [7] (Wraps the TrackMate [6, 8] implementation in ImageJ/Fiji, requires Fiji to be installed)
 * Tracks Refining
     * Cleaning
     * EMC2 [5]: Track stitching (gap closing)
     * Interpolate missing positions
-
+* Optical Flow
+    * Support for Open-CV and Scikit-Image algorithms. Can be used for particle linking, track stitching
+    and interpolations.
+* Datasets
+    * Supports for loading annotations/video from datasets.
+    * Cell Tracking Challenge (CTC) [10]
+    * SINETRA [11]
+* Metrics:
+    * Support for some segmentation/detection/tracking metrics.
+        Currently, only CTC metrics are provided. More to come...
 
 
 Getting started:
@@ -83,4 +100,4 @@ from byotrack.api.tracks import Track
 from byotrack.video import Video, VideoTransformConfig
 
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
