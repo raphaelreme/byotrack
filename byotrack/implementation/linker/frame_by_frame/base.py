@@ -347,8 +347,8 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
         self._unmatched_detections = torch.full((0,), True)
         self._next_identifier = 0
 
-    def reset(self) -> None:
-        super().reset()
+    def reset(self, dim=2) -> None:
+        super().reset(dim)
         if self.optflow:
             self.optflow.reset()
         self.frame_id = -1
@@ -769,6 +769,10 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
         return self._links
 
     def update(self, frame: np.ndarray, detections: byotrack.Detections) -> None:
+        if self.frame_id == -1:
+            # Let's reset again just in case with the right dim
+            self.reset(detections.dim)
+
         self.frame_id += 1
 
         # Compute the flow map if optflow given

@@ -91,8 +91,8 @@ class NearestNeighborLinker(FrameByFrameLinker):
     Attributes:
         specs (NearestNeighborParameters): Parameters specifications of the algorithm.
             See `NearestNeighborParameters`.
-        active_positions (Optional[torch.Tensor]): The positions of actives tracks,
-            if undetected it is estimated by optical flow propagation.
+        active_positions (torch.Tensor): The positions of actives tracks, if undetected it is estimated by
+            optical flow propagation, or simply propagated if no optical flow is given.
             Shape: (N, D), dtype: float32
 
     """
@@ -108,27 +108,23 @@ class NearestNeighborLinker(FrameByFrameLinker):
     ) -> None:
         super().__init__(specs, optflow, features_extractor, save_all)
         self.specs: NearestNeighborParameters
-        self.active_positions: Optional[torch.Tensor] = None
+        self.active_positions = torch.zeros(0, 2)
 
         if self.specs.fill_gap and not self.optflow:
             warnings.warn("Optical flow has not been provided. Gap cannot be filled")
 
-    def reset(self) -> None:
-        super().reset()
-        self.active_positions = None
+    def reset(self, dim=2) -> None:
+        super().reset(dim)
+        self.active_positions = torch.zeros(0, dim)
 
     def motion_model(self) -> None:
         if self.optflow and self.optflow.flow_map is not None:
-            if self.active_positions is not None:
-                self.active_positions = torch.tensor(
-                    self.optflow.optflow.transform(self.optflow.flow_map, self.active_positions.numpy())
-                )
+            self.active_positions = torch.tensor(
+                self.optflow.optflow.transform(self.optflow.flow_map, self.active_positions.numpy())
+            )
 
     def cost(self, _: np.ndarray, detections: byotrack.Detections) -> Tuple[torch.Tensor, float]:
-        if self.active_positions is None:
-            self.active_positions = torch.empty((0, detections.position.shape[1]))
-
-        anisotropy = torch.tensor(self.specs.anisotropy)[: -detections.dim]
+        anisotropy = torch.tensor(self.specs.anisotropy)[-detections.dim :]
 
         return (
             torch.cdist(self.active_positions * anisotropy, detections.position * anisotropy),
@@ -136,9 +132,6 @@ class NearestNeighborLinker(FrameByFrameLinker):
         )
 
     def post_association(self, _: np.ndarray, detections: byotrack.Detections, active_mask: torch.Tensor):
-        if self.active_positions is None:
-            self.active_positions = torch.empty((0, detections.position.shape[1]))
-
         # Update tracks positions with detections
         # Optionally using an EMA to reduce detections noise
         self.active_positions[self._links[:, 0]] -= (1.0 - self.specs.ema) * (

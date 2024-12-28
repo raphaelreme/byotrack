@@ -166,16 +166,37 @@ class KOFTLinker(KalmanLinker):
         self.last_detections = byotrack.Detections(data={"position": torch.empty((0, 2))})
         self.n_initial = 0
 
-    def reset(self) -> None:
-        super().reset()
-        self.last_detections = byotrack.Detections(data={"position": torch.empty((0, 2))})
+    def reset(self, dim=2) -> None:
+        super().reset(dim)
+
+        # Reset the KF initialized by super
+        self.kalman_filter = torch_kf.ckf.constant_kalman_filter(
+            self.specs.detection_std,
+            self.specs.process_std,
+            dim=dim,
+            order=self.specs.kalman_order + (self.specs.kalman_order == 0),
+            approximate=True,  # Approximate so that a flow precisely means the velocity modeled here
+        )
+        if self.specs.kalman_order == 0:
+            # In order 0, we still model velocity, but we always predict it at 0
+            self.kalman_filter.process_matrix[dim:, dim:] = 0
+
+        # Doubles the measurement space to measure velocity
+        self.kalman_filter.measurement_matrix = torch.eye(dim * 2, self.kalman_filter.state_dim)
+        self.kalman_filter.measurement_noise = torch.eye(dim * 2)
+        self.kalman_filter.measurement_noise[:dim, :dim] *= self.specs.detection_std**2
+        self.kalman_filter.measurement_noise[dim:, dim:] *= self.specs.flow_std**2
+
+        self.active_states = torch_kf.GaussianState(
+            torch.empty((0, self.kalman_filter.state_dim, 1)),
+            torch.empty((0, self.kalman_filter.state_dim, self.kalman_filter.state_dim)),
+        )
+        self.projections = self.kalman_filter.project(self.active_states)
+
+        self.last_detections = byotrack.Detections(data={"position": torch.empty((0, dim))})
         self.n_initial = 0
 
     def motion_model(self) -> None:
-        # Not initialized yet
-        if self.active_states is None or self.kalman_filter is None:
-            return
-
         if self.optflow.flow_map is None:
             raise RuntimeError("The motion model cannot be applied without a computed flow")
 
@@ -227,34 +248,7 @@ class KOFTLinker(KalmanLinker):
         self.projections = self.kalman_filter.project(self.active_states)
 
     def cost(self, _: np.ndarray, detections: byotrack.Detections) -> Tuple[torch.Tensor, float]:
-        if self.active_states is None or self.kalman_filter is None:
-            self.kalman_filter = torch_kf.ckf.constant_kalman_filter(
-                self.specs.detection_std,
-                self.specs.process_std,
-                dim=detections.dim,
-                order=self.specs.kalman_order + (self.specs.kalman_order == 0),
-                approximate=True,  # Approximate so that a flow precisely means the velocity modeled here
-            )
-            if self.specs.kalman_order == 0:
-                # In order 0, we still model velocity, but we always predict it at 0
-                self.kalman_filter.process_matrix[detections.dim :, detections.dim :] = 0
-
-            # Doubles the measurement space to measure velocity
-            self.kalman_filter.measurement_matrix = torch.eye(detections.dim * 2, self.kalman_filter.state_dim)
-            self.kalman_filter.measurement_noise = torch.eye(detections.dim * 2)
-            self.kalman_filter.measurement_noise[: detections.dim, : detections.dim] *= self.specs.detection_std**2
-            self.kalman_filter.measurement_noise[detections.dim :, detections.dim :] *= self.specs.flow_std**2
-
-            self.active_states = torch_kf.GaussianState(
-                torch.empty((0, self.kalman_filter.state_dim, 1)),
-                torch.empty((0, self.kalman_filter.state_dim, self.kalman_filter.state_dim)),
-            )
-            self.projections = self.kalman_filter.project(self.active_states)
-
-        if self.projections is None:
-            raise RuntimeError("Projections should already be initialized.")
-
-        anisotropy = torch.tensor(self.specs.anisotropy)[: detections.dim]
+        anisotropy = torch.tensor(self.specs.anisotropy)[-detections.dim :]
 
         if self.specs.cost == Cost.EUCLIDEAN:
             return (
@@ -300,9 +294,6 @@ class KOFTLinker(KalmanLinker):
         return cost, -torch.log(torch.tensor(self.specs.association_threshold)).item()
 
     def post_association(self, _: np.ndarray, detections: byotrack.Detections, active_mask: torch.Tensor):
-        if self.active_states is None or self.kalman_filter is None or self.projections is None:
-            raise RuntimeError("The linker should already be initialized.")
-
         self.last_detections = detections  # Save detections (May be required)
 
         # Update the state of associated tracks (unassociated tracks keep the predicted state)

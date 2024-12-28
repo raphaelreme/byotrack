@@ -52,10 +52,15 @@ class OnlineLinker(Linker):
 
     progress_bar_description = "Linking"
 
-    def reset(self) -> None:
+    def reset(self, dim=2) -> None:
         """Reset the linking algorithm
 
-        Flush all data stored from a previous linking and prepare a new linking
+        Flush all data stored from a previous linking and prepare a new linking.
+
+        Args:
+            dim (int): The dimension of the data.
+                Default: 2
+
         """
 
     @abstractmethod
@@ -92,7 +97,11 @@ class OnlineLinker(Linker):
             is aligned with the first frame and stop when the end of shortest sequence is reached.
             """
             )
-        self.reset()
+
+        if len(video) == 0:
+            return []
+
+        self.reset(video[0].ndim - 1)
 
         progress_bar = tqdm.tqdm(desc=self.progress_bar_description, total=min(len(video), len(detections_sequence)))
 

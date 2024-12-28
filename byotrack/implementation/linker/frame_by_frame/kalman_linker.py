@@ -208,25 +208,38 @@ class KalmanLinker(FrameByFrameLinker):
         super().__init__(specs, optflow, features_extractor, save_all)
 
         self.specs: KalmanLinkerParameters
-        self.kalman_filter: Optional[torch_kf.KalmanFilter] = None
-        self.active_states: Optional[torch_kf.GaussianState] = None
-        self.projections: Optional[torch_kf.GaussianState] = None
+        self.kalman_filter = torch_kf.ckf.constant_kalman_filter(
+            0.0,  # Initialized with dummy values as we do not know the dim
+            0.0,
+            dim=2,
+            order=self.specs.kalman_order,
+        )
+        self.active_states = torch_kf.GaussianState(
+            torch.empty((0, self.kalman_filter.state_dim, 1)),
+            torch.empty((0, self.kalman_filter.state_dim, self.kalman_filter.state_dim)),
+        )
+        self.projections = self.kalman_filter.project(self.active_states)
 
         self.all_states: List[torch_kf.GaussianState] = []
 
-    def reset(self) -> None:
-        super().reset()
+    def reset(self, dim=2) -> None:
+        super().reset(dim)
 
-        self.kalman_filter = None
-        self.active_states = None
-        self.projections = None
-
+        self.kalman_filter = torch_kf.ckf.constant_kalman_filter(
+            self.specs.detection_std,
+            self.specs.process_std,
+            dim=dim,
+            order=self.specs.kalman_order,
+        )
+        self.active_states = torch_kf.GaussianState(
+            torch.empty((0, self.kalman_filter.state_dim, 1)),
+            torch.empty((0, self.kalman_filter.state_dim, self.kalman_filter.state_dim)),
+        )
+        self.projections = self.kalman_filter.project(self.active_states)
         self.all_states = []
 
     def collect(self) -> List[byotrack.Track]:
         if self.specs.track_building == TrackBuilding.SMOOTHED:
-            assert self.active_states is not None and self.kalman_filter is not None
-
             dim = self.kalman_filter.state_dim
             tracks_handlers = [
                 handler
@@ -282,10 +295,6 @@ class KalmanLinker(FrameByFrameLinker):
         return super().collect()
 
     def motion_model(self) -> None:
-        # Not initialized yet
-        if self.active_states is None or self.kalman_filter is None:
-            return
-
         # Use the Kalman filter to predict the current states of each active tracks
         self.active_states = self.kalman_filter.predict(self.active_states)
 
@@ -298,23 +307,7 @@ class KalmanLinker(FrameByFrameLinker):
         self.projections = self.kalman_filter.project(self.active_states)
 
     def cost(self, _: np.ndarray, detections: byotrack.Detections) -> Tuple[torch.Tensor, float]:
-        if self.active_states is None or self.kalman_filter is None:
-            self.kalman_filter = torch_kf.ckf.constant_kalman_filter(
-                self.specs.detection_std,
-                self.specs.process_std,
-                dim=detections.dim,
-                order=self.specs.kalman_order,
-            )
-            self.active_states = torch_kf.GaussianState(
-                torch.empty((0, self.kalman_filter.state_dim, 1)),
-                torch.empty((0, self.kalman_filter.state_dim, self.kalman_filter.state_dim)),
-            )
-            self.projections = self.kalman_filter.project(self.active_states)
-
-        if self.projections is None:
-            raise RuntimeError("Projections should already be initialized.")
-
-        anisotropy = torch.tensor(self.specs.anisotropy)[: detections.dim]
+        anisotropy = torch.tensor(self.specs.anisotropy)[-detections.dim :]
 
         if self.specs.cost == Cost.EUCLIDEAN:
             return (
@@ -343,9 +336,6 @@ class KalmanLinker(FrameByFrameLinker):
         return cost, -torch.log(torch.tensor(self.specs.association_threshold)).item()
 
     def post_association(self, _: np.ndarray, detections: byotrack.Detections, active_mask: torch.Tensor):
-        if self.active_states is None or self.kalman_filter is None or self.projections is None:
-            raise RuntimeError("The linker should already be initialized.")
-
         # Update the state of associated tracks (unassociated tracks keep the predicted state)
         self.active_states[self._links[:, 0]] = self.kalman_filter.update(
             self.active_states[self._links[:, 0]],
