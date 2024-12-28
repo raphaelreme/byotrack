@@ -1,5 +1,4 @@
-import sys
-from typing import Optional, Sequence, Union, TYPE_CHECKING
+from typing import Optional, Protocol, Sequence, Union
 import warnings
 
 import numpy as np
@@ -9,18 +8,6 @@ import tqdm.auto as tqdm
 
 import byotrack
 from byotrack.api.optical_flow.optical_flow import DummyOpticalFlow
-
-
-# For python <= 3.7, protocol does not exist. Hacky code to pass linting and running
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    if TYPE_CHECKING:
-        from typing_extensions import Protocol
-    else:
-
-        class Protocol:  # pylint: disable=too-few-public-methods
-            """Empty protocol implementation at runtime"""
 
 
 class DirectedPropagate(Protocol):  # pylint: disable=too-few-public-methods
