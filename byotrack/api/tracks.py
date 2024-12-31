@@ -9,6 +9,8 @@ import torch
 
 import byotrack  # pylint: disable=cyclic-import
 
+from .detector.detections import _position_from_segmentation
+
 
 def _check_points(points: torch.Tensor) -> None:
     """Check points validity (type, shape)"""
@@ -374,6 +376,7 @@ def update_detection_ids(  # pylint: disable=too-many-locals
             It should directly be the detections used in the linking algorithm
         using_segmentation (bool): Whether to use the segmentation to compute position of detections
             or use position if available. (Icy and Fiji are only given the segmentation)
+            It uses the mean position (not the median).
 
     """
     frame_range = (min(track.start for track in tracks), max(track.start + len(track) for track in tracks))
@@ -400,10 +403,12 @@ def update_detection_ids(  # pylint: disable=too-many-locals
 
         # If using seg, we rely solely on the segmentation
         if using_segmentation and "position" in detections.data:
-            detections = byotrack.Detections({"segmentation": detections.segmentation})
+            position = torch.tensor(_position_from_segmentation(detections.segmentation.numpy()))
+        else:
+            position = detections.position
 
         # Compute dist between tracks and detections at time t (Shape: (N_det, N_track))
-        dist = (valid_points[None] - detections.position[:, None]).abs().sum(dim=-1)
+        dist = (valid_points[None] - position[:, None]).abs().sum(dim=-1)
         mini, argmin = torch.min(dist, dim=0)
         match = mini < 1e-5  # Keep only perfect matches
         argmin = argmin[match]
