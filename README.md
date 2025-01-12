@@ -107,6 +107,10 @@ byotrack.Track.save(tracks, output_path)
 
 Please refer to the [official documentation](https://byotrack.readthedocs.io/en/latest/).
 
+## Cell Tracking Challenge
+
+Our submission to the Cell Linking Benchmark of the Cell Tracking Challenge can be found in the [examples/ctc](examples/ctc/README.md) folder.
+
 ## Contribute
 
 In coming...
