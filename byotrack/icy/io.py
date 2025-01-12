@@ -227,10 +227,8 @@ def save_tracks(tracks: Collection[byotrack.Track], path: Union[str, os.PathLike
     Only needed tags are filled in the current implementation. (t, x, y, z)
 
     Args:
-        path (str | os.PathLike): Input path
-
-    Returns:
-        Collection[Track]: Parsed tracks
+        tracks (Collection[Track]): Tracks to save. (Should not contain any NaN positions)
+        path (str | os.PathLike): Output path
 
     """
     root = ET.Element("root")
