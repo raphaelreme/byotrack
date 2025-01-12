@@ -1,0 +1,44 @@
+{
+    "BF-C2DL-HSC": {
+        "association_threshold": 60,
+        "detection_std": 2.5
+    },
+    "BF-C2DL-MuSC": {
+        "detection_std": 2.0
+    },
+    "DIC-C2DH-HeLa": {
+        "association_threshold": 100
+    },
+    "Fluo-C2DL-MSC": {
+        "split_factor": 0.0
+    },
+    "Fluo-C3DH-A549": {},
+    "Fluo-C3DH-A549-SIM": {},
+    "Fluo-C3DH-H157": {
+        "association_threshold": 200,
+        "n_gap": 0,
+        "split_factor": 0.0
+    },
+    "Fluo-C3DL-MDA231": {},
+    "Fluo-N2DH-GOWT1": {},
+    "Fluo-N2DH-SIM+": {
+        "association_threshold": 100,
+        "detection_std": 5.0,
+        "n_gap": 0,
+        "split_factor": 1.5
+    },
+    "Fluo-N2DL-HeLa": {
+        "linker": "SKT",
+        "split_factor": 1.25
+    },
+    "Fluo-N3DH-CE": {
+        "association_threshold": 100,
+        "detection_std": 2.5
+    },
+    "Fluo-N3DH-CHO": {
+        "n_gap": 0
+    },
+    "Fluo-N3DH-SIM+": {
+        "n_gap": 0
+    }
+}
