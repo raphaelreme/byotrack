@@ -379,6 +379,9 @@ def update_detection_ids(  # pylint: disable=too-many-locals
             It uses the mean position (not the median).
 
     """
+    if not tracks:
+        return
+
     frame_range = (min(track.start for track in tracks), max(track.start + len(track) for track in tracks))
     points = Track.tensorize(tracks, frame_range=frame_range)
 

@@ -46,6 +46,7 @@ class ForwardBackwardInterpolater(byotrack.Refiner):  # pylint: disable=too-few-
             return []
 
         tracks_matrix = byotrack.Track.tensorize(tracks, frame_range=(0, len(video)) if self.full else None)
+        start, end = (0, len(video))
         if not self.full:
             start = min(track.start for track in tracks)
             end = max(track.start + len(track) for track in tracks)
@@ -55,17 +56,23 @@ class ForwardBackwardInterpolater(byotrack.Refiner):  # pylint: disable=too-few-
         new_tracks = []
         for i, track in enumerate(tracks):
             if self.full:
-                start = 0
+                track_start = 0
                 points = propagation_matrix[:, i]
                 detection_ids = torch.full((propagation_matrix.shape[0],), -1, dtype=torch.int32)
                 detection_ids[track.start : track.start + len(track)] = track.detection_ids
             else:
-                start = track.start
-                points = propagation_matrix[start : start + len(track), i]
+                track_start = track.start
+                points = propagation_matrix[track_start - start : track_start - start + len(track), i]
                 detection_ids = track.detection_ids.clone()
+
             new_tracks.append(
                 byotrack.Track(
-                    start, points, track.identifier, detection_ids, merge_id=track.merge_id, parent_id=track.parent_id
+                    track_start,
+                    points,
+                    track.identifier,
+                    detection_ids,
+                    merge_id=track.merge_id,
+                    parent_id=track.parent_id,
                 )
             )
 

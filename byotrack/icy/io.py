@@ -167,7 +167,7 @@ def load_tracks(path: Union[str, os.PathLike]) -> List[byotrack.Track]:
     tree = ET.parse(path)
 
     track_group = tree.find("trackgroup")
-    assert track_group, "Track group not found in file"
+    assert track_group is not None, "Track group not found in file"
 
     tracks = []
 

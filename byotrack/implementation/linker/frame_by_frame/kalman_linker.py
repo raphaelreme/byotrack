@@ -75,7 +75,7 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
             The detection process is modeled with a Gaussian noise with this given std. (You can provide a different
             noise for each dimension). See `torch_kf.ckf.constant_kalman_filter`.
             Default: 3.0 pixels
-        process_std (Union[float, torch.Tensor]): Expect process noise. See `torch_kf.ckf.constant_kalman_filter`, the
+        process_std (Union[float, torch.Tensor]): Expected process noise. See `torch_kf.ckf.constant_kalman_filter`, the
             process is modeled as constant order-th derivative motion. This quantify how much the supposely "constant"
             order-th derivative can change between two consecutive frames. A common rule of thumb is to use
             3 * process_std ~= max_t(| x^(order)(t) - x^(order)(t+1)|). It can be provided for each dimension).

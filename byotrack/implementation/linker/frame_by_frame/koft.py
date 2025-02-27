@@ -33,7 +33,7 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
             The optical flow process is modeled with a Gaussian noise with this given std. (You can provide a different
             noise for each dimension).
             Default: 1.0 pixels
-        process_std (Union[float, torch.Tensor]): Expect process noise. See `torch_kf.ckf.constant_kalman_filter`, the
+        process_std (Union[float, torch.Tensor]): Expected process noise. See `torch_kf.ckf.constant_kalman_filter`, the
             process is modeled as constant order-th derivative motion. This quantify how much the supposely "constant"
             order-th derivative can change between two consecutive frames. A common rule of thumb is to use
             3 * process_std ~= max_t(| x^(order)(t) - x^(order)(t+1)|). It can be provided for each dimension).
@@ -203,7 +203,7 @@ class KOFTLinker(KalmanLinker):
         dim = self.kalman_filter.measure_dim // 2
 
         # Second update using velocity just before the prediction time
-        points = self.active_states.mean[:, :dim, 0]
+        points = self.active_states.mean[:, :dim, 0].clone()
         if self.specs.extract_flows_on_detections:
             for i, track in enumerate(self.active_tracks):
                 if track.detection_ids[-1] != -1:
@@ -241,6 +241,12 @@ class KOFTLinker(KalmanLinker):
             self.active_states.covariance[-self.n_initial :, dim : dim * 2, dim : dim * 2] = (
                 self.kalman_filter.measurement_noise[dim:, dim:]
             )
+
+        # Replace the registered states after adding optical flow inside of it
+        if self.save_all or self.specs.track_building == TrackBuilding.SMOOTHED:
+            if self.all_states:
+                self.all_states[-1] = self.active_states
+
         # Use the Kalman filter to predict the current states of each active tracks
         self.active_states = self.kalman_filter.predict(self.active_states)
 

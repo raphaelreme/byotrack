@@ -155,27 +155,39 @@ def _segmentation_from_bbox(bbox: np.ndarray, shape: Tuple[int, ...]) -> np.ndar
 
 @numba.njit
 def _segmentation_from_bbox_2d(bbox: np.ndarray, shape: Tuple[int, int]) -> np.ndarray:
+    # Switch to start/stop bbox instead of start/size bbox
+    bbox = bbox.copy()
+    bbox[:, 2:] += bbox[:, :2]
+    bbox.clip(0, out=bbox)  # Clip bbox to prevent negative indices
+
     segmentation = np.zeros(shape, dtype=np.int32)
     for label, bbox_ in enumerate(bbox):
-        segmentation[bbox_[0] : bbox_[0] + bbox_[2], bbox_[1] : bbox_[1] + bbox_[3]] = label + 1
+        segmentation[bbox_[0] : bbox_[2], bbox_[1] : bbox_[3]] = label + 1
 
     return segmentation
 
 
 @numba.njit
 def _segmentation_from_bbox_3d(bbox: np.ndarray, shape: Tuple[int, int, int]) -> np.ndarray:
+    # Switch to start/stop bbox instead of start/size bbox
+    bbox = bbox.copy()
+    bbox[:, 3:] += bbox[:, :3]
+    bbox.clip(0, out=bbox)  # Clip bbox to prevent negative indices
+
     segmentation = np.zeros(shape, dtype=np.int32)
     for label, bbox_ in enumerate(bbox):
-        segmentation[bbox_[0] : bbox_[0] + bbox_[3], bbox_[1] : bbox_[1] + bbox_[4], bbox_[2] : bbox_[2] + bbox_[5]] = (
-            label + 1
-        )
+        segmentation[bbox_[0] : bbox_[3], bbox_[1] : bbox_[4], bbox_[2] : bbox_[5]] = label + 1
 
     return segmentation
 
 
 def _segmentation_from_position(position: torch.Tensor, shape: Tuple[int, ...]) -> torch.Tensor:
+    position = position.round().int()
+    valid = (position > 0).all(dim=-1) & (position < torch.tensor(shape)).all(dim=-1)
+    position = position[valid]
+
     segmentation = torch.zeros(shape, dtype=torch.int32)
-    segmentation[position.round().int().T.tolist()] = torch.arange(1, position.shape[0] + 1, dtype=torch.int32)
+    segmentation[position.T.tolist()] = torch.arange(1, position.shape[0] + 1, dtype=torch.int32)
     return segmentation
 
 
