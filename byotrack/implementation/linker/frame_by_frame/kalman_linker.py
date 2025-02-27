@@ -108,6 +108,12 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
         merge_factor (float): Allow merging of tracks, using a second association step.
             The association threshold in this case is `merge_factor * association_threshold`.
             Default: 0.0 (No merges)
+        online_process_std (float): Recomputes the process std online following "A. Genovesio, et al, 2004, October.
+            Adaptive gating in Gaussian Bayesian multi-target tracking. ICIP'04. (Vol. 1, pp. 147-150). IEEE."
+            Each track has its own process std depending on the errors made in the past. It automatically adjusts to
+            process errors, allowing to increase the validation gate. Should be used in conjonction with MAHALANOBIS
+            or LIKELIHOOD `cost_method`. As this may be detrimental, it is disabed by default.
+            Default: 0.0 (Process_std is constant)
 
     """
 
@@ -126,6 +132,7 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
         track_building: Union[str, TrackBuilding] = TrackBuilding.FILTERED,
         split_factor: float = 0.0,
         merge_factor: float = 0.0,
+        online_process_std: float = 0.0,
     ):
         super().__init__(
             association_threshold=association_threshold,
@@ -154,12 +161,14 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
         self.track_building = (
             track_building if isinstance(track_building, TrackBuilding) else TrackBuilding[track_building.upper()]
         )
+        self.online_process_std = online_process_std
 
     detection_std: Union[float, torch.Tensor] = 3.0
     process_std: Union[float, torch.Tensor] = 1.5
     kalman_order: int = 1
     cost: Cost = Cost.EUCLIDEAN
     track_building: TrackBuilding = TrackBuilding.FILTERED
+    online_process_std: float = 0.0
 
 
 class KalmanLinker(FrameByFrameLinker):
@@ -189,6 +198,10 @@ class KalmanLinker(FrameByFrameLinker):
         projections (Optional[torch_kf.GaussianState]): The Kalman filter projection for each track.
             Shape: mean=(N, D, 1), covariance=(N, D, D), precision=(N, D, D)
             dtype: float32
+        process_noises (Optional[torch.Tensor]): The Kalman filter process noise for each track.
+            Only used when online_process_std > 0.0. It allows to compute an adaptative process_std
+            and therefore gating for each track.
+            Shape: (N, D, 1), dtype: float32
         all_states (List[torch_kf.GaussianState]): The Kalman filter estimation for each track at each seen
             frame. States are only registered when save_all=True or if you build tracks from RTS smoothing.
             Shape: mean=(N, D * (order + 1), 1), covariance=(N, D * (order + 1), dim * (order + 1))
@@ -219,6 +232,7 @@ class KalmanLinker(FrameByFrameLinker):
             torch.empty((0, self.kalman_filter.state_dim, self.kalman_filter.state_dim)),
         )
         self.projections = self.kalman_filter.project(self.active_states)
+        self.process_noises = torch.empty((0, self.kalman_filter.state_dim, self.kalman_filter.state_dim))
 
         self.all_states: List[torch_kf.GaussianState] = []
 
@@ -236,6 +250,7 @@ class KalmanLinker(FrameByFrameLinker):
             torch.empty((0, self.kalman_filter.state_dim, self.kalman_filter.state_dim)),
         )
         self.projections = self.kalman_filter.project(self.active_states)
+        self.process_noises = torch.empty((0, self.kalman_filter.state_dim, self.kalman_filter.state_dim))
         self.all_states = []
 
     def collect(self) -> List[byotrack.Track]:
@@ -296,7 +311,9 @@ class KalmanLinker(FrameByFrameLinker):
 
     def motion_model(self) -> None:
         # Use the Kalman filter to predict the current states of each active tracks
-        self.active_states = self.kalman_filter.predict(self.active_states)
+        self.active_states = self.kalman_filter.predict(
+            self.active_states, process_noise=self.process_noises if self.specs.online_process_std else None
+        )
 
         # Add optical flow motion to the position
         if self.optflow and self.optflow.flow_map is not None:
@@ -337,11 +354,31 @@ class KalmanLinker(FrameByFrameLinker):
 
     def post_association(self, _: np.ndarray, detections: byotrack.Detections, active_mask: torch.Tensor):
         # Update the state of associated tracks (unassociated tracks keep the predicted state)
-        self.active_states[self._links[:, 0]] = self.kalman_filter.update(
-            self.active_states[self._links[:, 0]],
-            detections.position[self._links[:, 1]][..., None],
-            projection=self.projections[self._links[:, 0]],
-        )
+        if self.specs.online_process_std:
+            updated = self.kalman_filter.update(
+                self.active_states[self._links[:, 0]],
+                detections.position[self._links[:, 1]][..., None],
+                projection=self.projections[self._links[:, 0]],
+            )
+
+            # Update the process_noise based on the prediction errors
+            # Err = x_t - Fx_{t-1} (low estimation of errors)
+            # Then Q_t = a * (b * Q_t + 1 - b err @ err.T) + (1- a) Q_0
+            # In this implem, we fix b = 0.75 (around 4 frames to estimate errors) and a is user-defined.
+            errors = self.active_states.mean[self._links[:, 0]] - updated.mean
+            self.process_noises[self._links[:, 0]] *= self.specs.online_process_std * 0.75  # Fixed EMA ~4 frames lag
+            self.process_noises[self._links[:, 0]] += self.specs.online_process_std * 0.25 * errors @ errors.mT
+            self.process_noises[self._links[:, 0]] += (
+                1 - self.specs.online_process_std
+            ) * self.kalman_filter.process_noise
+
+            self.active_states[self._links[:, 0]] = updated
+        else:
+            self.active_states[self._links[:, 0]] = self.kalman_filter.update(
+                self.active_states[self._links[:, 0]],
+                detections.position[self._links[:, 1]][..., None],
+                projection=self.projections[self._links[:, 0]],
+            )
 
         # Create new states for unmatched measures
         unmatched_measures = detections.position[self._unmatched_detections]
@@ -370,6 +407,15 @@ class KalmanLinker(FrameByFrameLinker):
             torch.cat((self.active_states.mean[active_mask], initial_state.mean)),
             torch.cat((self.active_states.covariance[active_mask], initial_state.covariance)),
         )
+        if self.specs.online_process_std:
+            self.process_noises = torch.cat(
+                (
+                    self.process_noises[active_mask],
+                    self.kalman_filter.process_noise[None].expand(
+                        len(unmatched_measures), self.kalman_filter.state_dim, self.kalman_filter.state_dim
+                    ),
+                )
+            )
 
         if self.specs.track_building == TrackBuilding.DETECTION:
             self.all_positions.append(
