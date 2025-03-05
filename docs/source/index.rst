@@ -47,6 +47,7 @@ References
 * **[9]** R. Reme, A. Newson, E. Angelini, J.-C. Olivo-Marin and T. Lagache, "Particle tracking in biological images with optical-flow enhanced kalman filtering", in International Symposium on Biomedical Imaging (ISBI2024).
 * **[10]** M. Maška, V. Ulman, D. Svoboda, P. Matula, et al., "A benchmark for comparison of cell tracking algorithms", in Bioinformatics, 2014.
 * **[11]** R. Reme, A. Newson, E. Angelini, J.-C. Olivo-Marin and T. Lagache, "SINETRA: a Versatile Framework for Evaluating Single Neuron Tracking in Behaving Animals", arXiv preprint arXiv:2411.09462, 2024.
+* **[12]** A. Genovesio, Z. Belhassine, and J.-C. Olivo-Marin, "Adaptive gating in Gaussian Bayesian multi-target tracking", in 2004 International Conference on Image Processing (ICIP'04).
 
 Contents
 --------

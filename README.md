@@ -20,7 +20,7 @@ Overview:
     * Wavelet Detector [2] (Similar as the one in Icy [1] but coded in pytorch)
     * Stardist [3] (Inference only. Training should be done with the [official implementation](https://github.com/stardist/stardist))
 * Particle Linking
-    * Nearest neighbors using optical flow, kalman filters or both (KOFT) [9]
+    * Nearest neighbors using optical flow, kalman filters or both (KOFT) [9] (with optional adaptive gating [12])
     * EMHT [4] (Wraps the implementation in Icy [1], requires Icy to be installed)
     * u-track / TrackMate [7] (Wraps the TrackMate [6, 8] implementation in ImageJ/Fiji, requires Fiji to be installed)
 * Tracks Refining
@@ -44,20 +44,19 @@ Overview:
 $ pip install byotrack
 ```
 
-Some tracker implementations require additional dependencies that are not installed with the library, to use them you need to install their dependencies on your own.
+Some implementations require additional dependencies that are not installed with the library, to use them you need to install their dependencies on your own.
 Here is the complete list:
 
 
 - StarDistDetector
     - stardist (+ tensorflow): [Install stardist](https://github.com/stardist/stardist#installation)
-- KalmanLinker & KOFTLinker
+- KalmanLinker & KOFTLinker & RTSSmoother
     - torch_kf: [Install torch-kf](https://github.com/raphaelreme/torch-kf#install)
 - IcyEMHTLinker
     - Icy: [Download Icy](https://icy.bioimageanalysis.org/download/)
     - Spot Tracking Blocks plugin: [Install an Icy plugin](https://icy.bioimageanalysis.org/tutorial/how-to-install-an-icy-plugin/)
 - TrackMateLinker
     - Fiji: [Download Fiji](https://imagej.net/downloads)
-    - tifffile: [Install tifffile](https://github.com/cgohlke/tifffile#quickstart)
 - SkimageOpticalFlow
     - scikit-image: [Install scikit-image](https://scikit-image.org/docs/stable/user_guide/install.html)
 
@@ -169,3 +168,6 @@ In coming...
 * [11] R. Reme, A. Newson, E. Angelini, J.-C. Olivo-Marin and T. Lagache,
        "SINETRA: a Versatile Framework for Evaluating Single Neuron Tracking
        in Behaving Animals", arXiv preprint arXiv:2411.09462, 2024.
+* [12] A. Genovesio, Z. Belhassine, and J.-C. Olivo-Marin, "Adaptive gating
+       in Gaussian Bayesian multi-target tracking", in 2004 International
+       Conference on Image Processing (ICIP'04).

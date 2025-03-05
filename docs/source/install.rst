@@ -34,19 +34,18 @@ Development
 Additional requirements
 -----------------------
 
-Some tracker implementations require additional dependencies that are not installed with the library, to use them you need to install their dependencies on your own.
+Some implementations require additional dependencies that are not installed with the library, to use them you need to install their dependencies on your own.
 Here is the complete list:
 
 * StarDistDetector
     * stardist (+ tensorflow): `Install stardist <https://github.com/stardist/stardist#installation>`_
-* KalmanLinker & KOFTLinker
+* KalmanLinker & KOFTLinker & RTSSmoother
     * torch_kf: `Install torch-kf <https://github.com/raphaelreme/torch-kf#install>`_
 * IcyEMHTLinker
     * Icy: `Download Icy <https://icy.bioimageanalysis.org/download/>`_
     * Spot Tracking Blocks plugin: `Install an Icy plugin <https://icy.bioimageanalysis.org/tutorial/how-to-install-an-icy-plugin/>`_
 * TrackMateLinker
     * Fiji: `Download Fiji <https://imagej.net/downloads>`_
-    * tifffile: `Install tifffile <https://github.com/cgohlke/tifffile#quickstart>`_
 * SkimageOpticalFlow
     * scikit-image: `Install scikit-image <https://scikit-image.org/docs/stable/user_guide/install.html>`_
 
