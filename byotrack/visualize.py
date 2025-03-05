@@ -1,4 +1,5 @@
 from typing import Collection, Dict, Optional, Sequence, Tuple, Union
+import warnings
 
 import cv2
 import matplotlib as mpl  # type: ignore
@@ -9,8 +10,43 @@ import tqdm
 
 import byotrack
 
+
 _hsv = mpl.colormaps["hsv"]
 _colors = list(map(lambda x: tuple(int(c * 255) for c in x[:3]), map(_hsv, [i / 200 for i in range(200)])))
+
+
+def _convert_to_uint8(frame: np.ndarray) -> np.ndarray:
+    """Conversion from a floating or integer frame to uint8 displayable image
+
+    Args:
+        frame (np.ndarray): Video frame 2D (If 3D video, the caller should reduce the depth dimension)
+            Integer (resp. Floating) frames are expected to be normalized in [0, 255] (resp. [0.0, 1.0])
+            If this is not the case, a simple normalization is performed before conversion.
+            Shape: (H, W, C), dtype: float | int
+
+    Returns:
+        np.ndarray: Displayable frame in uint8
+            Shape: (H, W, C), dtype: uint8
+
+    """
+    if np.issubdtype(frame.dtype, np.floating):
+        if frame.max() > 1.0:
+            warnings.warn(
+                "Floating videos are expected to be normalized in [0, 1].\n"
+                "The simple normalization implemented here is suboptimal."
+            )
+            frame = frame / frame.max()
+        frame = (frame * 255).round()
+    else:
+        if frame.max() > 255:
+            warnings.warn(
+                "Integer videos are expected to be normalized in [0, 255].\n"
+                "The simple normalization implemented here is suboptimal."
+            )
+
+            frame = (frame * (255 / frame.max())).round()
+
+    return frame.astype(np.uint8)
 
 
 def display_lifetime(tracks: Collection[byotrack.Track]):
@@ -76,13 +112,11 @@ def temporal_projection(
     frames = torch.arange(len(tracks_tensor))
 
     if background is not None:
-        if np.issubdtype(background.dtype, np.floating):
-            background = (background * 255).round().astype(np.uint8)
         if background.ndim == 2:
             background = background[..., None]
-        if background.shape[2] == 1:  # type: ignore  # (Mypy-1.4.1 bugs in python3.7)
-            background = np.concatenate([background] * 3, axis=-1)
-        image = np.asarray(background)  # Mypy is lost also here...
+        image = _convert_to_uint8(background)
+        if image.shape[2] == 1:
+            image = np.concatenate([image] * 3, axis=-1)
         offset = torch.zeros(2)
     else:
         offset = torch.min(tracks_tensor[is_defined], dim=0).values
@@ -198,10 +232,8 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
 
             if self._display_video and len(self.video) != 0:
                 _frame = self._video_frame
-                if len(self.frame_shape) == 3:
-                    _frame = _frame[self._stack_id]
-                _frame = _frame * 255 if np.issubdtype(_frame.dtype, np.floating) else _frame
-                frame[:] = _frame.astype(np.uint8)  # We only support grayscale (C=1) and RGB (C=3)
+                _frame = _frame[self._stack_id] if len(self.frame_shape) == 3 else _frame
+                frame[:] = _convert_to_uint8(_frame)  # We only support grayscale (C=1) and RGB (C=3)
 
             if self._display_detections and 0 <= self._frame_id < len(self.detections_sequence):
                 segmentation: np.ndarray
@@ -486,9 +518,8 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
                 src_frame_id = self._frame_id
 
             # Drawing
-            draw = frame * 255 if np.issubdtype(frame.dtype, np.floating) else frame
-            draw = draw.astype(np.uint8)
-            assert draw.shape[2] in (1, 3)
+            draw = _convert_to_uint8(frame)
+            assert draw.shape[2] in (1, 3), "We only support Grayscale images (C=1) or RGB images (C=3)"
 
             if draw.shape[2] == 1:
                 draw = np.concatenate([draw] * 3, axis=2)

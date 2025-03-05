@@ -45,6 +45,9 @@ class OpenCVOpticalFlow(OpticalFlow):
         self.optical_flow = optical_flow
 
     def compute(self, reference: np.ndarray, moving: np.ndarray) -> np.ndarray:
+        if reference.max() > 1.0 or moving.max() > 1.0:  # Prevent dummy conversion to uint8
+            raise ValueError("OpenCVOptical flow assumes normalized floating input images in [0, 1]")
+
         # Average channels and go to uint8 (multi channel is not supported)
         reference = np.round(reference.mean(axis=-1) * 255).astype(np.uint8)
         moving = np.round(moving.mean(axis=-1) * 255).astype(np.uint8)

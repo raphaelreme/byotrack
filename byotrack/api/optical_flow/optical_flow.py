@@ -67,10 +67,11 @@ class OpticalFlow(ABC):
 
         Args:
             frame (np.ndarray): The frame to pre-preprocess
-                Shape: ([D, ]H, W, C), dtype: float
+                It does not normalize the frame. Integer values are simply converted to floating ones.
+                Shape: ([D, ]H, W, C)
 
         Returns:
-            np.ndarray: The blurred and downscaled frame
+            np.ndarray: The blurred and downscaled frame (converted to float32)
                 Shape: ([D', ]H', W', C), dtype: float32
 
         """
