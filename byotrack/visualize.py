@@ -1,3 +1,4 @@
+import functools
 from typing import Collection, Dict, Optional, Sequence, Tuple, Union
 import warnings
 
@@ -227,6 +228,7 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
             cv2.destroyWindow(self.window_name)
 
     def _run(self, fps=20) -> None:  # pylint: disable=too-many-branches,too-many-statements
+        self._video_frame = self.video[self._frame_id] if len(self.video) != 0 else np.zeros((*self.frame_shape, 0))
         while True:
             frame = np.zeros((*self.frame_shape[-2:], 3), dtype=np.uint8)
 
@@ -236,34 +238,7 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
                 frame[:] = _convert_to_uint8(_frame)  # We only support grayscale (C=1) and RGB (C=3)
 
             if self._display_detections and 0 <= self._frame_id < len(self.detections_sequence):
-                segmentation: np.ndarray
-                if self.detections_sequence[self._frame_id].dim == 3:
-                    segmentation = self.detections_sequence[self._frame_id].segmentation[self._stack_id].clone().numpy()
-                else:
-                    segmentation = self.detections_sequence[self._frame_id].segmentation.clone().numpy()
-
-                if self._display_detections == 1:  # Display segmentation as mask
-                    segmentation = segmentation != 0
-                    segmentation = segmentation.astype(np.uint8)[..., None] * 255
-                else:
-                    segmentation = (segmentation % 206) + 50
-
-                    if self.detections_sequence[self._frame_id].dim == 3:
-                        segmentation[self.detections_sequence[self._frame_id].segmentation[self._stack_id] == 0] = 0
-                    else:
-                        segmentation[self.detections_sequence[self._frame_id].segmentation == 0] = 0
-
-                    segmentation = segmentation.astype(np.uint8)[..., None]
-
-                segmentation = np.concatenate(
-                    [np.zeros_like(segmentation), np.zeros_like(segmentation), segmentation], axis=2
-                )
-
-                if self._display_video:
-                    frame = frame / 2 + segmentation / 2
-                    frame = frame.astype(np.uint8)
-                else:
-                    frame = segmentation
+                frame = self.draw_segmentation(frame)
 
             if self.scale != 1:
                 frame = cv2.resize(  # type: ignore
@@ -271,25 +246,7 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
                 )
 
             if self._display_tracks:
-                for track in self.tracks:
-                    point = track[self._frame_id] * self.scale
-                    if torch.isnan(point).any():
-                        continue
-
-                    if len(point) == 3:
-                        if (point[0] / self.scale - self._stack_id).abs() > 5:
-                            continue  # Do not display tracks that are more than 5 stacks away
-
-                        point = point[1:]  # Remove depth axis
-
-                    i, j = point.round().to(torch.int).tolist()
-
-                    color = self.tracks_colors[track.identifier % len(self.tracks_colors)]
-
-                    cv2.circle(frame, (j, i), 5, color)
-                    cv2.putText(
-                        frame, str(track.identifier % 100), (j + 4, i - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.3, color
-                    )
+                frame = self.draw_tracks(frame)
 
             # Display the resulting frame
             cv2.imshow(self.window_name, np.flip(frame, 2))
@@ -303,6 +260,84 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
             key = cv2.waitKey(1000 // fps) & 0xFF
             if self.handle_actions(key):
                 break
+
+    def draw_segmentation(self, frame: np.ndarray) -> np.ndarray:
+        """Draw the segmentation on the frame
+
+        It will draw the segmentation for `frame_id` and `stack_id`.
+
+        Args:
+            frame (np.ndarray): The 2D frame to draw on (will not be modified)
+                Shape: (H, W), dtype: np.uint8
+
+        Returns:
+            np.ndarray: The resulting frame with the segmentation drawned on
+        """
+        segmentation = np.zeros_like(frame)
+        if self.detections_sequence[self._frame_id].dim == 3:
+            if self._stack_id < self.detections_sequence[self._frame_id].shape[0]:
+                segmentation_ = self.detections_sequence[self._frame_id].segmentation[self._stack_id].clone().numpy()
+            else:
+                # Out of the 3D segmentation. Then, seg is simply 0
+                segmentation_ = np.zeros_like(frame)[..., 0]
+        else:
+            segmentation_ = self.detections_sequence[self._frame_id].segmentation.clone().numpy()
+
+        if self._display_detections == 1:  # Display segmentation as mask
+            segmentation_ = segmentation_ != 0
+            segmentation_ = segmentation_.astype(np.uint8) * 255
+        else:
+            mask = segmentation_ == 0
+            segmentation_ = (segmentation_ % 206) + 50
+            segmentation_[mask] = 0
+            segmentation_ = segmentation_.astype(np.uint8)
+
+        # TODO: Add another mode to see detections by color or with circle ?
+        # Draw in blue and mix with the frame if _display_video
+        segmentation[: segmentation_.shape[0], : segmentation_.shape[1], 2] = segmentation_[
+            : frame.shape[0], : frame.shape[1]
+        ]
+
+        if self._display_video:
+            frame = frame / 2 + segmentation / 2
+            frame = frame.astype(np.uint8)
+        else:
+            frame = segmentation
+
+        return frame
+
+    def draw_tracks(self, frame: np.ndarray) -> np.ndarray:
+        """Draw the tracks on the frame
+
+        It will draw the tracks for `frame_id` and `stack_id`.
+
+        Args:
+            frame (np.ndarray): The 2D frame to draw on (will not be modified)
+                Shape: (H, W), dtype: np.uint8
+
+        Returns:
+            np.ndarray: The resulting frame with the drawn tracks
+        """
+        frame = frame.copy()  # Do not draw inplace
+        for track in self.tracks:
+            point = track[self._frame_id] * self.scale
+            if torch.isnan(point).any():
+                continue
+
+            if len(point) == 3:
+                if (point[0] / self.scale - self._stack_id).abs() > 5:
+                    continue  # Do not display tracks that are more than 5 stacks away
+
+                point = point[1:]  # Remove depth axis
+
+            i, j = point.round().to(torch.int).tolist()
+
+            color = self.tracks_colors[track.identifier % len(self.tracks_colors)]
+
+            cv2.circle(frame, (j, i), 5, color)
+            cv2.putText(frame, str(track.identifier % 100), (j + 4, i - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.3, color)
+
+        return frame
 
     def handle_actions(self, key: int) -> bool:  # pylint: disable=too-many-branches
         """Handle inputs from user
@@ -359,17 +394,36 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
         return False
 
     def _get_frame_shape(self) -> Tuple[int, ...]:
+        """Find the frame shape to use for the visualization
+
+        It uses the shape of the video is given. Otherwise falls back to
+        the max detection shape.
+
+        If no video, neither detection are given, it is extrapolated as
+        the maximum values (+ some margin) in tracks positions.
+        """
         dim = 0
         if len(self.video) != 0:
             frame_shape = self.video[0].shape[:-1]
             dim = len(frame_shape)
+
         if self.detections_sequence:
-            if dim:
-                frame_shape = np.broadcast_shapes(frame_shape, self.detections_sequence[0].shape)
-                assert len(frame_shape) <= dim, "Unable to handle 3D detections with 2D videos"
+            if dim:  # Shape is already defined from the video
+                # If 3D video, with 2D detections, the vizualizer will still work by extending the 2D dets
+                assert self.detections_sequence[0].dim <= dim, "Unable to handle 3D detections with 2D videos"
             else:
                 frame_shape = self.detections_sequence[0].shape
+
+                # Find the maximal frame shape in the detections
+                def _reduce(reduced: Tuple[int, ...], shape: Tuple[int, ...]) -> Tuple[int, ...]:
+                    assert len(reduced) == len(shape), "Detections should share the same dimension"
+                    return tuple(max(s_r, s) for s_r, s in zip(reduced, shape))
+
+                frame_shape = functools.reduce(
+                    _reduce, (detections.shape for detections in self.detections_sequence), frame_shape
+                )
                 dim = len(frame_shape)
+
         if self.tracks:
             track_tensor = byotrack.Track.tensorize(self.tracks)
             positions = track_tensor[~torch.isnan(track_tensor).any(dim=2)]
