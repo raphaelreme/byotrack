@@ -242,7 +242,7 @@ def save_detections(
         else:
             segmentation = segmentation[None, :, None, ..., None]  # ImageJ tiff format: TZCYXS
 
-        tifffile.imwrite(path / name, segmentation, imagej=True)
+        tifffile.imwrite(path / name, segmentation, imagej=True, compression="zlib")
 
 
 def _save_metadata(path: pathlib.Path, tracks: Collection[byotrack.Track]):
@@ -587,4 +587,4 @@ def save_tracks(  # pylint: disable=too-many-branches,too-many-locals,too-many-s
         else:
             name = f"man_track{frame_id:0{n_digit}}.tif"
 
-        tifffile.imwrite(path / name, segmentation, imagej=True)
+        tifffile.imwrite(path / name, segmentation, imagej=True, compression="zlib")

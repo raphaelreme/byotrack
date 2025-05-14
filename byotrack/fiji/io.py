@@ -32,7 +32,7 @@ def save_detections(detections_sequence: Sequence[byotrack.Detections], path: Un
     else:
         segmentations = segmentations[:, :, None, ..., None]  # ImageJ tiff format: TZCYXS
 
-    tifffile.imwrite(path, segmentations, imagej=True)
+    tifffile.imwrite(path, segmentations, imagej=True, compression="zlib")
 
 
 def load_tracks(path: Union[str, os.PathLike]) -> List[byotrack.Track]:  # pylint: disable=too-many-locals
