@@ -200,7 +200,7 @@ def tps_directed_propagate(
     if kwargs:
         warnings.warn(f"`tps_directed_propagate` has been given unused kwargs: {kwargs}")
 
-    tps = torch_tps.ThinPlateSpline(alpha, "cpu")  # Cf torch_tps: Faster on cpu than gpu
+    tps = torch_tps.ThinPlateSpline(alpha)  # Cf torch_tps: Not really faster on gpu
 
     tracks_matrix = tracks_matrix if forward else torch.flip(tracks_matrix, (0,))
 
