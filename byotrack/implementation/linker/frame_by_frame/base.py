@@ -415,7 +415,7 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
 
         Returns:
             torch.Tensor: The cost matrix between active tracks and detections
-                Shape: (n_tracks, n_dets), dtype: float32
+                Shape: (n_tracks, n_dets), dtype: float
             float: The association threshold to use.
                 It can be different than `self.association_threshold` depeding on the dist build here
 

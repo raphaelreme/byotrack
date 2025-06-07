@@ -36,8 +36,8 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
         process_std (Union[float, torch.Tensor]): Expected process noise. See `torch_kf.ckf.constant_kalman_filter`, the
             process is modeled as constant order-th derivative motion. This quantify how much the supposely "constant"
             order-th derivative can change between two consecutive frames. A common rule of thumb is to use
-            3 * process_std ~= max_t(| x^(order)(t) - x^(order)(t+1)|). It can be provided for each dimension).
-            Default: 1.5 pixels / frame^order
+            3 * process_std ~= max_t(| dx^(order)(t+1) - dx^(order)(t)|). It can be provided for each dimension).
+            Default: 1.5 pixels
         kalman_order (int): Order of the Kalman filter to use. 0 is for brownian motion (it predicts a 0 velocity)
             1 for directed brownian motion, 2 for accelerated brownian motions, etc...
             Default: 1
@@ -46,7 +46,7 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
         n_gap (int): Number of consecutive frames without association before the track termination.
             Default: 3
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
-            It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH)
+            It can be provided as a string. (Choice: GREEDY, [SPARSE_]OPT_HARD, [SPARSE_]OPT_SMOOTH)
             Default: OPT_SMOOTH
         anisotropy (Tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
             for each axis, depth first). This will be used to scale distances. It will only impact
@@ -78,6 +78,12 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
             process errors, allowing to increase the validation gate. Should be used in conjonction with MAHALANOBIS
             or LIKELIHOOD `cost_method`. As this may be detrimental, it is disabed by default.
             Default: 0.0 (Process_std is constant)
+        initial_std_factor (float): The uncertainties on initial velocities/accelerations are set
+            to initial_std_factor * process_std. Having a small factor will prevent handling correctly
+            starting tracks that already moves on their first frames. But large values will lead to large uncertainty
+            on the first prediction, making it hard to associate to a detection with MAHALANOBIS
+            or LIKELIHOOD methods. Typical values lies in 3.0 to 10.0.
+            Default: 10.0
 
     """
 
@@ -100,6 +106,7 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
         extract_flows_on_detections=False,
         always_measure_velocity=True,
         online_process_std=0.0,
+        initial_std_factor=10.0,
     ):
         super().__init__(
             association_threshold=association_threshold,
@@ -115,6 +122,7 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
             split_factor=split_factor,
             merge_factor=merge_factor,
             online_process_std=online_process_std,
+            initial_std_factor=initial_std_factor,
         )
 
         if isinstance(flow_std, float) and min(anisotropy) != max(anisotropy):
@@ -151,8 +159,6 @@ class KOFTLinker(KalmanLinker):
         last_detections (byotrack.Detections): The last detections used in update.
             Optionnaly used to extract flows at the detection positions and not the track state.
             Required for `motion_model`
-        n_initial (int): Number of newly started tracks on the last update. Used to correclty
-            initialized these tracks with the velocity update.
 
     """
 
@@ -172,7 +178,6 @@ class KOFTLinker(KalmanLinker):
         assert self.optflow is not None, "KOFT requires an optical flow algorithm"
 
         self.last_detections = byotrack.Detections(data={"position": torch.empty((0, 2))})
-        self.n_initial = 0
 
     def reset(self, dim=2) -> None:
         super().reset(dim)
@@ -194,15 +199,15 @@ class KOFTLinker(KalmanLinker):
         self.kalman_filter.measurement_noise = torch.eye(dim * 2)
         self.kalman_filter.measurement_noise[:dim, :dim] *= self.specs.detection_std**2
         self.kalman_filter.measurement_noise[dim:, dim:] *= self.specs.flow_std**2
+        self.kalman_filter = self.kalman_filter.to(self.dtype)
 
         self.active_states = torch_kf.GaussianState(
-            torch.empty((0, self.kalman_filter.state_dim, 1)),
-            torch.empty((0, self.kalman_filter.state_dim, self.kalman_filter.state_dim)),
+            torch.empty((0, self.kalman_filter.state_dim, 1), dtype=self.dtype),
+            torch.empty((0, self.kalman_filter.state_dim, self.kalman_filter.state_dim), dtype=self.dtype),
         )
         self.projections = self.kalman_filter.project(self.active_states)
 
         self.last_detections = byotrack.Detections(data={"position": torch.empty((0, dim))})
-        self.n_initial = 0
 
     def motion_model(self) -> None:
         if self.optflow.flow_map is None:
@@ -242,14 +247,6 @@ class KOFTLinker(KalmanLinker):
                 measurement_noise=self.kalman_filter.measurement_noise[dim:, dim:],
             )
 
-        # Correct initial tracks: The velocity of initial tracks is initialize with computed flow
-        # and the flow_std uncertainty
-        if self.n_initial:
-            self.active_states.mean[-self.n_initial :, dim : dim * 2] = velocities[-self.n_initial :]
-            self.active_states.covariance[-self.n_initial :, dim : dim * 2, dim : dim * 2] = (
-                self.kalman_filter.measurement_noise[dim:, dim:]
-            )
-
         # Replace the registered states after adding optical flow inside of it
         if self.save_all or self.specs.track_building == TrackBuilding.SMOOTHED:
             if self.all_states:
@@ -283,7 +280,8 @@ class KOFTLinker(KalmanLinker):
             )
 
         # Restrict projections onto positions
-        # NOTE: Following KOFT official implem, we use (cov-1)[:2, :2] instead of (cov[:2, :2])-1 for the precision.
+        # NOTE: Following KOFT initial implem, we use (cov-1)[:2, :2] instead of (cov[:2, :2])-1 for the precision.
+        #       It works slightly better, but it needs to be investigated.
         projections = torch_kf.GaussianState(
             self.projections.mean[:, : detections.dim],
             self.projections.covariance[:, : detections.dim, : detections.dim],
@@ -311,15 +309,16 @@ class KOFTLinker(KalmanLinker):
 
     def post_association(self, _: np.ndarray, detections: byotrack.Detections, active_mask: torch.Tensor):
         self.last_detections = detections  # Save detections (May be required)
+        positions = detections.position.to(self.dtype)
 
         # Update the state of associated tracks (unassociated tracks keep the predicted state)
         updated = self.kalman_filter.update(
             self.active_states[self._links[:, 0]],
-            detections.position[self._links[:, 1]][..., None],
+            positions[self._links[:, 1]][..., None],
             projection=torch_kf.GaussianState(
                 self.projections.mean[self._links[:, 0], : detections.dim],
                 self.projections.covariance[self._links[:, 0], : detections.dim, : detections.dim],
-                None,  # /!\ inv(cov[:2,:2]) != inv(cov)[:2, :2] =>
+                None,  # /!\ inv(cov[:2,:2]) != inv(cov)[:2, :2]
             ),
             measurement_matrix=self.kalman_filter.measurement_matrix[: detections.dim],
             measurement_noise=self.kalman_filter.measurement_noise[: detections.dim, : detections.dim],
@@ -341,24 +340,26 @@ class KOFTLinker(KalmanLinker):
         self.active_states[self._links[:, 0]] = updated
 
         # Create new states for unmatched measures
-        unmatched_measures = detections.position[self._unmatched_detections]
-        self.n_initial = unmatched_measures.shape[0]
+        unmatched_measures = positions[self._unmatched_detections]
 
         # Build the initial states for tracks:
-        # We initialize the position using the detection position and the measurement std as covariance.
-        # For velocity, we also will have a measurement at prediction time, it will be therefore initialized
-        # correctly at this moment. If acceleration or jerk is modeled, we set them at 0 with a large covariance.
-        # In SKT, having a too large uncertainty on non measured states will produce very uncertain projections
-        # which are either unlinkable with likelihood or too linkable with mahalanobis.
-        # In KOFT as velocity is measured before the prediction/projection step, the projection is never fully
-        # uncertain, therefore we can initialize them with as much uncertainty as required.
+        # Infinite uncertainty on the prior position => Given positional measurement, we initialize on its position
+        #                                               with the positional measurement uncertainty.
+        # For derivatives, we assume they are centered on 0 (no bias toward a direction) with an uncertainty of
+        # initial_std * process_std:
+        # Small factors (~1) are not suited for tracking objects that appears with a large initial velocity.
+        # Large factors (>> 1) will create association problem on the second frame, as the predicted
+        # position inherit from this uncertainty.
+        # As in KOFT, the velocities are measured, it could be set to a higher value.
+        # For the Brownian motion, the process_std directly gives the initial uncertainty on velocity
+        std_factor = self.specs.initial_std_factor if self.specs.kalman_order != 0 else 1.0
         initial_state = torch_kf.GaussianState(
-            torch.zeros(len(unmatched_measures), self.kalman_filter.state_dim, 1),
-            torch.eye(self.kalman_filter.state_dim)[None].expand(
-                len(unmatched_measures), self.kalman_filter.state_dim, self.kalman_filter.state_dim
-            )
-            * self.kalman_filter.process_noise.max()
-            * 100,
+            torch.zeros(len(unmatched_measures), self.kalman_filter.state_dim, 1, dtype=self.dtype),
+            (torch.eye(self.kalman_filter.state_dim, dtype=self.dtype) * (std_factor * self.specs.process_std) ** 2)[
+                None
+            ]
+            .expand(len(unmatched_measures), self.kalman_filter.state_dim, self.kalman_filter.state_dim)
+            .clone(),
         )
         initial_state.mean[:, : detections.dim, 0] = unmatched_measures
         initial_state.covariance[:, : detections.dim, : detections.dim] = self.kalman_filter.measurement_noise[
@@ -394,7 +395,7 @@ class KOFTLinker(KalmanLinker):
                 )
             )
         else:
-            self.all_positions.append(self.active_states.mean[:, : detections.dim, 0])
+            self.all_positions.append(self.active_states.mean[:, : detections.dim, 0].to(torch.float32))
 
         if self.save_all or self.specs.track_building == TrackBuilding.SMOOTHED:
             self.all_states.append(self.active_states)
