@@ -168,6 +168,8 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
         * t: Switch on/off the display of tracks if available
         * v: Switch on/off the display of the video
 
+    Keys can be modified in the dict `keys` (PAUSE, UP, DOWN, RIGHT, LEFT, DET, TRA, VID).
+
     Attributes:
         video (Sequence[np.ndarray] | np.ndarray): Optional video to display.
             Shape: (T, [D, ], H, W, C)
@@ -184,6 +186,20 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
         scale (int): Up or Down scale the display.
             Default: 1 (no scaling)
     """
+
+    # KEY MAPPING
+    # TODO: Use arrow or adapt to keyboard ?
+    keys = {
+        "QUIT": "q",
+        "PAUSE": " ",
+        "UP": "n",
+        "DOWN": "b",
+        "RIGHT": "x",
+        "LEFT": "w",
+        "DET": "d",
+        "TRA": "t",
+        "VID": "v",
+    }
 
     window_name = "ByoTrack ViZ"
 
@@ -350,21 +366,21 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
         Returns:
             bool: True to quit visualization
         """
-        if key == ord("q"):
+        if key == ord(self.keys["QUIT"]):
             return True
 
         if cv2.getWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE) < 1:
             return True
 
-        if key == ord(" "):
+        if key == ord(self.keys["PAUSE"]):
             self._running = not self._running
 
         old_frame_id = self._frame_id
 
-        if not self._running and key == ord("w"):  # Prev
+        if not self._running and key == ord(self.keys["LEFT"]):  # Prev
             self._frame_id = (self._frame_id - 1) % self.n_frames
 
-        if not self._running and key == ord("x"):  # Next
+        if not self._running and key == ord(self.keys["RIGHT"]):  # Next
             self._frame_id = (self._frame_id + 1) % self.n_frames
 
         if self._running:  # Stop running if we reach the last frame
@@ -376,19 +392,19 @@ class InteractiveVisualizer:  # pylint: disable=too-many-instance-attributes
         if self._frame_id != old_frame_id and len(self.video) != 0:
             self._video_frame = self.video[self._frame_id]  # Read video only once when we change change frame_id
 
-        if len(self.frame_shape) == 3 and key == ord("b"):
+        if len(self.frame_shape) == 3 and key == ord(self.keys["DOWN"]):
             self._stack_id = (self._stack_id - 1) % self.frame_shape[0]
 
-        if len(self.frame_shape) == 3 and key == ord("n"):
+        if len(self.frame_shape) == 3 and key == ord(self.keys["UP"]):
             self._stack_id = (self._stack_id + 1) % self.frame_shape[0]
 
-        if key == ord("d"):
+        if key == ord(self.keys["DET"]):
             self._display_detections = (self._display_detections + 1) % 3
 
-        if key == ord("t"):
+        if key == ord(self.keys["TRA"]):
             self._display_tracks = 1 - self._display_tracks
 
-        if key == ord("v"):
+        if key == ord(self.keys["VID"]):
             self._display_video = 1 - self._display_video
 
         return False
@@ -466,6 +482,8 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
         * w/x: Move backward/forward in the video (when paused)
         * g: Reset the control points as a grid
 
+    Keys can be modified in the dict `keys` (PAUSE, RIGHT, LEFT, GRID).
+
     Note:
         To prevent lagging, even when precompute is False, optical flow map are saved and never computed twice.
         You should not use this function with too large videos. (Use slicing to reduce the size of a video)
@@ -485,6 +503,15 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
         scale (int): Up or Down scale the display.
             Default: 1 (no scaling)
     """
+
+    # KEY MAPPING
+    keys = {
+        "QUIT": "q",
+        "PAUSE": " ",
+        "RIGHT": "x",
+        "LEFT": "w",
+        "GRID": "g",
+    }
 
     window_name = "ByoTrack FlowViz"
 
@@ -604,22 +631,22 @@ class InteractiveFlowVisualizer:  # pylint: disable=too-many-instance-attributes
         Returns:
             bool: True to quit visualization
         """
-        if key == ord("q"):
+        if key == ord(self.keys["QUIT"]):
             return True
 
         if cv2.getWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE) < 1:
             return True
 
-        if key == ord(" "):
+        if key == ord(self.keys["PAUSE"]):
             self._running = not self._running
 
-        if not self._running and key == ord("w"):  # Prev
+        if not self._running and key == ord(self.keys["LEFT"]):  # Prev
             self._frame_id = (self._frame_id - 1) % self.n_frames
 
-        if not self._running and key == ord("x"):  # Next
+        if not self._running and key == ord(self.keys["RIGHT"]):  # Next
             self._frame_id = (self._frame_id + 1) % self.n_frames
 
-        if key == ord("g"):
+        if key == ord(self.keys["GRID"]):
             self.points = self._grid
 
         return False
