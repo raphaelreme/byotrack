@@ -7,6 +7,8 @@ import numba  # type: ignore
 import numpy as np
 import torch
 
+import byotrack  # pylint: disable=cyclic-import
+
 from ... import utils
 
 
@@ -36,7 +38,7 @@ def _check_confidence(confidence: torch.Tensor) -> None:
     assert confidence.dtype is torch.float32
 
 
-@numba.njit
+@numba.njit(cache=byotrack.NUMBA_CACHE)
 def _compute_mass(segmentation: np.ndarray) -> np.ndarray:
     """Extract the number of pixels of each object in the segmentation
 
@@ -62,7 +64,7 @@ def _compute_mass(segmentation: np.ndarray) -> np.ndarray:
     return mass
 
 
-@numba.njit(parallel=False)
+@numba.njit(parallel=False, cache=byotrack.NUMBA_CACHE)
 def _position_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     """Return the center (mean) of each instance in the segmentation"""
     # A bit slower than previous version in 2D, but still fine
@@ -83,7 +85,7 @@ def _position_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     return m_1.astype(np.float32) / m_0.reshape(-1, 1)
 
 
-@numba.njit(parallel=False)
+@numba.njit(parallel=False, cache=byotrack.NUMBA_CACHE)
 def _median_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     """Return the center (median) of each instance in the segmentation"""
 
@@ -122,7 +124,7 @@ def _median_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     return median
 
 
-@numba.njit
+@numba.njit(cache=byotrack.NUMBA_CACHE)
 def _bbox_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     # A bit slower than previous version in 2D, but still fine
 
@@ -153,7 +155,7 @@ def _segmentation_from_bbox(bbox: np.ndarray, shape: Tuple[int, ...]) -> np.ndar
     raise RuntimeError(f"Cannot create a segmentation of dimension {len(shape)}")
 
 
-@numba.njit
+@numba.njit(cache=byotrack.NUMBA_CACHE)
 def _segmentation_from_bbox_2d(bbox: np.ndarray, shape: Tuple[int, int]) -> np.ndarray:
     # Switch to start/stop bbox instead of start/size bbox
     bbox = bbox.copy()
@@ -167,7 +169,7 @@ def _segmentation_from_bbox_2d(bbox: np.ndarray, shape: Tuple[int, int]) -> np.n
     return segmentation
 
 
-@numba.njit
+@numba.njit(cache=byotrack.NUMBA_CACHE)
 def _segmentation_from_bbox_3d(bbox: np.ndarray, shape: Tuple[int, int, int]) -> np.ndarray:
     # Switch to start/stop bbox instead of start/size bbox
     bbox = bbox.copy()
@@ -191,7 +193,7 @@ def _segmentation_from_position(position: torch.Tensor, shape: Tuple[int, ...]) 
     return segmentation
 
 
-@numba.njit(parallel=True)
+@numba.njit(parallel=True, cache=byotrack.NUMBA_CACHE)
 def _fast_unique(segmentation: np.ndarray) -> np.ndarray:
     """Fast np.unique/torch.unique
 
@@ -207,7 +209,7 @@ def _fast_unique(segmentation: np.ndarray) -> np.ndarray:
     return np.arange(segmentation.max() + 1)[unique]
 
 
-@numba.njit(parallel=True)
+@numba.njit(parallel=True, cache=byotrack.NUMBA_CACHE)
 def _fast_relabel(segmentation: np.ndarray):
     """Inplace fast relabel
 

@@ -71,7 +71,7 @@ class IntensityExtractor(FeaturesExtractor):
         torch.tensor(compute_intensity(detections.segmentation.numpy(), frame.sum(axis=-1)), dtype=torch.float32)
 
 
-@numba.njit
+@numba.njit(cache=byotrack.NUMBA_CACHE)
 def compute_intensity(segmentation: np.ndarray, frame: np.ndarray) -> np.ndarray:
     """Extract the cumulated intensity of each detection
 

@@ -89,6 +89,7 @@ Please refer to the ![official documentation](https://byotrack.readthedocs.io/en
 """
 
 # Import API and main features but no implementation
+from byotrack._env import NUMBA_CACHE
 from byotrack.api.detector.detections import Detections
 from byotrack.api.detector.detector import BatchDetector, Detector
 from byotrack.api.linker import Linker, OnlineLinker
@@ -100,4 +101,4 @@ from byotrack.api.tracks import Track
 from byotrack.video import Video, VideoTransformConfig
 
 
-__version__ = "1.3.5"
+__version__ = "1.3.6"

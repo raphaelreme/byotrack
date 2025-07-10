@@ -9,7 +9,7 @@ from . import dist_stitcher
 from .. import propagation
 
 
-@numba.njit(parallel=True)
+@numba.njit(parallel=True, cache=byotrack.NUMBA_CACHE)
 def _fast_emc2_dist(propagation_matrix: np.ndarray, skip_mask: np.ndarray, ranges: np.ndarray) -> np.ndarray:
     """Fast implementation of EMC2 distance
 

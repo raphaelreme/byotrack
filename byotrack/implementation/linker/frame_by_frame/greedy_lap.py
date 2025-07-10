@@ -3,8 +3,10 @@ from typing import Tuple
 import numba  # type: ignore
 import numpy as np
 
+import byotrack
 
-@numba.njit()
+
+@numba.njit(cache=byotrack.NUMBA_CACHE)
 def _fast_build_links(indices: np.ndarray, shape: Tuple[int, int]):
     """Extract the links from the sorted indices"""
     n = min(shape)

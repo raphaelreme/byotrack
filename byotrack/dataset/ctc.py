@@ -266,7 +266,7 @@ def _save_metadata(path: pathlib.Path, tracks: Collection[byotrack.Track]):
     path.write_text("\n".join(lines))
 
 
-@numba.njit(parallel=True)
+@numba.njit(parallel=True, cache=byotrack.NUMBA_CACHE)
 def _fast_relabel(segmentation: np.ndarray, mapping: np.ndarray):
     """Inplace fast relabel with given mapping
 
@@ -279,7 +279,7 @@ def _fast_relabel(segmentation: np.ndarray, mapping: np.ndarray):
             segmentation[i] = mapping[segmentation[i] - 1]
 
 
-@numba.njit(parallel=True)
+@numba.njit(parallel=True, cache=byotrack.NUMBA_CACHE)
 def _fast_disk_2d(
     segmentation: np.ndarray,
     bbox: np.ndarray,
@@ -331,7 +331,7 @@ def _fast_disk_2d(
                     best_dist[i, j] = dist
 
 
-@numba.njit(parallel=True)
+@numba.njit(parallel=True, cache=byotrack.NUMBA_CACHE)
 def _fast_disk_3d(  # pylint: disable=too-many-locals
     segmentation: np.ndarray,
     bbox: np.ndarray,
