@@ -290,7 +290,7 @@ class B3SplineUWTApprox2(torch.nn.Module):
         return (x - y)[:, 0]
 
 
-@numba.njit(cache=True)
+@numba.njit(cache=byotrack.NUMBA_CACHE)
 def filter_small_objects(segmentation: np.ndarray, min_area: float) -> None:
     """Filter small instances from the segmentation in place
 

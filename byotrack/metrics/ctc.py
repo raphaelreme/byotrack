@@ -81,12 +81,12 @@ class CTCSoftwareRunner:  # pylint: disable=too-few-public-methods
         assert metric in ("SEG", "DET", "TRA"), "Only SEG, DET and TRA metrics are available with this software"
 
         executable = metric + "Measure"
-        if self.system == "WIN":
+        if self.system == "Win":
             executable = executable + ".exe"
 
         cmd = self.cmd.format(executable=executable, dataset=dataset, seq=seq, n_digit=n_digit)
 
-        if self.system == "WIN":
+        if self.system == "Win":
             cmd = cmd[2:]  # Strip ./ on windows
 
         print("Calling CTC softwares with:", cmd)
