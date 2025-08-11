@@ -1,5 +1,5 @@
 import time
-from typing import List, Optional, Union
+from typing import cast, List, Optional, Union, Type
 import warnings
 
 import numba  # type: ignore
@@ -49,7 +49,7 @@ class B3SplineUWT(torch.nn.Module):
         self.return_all = return_all
         self.dim = dim
 
-        conv_builder: type
+        conv_builder: Union[Type[torch.nn.Conv1d], Type[torch.nn.Conv2d], Type[torch.nn.Conv3d]]
         if dim == 1:
             conv_builder = torch.nn.Conv1d
         elif dim == 2:
@@ -72,6 +72,7 @@ class B3SplineUWT(torch.nn.Module):
             weights = weights[..., None] * self.weights
 
         for layer in self.layers:
+            layer = cast(Union[torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d], layer)
             layer.weight.requires_grad_(False)
             layer.weight[0, 0] = weights
 
@@ -149,6 +150,7 @@ class B3SplineUWTApprox1(torch.nn.Module):
         )
 
         for layer in self.layers:
+            layer = cast(torch.nn.Conv1d, layer)
             layer.weight.requires_grad_(False)
             layer.weight[0, 0] = self.weights
 
@@ -223,7 +225,7 @@ class B3SplineUWTApprox2(torch.nn.Module):
         self.return_all = return_all
         self.dim = dim
 
-        conv_builder: type
+        conv_builder: Union[Type[torch.nn.Conv1d], Type[torch.nn.Conv2d], Type[torch.nn.Conv3d]]
         if dim == 1:
             conv_builder = torch.nn.Conv1d
         elif dim == 2:
