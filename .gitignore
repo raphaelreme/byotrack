@@ -130,3 +130,6 @@ dmypy.json
 
 # vscode
 .vscode/
+
+#test code
+examples/ctc/test_code.ipynb
