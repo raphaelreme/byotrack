@@ -16,8 +16,9 @@ import byotrack
 import byotrack.api.features_extractor
 import byotrack.dataset.ctc as ctc_data
 from byotrack.implementation.optical_flow import skimage as sk, opencv
-from byotrack.implementation.linker.frame_by_frame import nearest_neighbor, kalman_linker, koft
+from byotrack.implementation.linker.frame_by_frame import nearest_neighbor, kalman_linker, koft, trackabyo_linker
 from byotrack.implementation.refiner.interpolater import ForwardBackwardInterpolater
+from byotrack.implementation.refiner.smoother import RTSSmoother
 import byotrack.metrics.ctc as ctc_metrics
 
 
@@ -69,6 +70,20 @@ def link(video: byotrack.Video, detections_sequence: Sequence[byotrack.Detection
     specs: kalman_linker.FrameByFrameLinkerParameters
     linker: kalman_linker.FrameByFrameLinker
     optflow: byotrack.OpticalFlow
+    if kwargs["linker"] == "TB":
+        model = trackabyo_linker.NewTrackastra.from_pretrained("ctc")
+        specs = trackabyo_linker.TrackaByoParameters(
+            max_dist=kwargs["association_threshold"],
+            split_factor=kwargs["split_factor"],
+            anisotropy=(kwargs["anisotropy"], 1.0, 1.0),
+        )
+        linker = trackabyo_linker.TrackaByoLinker(specs, model)
+        # Runs with the real video for the moment, not really a frame by frame linker
+        tracks = linker.run(video, detections_sequence)
+        return RTSSmoother(
+            kwargs["detection_std"], process_std=kwargs["process_std"], kalman_order=0, anisotropy=specs.anisotropy
+        ).run(video, tracks)
+
     if kwargs["linker"] == "NN":  # NN
         specs = nearest_neighbor.NearestNeighborParameters(
             association_threshold=kwargs["association_threshold"],  # Greedy is good
@@ -163,6 +178,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
     attachment=10.0,
     detections_sequence=None,
     eval_software: Optional[str] = None,
+    fiji_software: Optional[str] = None,
 ):
     path = pathlib.Path(data_path) / dataset
     n_digit = len(next((path / f"{seq:02}").glob("t*.tif")).stem[1:])
@@ -299,6 +315,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
         )
 
         print("TRA:", tra)
+
+    if fiji_software is not None:  # Compute Bio meteics if the path to Fiji software is given
+        bio_metric = ctc_metrics.BioMetricsv2(fiji_software)
+
+        bio = bio_metric.run(path, seq, n_digit)
+
+        print("BIO score :", bio)
 
 
 if __name__ == "__main__":

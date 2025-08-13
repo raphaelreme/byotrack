@@ -2,13 +2,21 @@ import dataclasses
 from typing import List, Optional, Tuple, Dict, Union, Collection, Sequence
 import warnings
 import logging
-import importlib
 
 import numpy as np
 import torch
 import dask.array as da
 from tqdm import tqdm
 from scipy.sparse import csr_array
+
+from trackastra.model import Trackastra
+from trackastra.utils import normalize
+from trackastra.data import (
+    get_features,
+    build_windows,
+)
+from trackastra.model.predict import predict_windows
+from trackastra.model import TrackingTransformer
 
 import byotrack
 from byotrack.implementation.linker.frame_by_frame.base import (
@@ -18,17 +26,6 @@ from byotrack.implementation.linker.frame_by_frame.nearest_neighbor import (
     NearestNeighborParameters,
     NearestNeighborLinker,
 )
-
-
-from trackastra.model import Trackastra
-from trackastra.utils import normalize
-from trackastra.data import (
-    get_features,
-    build_windows,
-)
-
-from trackastra.model.predict import predict_windows
-from trackastra.model import TrackingTransformer
 
 
 def dict_builder(nodes: List[Dict], weights: List[Tuple]):
@@ -50,9 +47,7 @@ def dict_builder(nodes: List[Dict], weights: List[Tuple]):
     for (id1, id2), weight in weights:
         node1 = node_by_id[id1]
         node2 = node_by_id[id2]
-        dico[(node1["time"], node1["label"] - 1, node2["time"], node2["label"] - 1)] = (
-            -np.log(weight)
-        )
+        dico[(node1["time"], node1["label"] - 1, node2["time"], node2["label"] - 1)] = -np.log(weight)
     return dico
 
 
@@ -73,20 +68,18 @@ def predict_dist(batch, model: TrackingTransformer) -> np.ndarray:
     coords = torch.from_numpy(batch["coords"])
     timepoints = torch.from_numpy(batch["timepoints"]).long()
 
-    # Hack that assumes that all parameters of a model are on the same device
     device = next(model.parameters()).device
     feats = feats.unsqueeze(0).to(device)
     timepoints = timepoints.unsqueeze(0).to(device)
     coords = coords.unsqueeze(0).to(device)
 
-    # Concat timepoints to coordinates
     coords = torch.cat((timepoints.unsqueeze(2).float(), coords), dim=2)
     with torch.no_grad():
         A = model(coords, features=feats)
 
         A = model.normalize_output(A, timepoints, coords)
         A = A[0]
-        # # Spatially far entries should not influence the causal normalization
+
         dist = torch.cdist(coords[0, :, 1:], coords[0, :, 1:])
         invalid = dist > model.config["spatial_pos_cutoff"]
         A[invalid] = -torch.inf
@@ -99,8 +92,6 @@ def predict_dist(batch, model: TrackingTransformer) -> np.ndarray:
 
 def predict_windows_dist(
     windows: list[dict],
-    # features: list[WRFeatures],
-    # model: TrackingTransformer,
     features: list,
     model,
     intra_window_weight: float = 0,
@@ -193,12 +184,8 @@ def predict_windows_dist(
         labels_jj = labels[jj]
         ts_ii = timepoints[ii]
         ts_jj = timepoints[jj]
-        nodes_ii = np.array(
-            tuple(time_labels_to_id[(t, lab)] for t, lab in zip(ts_ii, labels_ii))
-        )
-        nodes_jj = np.array(
-            tuple(time_labels_to_id[(t, lab)] for t, lab in zip(ts_jj, labels_jj))
-        )
+        nodes_ii = np.array(tuple(time_labels_to_id[(t, lab)] for t, lab in zip(ts_ii, labels_ii)))
+        nodes_jj = np.array(tuple(time_labels_to_id[(t, lab)] for t, lab in zip(ts_jj, labels_jj)))
 
         # weight middle parts higher
         t_middle = t + (model.config["window"] - 1) / 2
@@ -210,9 +197,7 @@ def predict_windows_dist(
 
     sp_weights_coo = sp_weights.tocoo()
     sp_accum_coo = sp_accum.tocoo()
-    assert np.allclose(sp_weights_coo.col, sp_accum_coo.col) and np.allclose(
-        sp_weights_coo.row, sp_accum_coo.row
-    )
+    assert np.allclose(sp_weights_coo.col, sp_accum_coo.col) and np.allclose(sp_weights_coo.row, sp_accum_coo.row)
 
     # Normalize weights by the number of times they were written from different sliding window positions
     weights = tuple(
@@ -381,9 +366,7 @@ class TrackaByoParameters(NearestNeighborParameters):
         association_threshold: float = 0.69,  # A définir
         n_valid=1,
         n_gap=3,
-        association_method: Union[
-            str, AssociationMethod
-        ] = AssociationMethod.OPT_SMOOTH,
+        association_method: Union[str, AssociationMethod] = AssociationMethod.OPT_SMOOTH,
         anisotropy: Tuple[float, float, float] = (1.0, 1.0, 1.0),
         ema=1.0,
         fill_gap=False,
@@ -445,8 +428,22 @@ class TrackaByoLinker(NearestNeighborLinker):
         self,
         video: Union[Sequence[np.ndarray], np.ndarray],
         detections_sequence: Sequence[byotrack.Detections],
-        dist=False,
+        dist: bool = True,
     ) -> Collection[byotrack.Track]:
+        """Run the linker on a whole video
+
+        Args:
+            video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames (array).
+                Each array is expected to have a shape ([D, ]H, W, C)
+            detections_sequence (Sequence[byotrack.Detections]): Detections for each frame
+                Detections is expected for each frame of the video, in the same order.
+                (Note that for a given frame, the Detections can be empty)
+            dist (bool) : Boolean that indicates whether or not a maximum distance should be used when doing the linking.
+
+        Returns:
+            Collection[byotrack.Track]: Tracks of particles
+
+        """
         if len(video) != len(detections_sequence):
             warnings.warn(
                 f"""Expected to have one Detections for each frame of the video.
@@ -501,9 +498,7 @@ class TrackaByoLinker(NearestNeighborLinker):
         byotrack.Track.check_tracks(tracks, warn=True)
         return tracks
 
-    def cost(
-        self, frame: np.ndarray, detections: byotrack.Detections
-    ) -> Tuple[torch.tensor, float]:
+    def cost(self, frame: np.ndarray, detections: byotrack.Detections) -> Tuple[torch.tensor, float]:
         """Compute the association cost between active tracks and detections
 
         For likelihood association, you could provide the association threshold as a probability
