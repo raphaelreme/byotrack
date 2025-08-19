@@ -25,6 +25,7 @@ from byotrack.implementation.linker.frame_by_frame.nearest_neighbor import (
     NearestNeighborParameters,
     NearestNeighborLinker,
 )
+from byotrack.implementation.refiner.smoother import RTSSmoother
 
 
 def dict_builder(nodes: List[Dict], weights: Tuple[Tuple]):
@@ -308,7 +309,10 @@ class TrackaByoParameters(NearestNeighborParameters):
         n_valid=1,
         n_gap=3,
         association_method: Union[str, AssociationMethod] = AssociationMethod.OPT_SMOOTH,
+        fill_gap: bool = True,
         anisotropy: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+        detection_std: float = 0.0,
+        process_std: float = 0.0,
         split_factor: float = 0.0,
         merge_factor: float = 0.0,
     ):
@@ -316,11 +320,14 @@ class TrackaByoParameters(NearestNeighborParameters):
             association_threshold=association_threshold,
             n_valid=n_valid,
             n_gap=n_gap,
+            fill_gap=fill_gap,
             association_method=association_method,
             anisotropy=anisotropy,
             split_factor=1 if split_factor > 0 else 0,
             merge_factor=merge_factor,
         )
+        self.detection_std = detection_std
+        self.process_std = process_std
         self.edge_threshold = edge_threshold
 
 
@@ -423,6 +430,10 @@ class TrackaByoLinker(NearestNeighborLinker):
 
         # Check produced tracks
         byotrack.Track.check_tracks(tracks, warn=True)
+        if self.specs.fill_gap:
+            tracks = RTSSmoother(self.specs.detection_std, self.specs.process_std, 0, self.specs.anisotropy).run(
+                [np.zeros((1, 1, 1, 1)) for _ in range(len(detections_sequence))], tracks
+            )
         return tracks
 
     def cost(self, _: np.ndarray, detections: byotrack.Detections) -> Tuple[torch.Tensor, float]:

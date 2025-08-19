@@ -18,7 +18,6 @@ import byotrack.dataset.ctc as ctc_data
 from byotrack.implementation.optical_flow import skimage as sk, opencv
 from byotrack.implementation.linker.frame_by_frame import nearest_neighbor, kalman_linker, koft, trackabyo_linker
 from byotrack.implementation.refiner.interpolater import ForwardBackwardInterpolater
-from byotrack.implementation.refiner.smoother import RTSSmoother
 import byotrack.metrics.ctc as ctc_metrics
 
 
@@ -59,18 +58,14 @@ def link(video: byotrack.Video, detections_sequence: Sequence[byotrack.Detection
         specs = trackabyo_linker.TrackaByoParameters(
             association_threshold=kwargs["association_threshold"],
             n_gap=3 if kwargs["n_gap"] > 0 else 0,
+            detection_std=kwargs["detection_std"],
+            process_std=kwargs["process_std"],
             split_factor=kwargs["split_factor"],
             anisotropy=(kwargs["anisotropy"], 1.0, 1.0),
         )
         linker = trackabyo_linker.TrackaByoLinker(specs)
         # Runs with the real video for the moment, not really a frame by frame linker
-        tracks = linker.run(video, detections_sequence)
-        return RTSSmoother(
-            detection_std=kwargs["detection_std"],
-            process_std=kwargs["process_std"],
-            kalman_order=0,
-            anisotropy=specs.anisotropy,
-        ).run(video, tracks)
+        return list(linker.run(video, detections_sequence))
 
     if kwargs["linker"] == "NN":  # NN
         specs = nearest_neighbor.NearestNeighborParameters(
