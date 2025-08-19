@@ -15,7 +15,6 @@ from trackastra.data import (  # type: ignore
     get_features,
     build_windows,
 )
-from trackastra.model.predict import predict_windows  # type: ignore
 from trackastra.model import TrackingTransformer
 
 import byotrack
@@ -219,7 +218,7 @@ def predict_windows_dist(
 
 class NewTrackastra(Trackastra):
     """ "
-    Subclass of Trackastra to be able to modify delta_t and add a _predict_dist
+    Subclass of Trackastra to be able to modify delta_t and the windows size. Also a modified _predict
     function to have a maximum distance to link two detections.
     """
 
@@ -230,46 +229,6 @@ class NewTrackastra(Trackastra):
         self.intra_weight = intra_weight
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
-
-    def _predict(
-        self,
-        imgs: np.ndarray,
-        masks: np.ndarray,
-        edge_threshold: float = 0.05,
-        n_workers: int = 0,
-        progbar_class=tqdm,
-    ):
-        self.logger.info("Predicting weights for candidate graph")
-        imgs = normalize(imgs)
-        self.transformer.eval()
-
-        features = get_features(
-            detections=masks,
-            imgs=imgs,
-            ndim=self.transformer.config["coord_dim"],
-            n_workers=n_workers,
-            progbar_class=progbar_class,
-        )
-        self.logger.info("Building windows")
-        windows = build_windows(
-            features,
-            window_size=self.transformer.config["window"],
-            progbar_class=progbar_class,
-        )
-
-        self.logger.info("Predicting windows")
-        predictions = predict_windows(
-            windows=windows,
-            features=features,
-            model=self.transformer,
-            edge_threshold=edge_threshold,
-            intra_window_weight=self.intra_weight,
-            spatial_dim=masks.ndim - 1,
-            progbar_class=progbar_class,
-            delta_t=self.delta_t,
-        )
-
-        return predictions
 
     def _predict_dist(
         self,
@@ -320,7 +279,7 @@ class TrackaByoParameters(NearestNeighborParameters):
 
 
     Attributes:
-        max_dist (float) : This is the main hyperparameter, it defines the threshold on the distance used
+        association_threshold (float) : This is the main hyperparameter, it defines the threshold on the distance used
             not to link tracks with detections. It prevents to link with false positive detections.
         edge_threshold (float): Minimum likelihood to consider
         n_valid (int): Number associated detections required to validate the track after its creation.
@@ -344,7 +303,7 @@ class TrackaByoParameters(NearestNeighborParameters):
 
     def __init__(
         self,
-        max_dist: float = 0.0,
+        association_threshold: float = 0.0,
         edge_threshold: float = 0.05,
         n_valid=1,
         n_gap=3,
@@ -354,7 +313,7 @@ class TrackaByoParameters(NearestNeighborParameters):
         merge_factor: float = 0.0,
     ):
         super().__init__(  # pylint: disable=duplicate-code
-            association_threshold=-np.log(edge_threshold),
+            association_threshold=association_threshold,
             n_valid=n_valid,
             n_gap=n_gap,
             association_method=association_method,
@@ -362,8 +321,7 @@ class TrackaByoParameters(NearestNeighborParameters):
             split_factor=1 if split_factor > 0 else 0,
             merge_factor=merge_factor,
         )
-        self.max_dist = max_dist
-        self.edge_treshold = edge_threshold
+        self.edge_threshold = edge_threshold
 
 
 class TrackaByoLinker(NearestNeighborLinker):
@@ -392,6 +350,7 @@ class TrackaByoLinker(NearestNeighborLinker):
             self.model = NewTrackastra.from_pretrained("ctc")
         else:
             self.model = model
+        self.model.transformer.config["spatial_pos_cutoff"] = self.specs.association_threshold
         self.cost_dict: dict[Tuple, float]
         if self.specs.n_gap == 0:  # If n_gap =0 window size of 4 seems to be a bit better
             self.model.delta_t = 1
@@ -438,15 +397,10 @@ class TrackaByoLinker(NearestNeighborLinker):
         masks = np.stack(masks_list)
 
         # Then compute the cost
-        if self.specs.max_dist > 0.0:
-            self.model.transformer.config["spatial_pos_cutoff"] = self.specs.max_dist
-            predictions = self.model._predict_dist(  # pylint: disable=W0212
-                vid, masks, edge_threshold=self.specs.edge_treshold
-            )
-        else:
-            predictions = self.model._predict(  # pylint: disable=W0212
-                vid, masks, edge_threshold=self.specs.edge_treshold
-            )
+        predictions = self.model._predict_dist(  # pylint: disable=W0212
+            vid, masks, edge_threshold=self.specs.edge_threshold
+        )
+
         nodes = predictions["nodes"]
         weights = predictions["weights"]
         self.cost_dict = dict_builder(nodes, weights)
@@ -484,6 +438,7 @@ class TrackaByoLinker(NearestNeighborLinker):
             torch.Tensor: The cost matrix between active tracks and detections
                 Shape: (n_tracks, n_dets), dtype: float
             float: The association threshold to use. Not really useful, since there is already an edge threshold in Trackastra.
+            Just returning -ln(edge_threshold)
 
         """
         nb_lignes = len(self.active_tracks)
@@ -504,4 +459,4 @@ class TrackaByoLinker(NearestNeighborLinker):
                             break
                     except IndexError:
                         break
-        return (cost, self.specs.association_threshold)
+        return (cost, -np.log(self.specs.edge_threshold))

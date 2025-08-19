@@ -57,7 +57,7 @@ def link(video: byotrack.Video, detections_sequence: Sequence[byotrack.Detection
     optflow: byotrack.OpticalFlow
     if kwargs["linker"] == "TB":
         specs = trackabyo_linker.TrackaByoParameters(
-            max_dist=kwargs["association_threshold"],
+            association_threshold=kwargs["association_threshold"],
             n_gap=3 if kwargs["n_gap"] > 0 else 0,
             split_factor=kwargs["split_factor"],
             anisotropy=(kwargs["anisotropy"], 1.0, 1.0),
