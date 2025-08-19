@@ -1,5 +1,5 @@
 import dataclasses
-from typing import List, Optional, Tuple, Dict, Union, Collection, Sequence
+from typing import List, Tuple, Dict, Union, Collection, Sequence
 import warnings
 import logging
 
@@ -30,7 +30,7 @@ from byotrack.implementation.linker.frame_by_frame.nearest_neighbor import (
 
 def dict_builder(nodes: List[Dict], weights: Tuple[Tuple]):
     """
-    Build the dictionnary matching with the Trackastra's graph
+    Build the dictionnary of possible links from the Trackastra's predictions.
 
     Args :
         nodes : The list of the graph's nodes (detections),
@@ -52,7 +52,8 @@ def dict_builder(nodes: List[Dict], weights: Tuple[Tuple]):
 
 
 def predict_dist(batch, model: TrackingTransformer) -> np.ndarray:
-    """Predict association scores between objects in a batch of windows.
+    """Predict association scores between objects in a batch of windows with a maximum
+    distance between detections to consider a link (model.transformer.config["spatial_pos_cutoff"]).
 
     Args:
         batch: dictionary containing:
@@ -84,7 +85,6 @@ def predict_dist(batch, model: TrackingTransformer) -> np.ndarray:
         invalid = dist > model.config["spatial_pos_cutoff"]
         A[invalid] = -torch.inf
 
-        # TODO stay on device for further computation?
         A = A.detach().cpu().numpy()
 
     return A
@@ -219,7 +219,8 @@ def predict_windows_dist(
 
 class NewTrackastra(Trackastra):
     """ "
-    Subclass of Trackastra just to modify the _predict function to have delta_t=4
+    Subclass of Trackastra to be able to modify delta_t and add a _predict_dist
+    function to have a maximum distance to link two detections.
     """
 
     def __init__(self, transformer, train_args, delta_t=4, intra_weight=0, device=None):
@@ -319,10 +320,11 @@ class TrackaByoParameters(NearestNeighborParameters):
 
 
     Attributes:
-        association_threshold (float): This is the main hyperparameter, it defines the threshold on the distance used
+        max_dist (float) : This is the main hyperparameter, it defines the threshold on the distance used
             not to link tracks with detections. It prevents to link with false positive detections.
+        edge_threshold (float): Minimum likelihood to consider
         n_valid (int): Number associated detections required to validate the track after its creation.
-            Default: 3
+            Default: 1
         n_gap (int): Number of consecutive frames without association before the track termination.
             Default: 3
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
@@ -331,17 +333,6 @@ class TrackaByoParameters(NearestNeighborParameters):
         anisotropy (Tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
             for each axis, depth first). This will be used to scale distances.
             Default: (1., 1., 1.)
-        fill_gap (bool): Fill the gap of missed detections using a forward optical flow
-            propagation (Only when optical flow is provided). We advise to rather use a
-            ForwardBackward interpolation using the same optical flow: it will produce
-            smoother interpolations.
-            Default: False
-        ema (float): Optional exponential moving average to reduce detection noise. Detection positions are smoothed
-            using this EMA. Should be smaller than 1. It use: x_{t+1} = ema x_{t} + (1 - ema) det(t)
-            As motion is not modeled, EMA may introduce lag that will hinder tracking. It is more effective with
-            optical flow to compensate motions, in this case, a typical value is 0.5, to average the previous position
-            with the current measured one. For more advanced modelisation, see `KalmanLinker`.
-            Default: 0.0 (No EMA)
         split_factor (float): Allow splitting of tracks, using a second association step.
             The association threshold in this case is `split_factor * association_threshold`.
             Default: 0.0 (No splits)
@@ -354,18 +345,16 @@ class TrackaByoParameters(NearestNeighborParameters):
     def __init__(
         self,
         max_dist: float = 0.0,
-        association_threshold: float = 0.69,
+        edge_threshold: float = 0.05,
         n_valid=1,
         n_gap=3,
         association_method: Union[str, AssociationMethod] = AssociationMethod.OPT_SMOOTH,
         anisotropy: Tuple[float, float, float] = (1.0, 1.0, 1.0),
-        ema=1.0,
-        fill_gap=False,
         split_factor: float = 0.0,
         merge_factor: float = 0.0,
     ):
         super().__init__(  # pylint: disable=duplicate-code
-            association_threshold=association_threshold,
+            association_threshold=-np.log(edge_threshold),
             n_valid=n_valid,
             n_gap=n_gap,
             association_method=association_method,
@@ -374,10 +363,11 @@ class TrackaByoParameters(NearestNeighborParameters):
             merge_factor=merge_factor,
         )
         self.max_dist = max_dist
+        self.edge_treshold = edge_threshold
 
 
 class TrackaByoLinker(NearestNeighborLinker):
-    """Frame by frame linker using Trackastra associating costs.
+    """Linker using Trackastra associating costs.
 
     See `TrackaByoParamaters` for the other attributes.
 
@@ -394,21 +384,18 @@ class TrackaByoLinker(NearestNeighborLinker):
     def __init__(
         self,
         specs: TrackaByoParameters,
-        model: NewTrackastra,
-        optflow: Optional[byotrack.OpticalFlow] = None,
-        features_extractor: Optional[byotrack.FeaturesExtractor] = None,
-        save_all=False,
+        model: NewTrackastra | None = None,
     ) -> None:
-        super().__init__(specs, optflow, features_extractor, save_all)
+        super().__init__(specs)
         self.specs: TrackaByoParameters
-        self.model = model
+        if model is None:
+            self.model = NewTrackastra.from_pretrained("ctc")
+        else:
+            self.model = model
         self.cost_dict: dict[Tuple, float]
         if self.specs.n_gap == 0:  # If n_gap =0 window size of 4 seems to be a bit better
             self.model.delta_t = 1
             self.model.transformer.config["window"] = 4
-
-        if self.specs.fill_gap and not self.optflow:
-            warnings.warn("Optical flow has not been provided. Gap cannot be filled")
 
     def run(
         self, video: Union[Sequence[np.ndarray], np.ndarray], detections_sequence: Sequence[byotrack.Detections]
@@ -421,7 +408,6 @@ class TrackaByoLinker(NearestNeighborLinker):
             detections_sequence (Sequence[byotrack.Detections]): Detections for each frame
                 Detections is expected for each frame of the video, in the same order.
                 (Note that for a given frame, the Detections can be empty)
-            dist (bool) : Boolean that indicates whether or not a maximum distance should be used when doing the linking.
 
         Returns:
             Collection[byotrack.Track]: Tracks of particles
@@ -454,9 +440,13 @@ class TrackaByoLinker(NearestNeighborLinker):
         # Then compute the cost
         if self.specs.max_dist > 0.0:
             self.model.transformer.config["spatial_pos_cutoff"] = self.specs.max_dist
-            predictions = self.model._predict_dist(vid, masks)  # pylint: disable=W0212
+            predictions = self.model._predict_dist(  # pylint: disable=W0212
+                vid, masks, edge_threshold=self.specs.edge_treshold
+            )
         else:
-            predictions = self.model._predict(vid, masks)  # pylint: disable=W0212
+            predictions = self.model._predict(  # pylint: disable=W0212
+                vid, masks, edge_threshold=self.specs.edge_treshold
+            )
         nodes = predictions["nodes"]
         weights = predictions["weights"]
         self.cost_dict = dict_builder(nodes, weights)
@@ -488,13 +478,12 @@ class TrackaByoLinker(NearestNeighborLinker):
         and use -log(threshold) as the true threshold. (See `KalmanLinker` and `NearestNeighborLinker`)
 
         Args:
-            frame_id (int): The index of thecurrent frame of the video
-
+            detections (byotrack.Detections) : Detections on a given frame.
 
         Returns:
             torch.Tensor: The cost matrix between active tracks and detections
                 Shape: (n_tracks, n_dets), dtype: float
-            float: The association threshold to use.
+            float: The association threshold to use. Not really useful, since there is already an edge threshold in Trackastra.
 
         """
         nb_lignes = len(self.active_tracks)

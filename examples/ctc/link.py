@@ -56,18 +56,20 @@ def link(video: byotrack.Video, detections_sequence: Sequence[byotrack.Detection
     linker: kalman_linker.FrameByFrameLinker
     optflow: byotrack.OpticalFlow
     if kwargs["linker"] == "TB":
-        model = trackabyo_linker.NewTrackastra.from_pretrained("ctc")
         specs = trackabyo_linker.TrackaByoParameters(
             max_dist=kwargs["association_threshold"],
             n_gap=3 if kwargs["n_gap"] > 0 else 0,
             split_factor=kwargs["split_factor"],
             anisotropy=(kwargs["anisotropy"], 1.0, 1.0),
         )
-        linker = trackabyo_linker.TrackaByoLinker(specs, model)
+        linker = trackabyo_linker.TrackaByoLinker(specs)
         # Runs with the real video for the moment, not really a frame by frame linker
         tracks = linker.run(video, detections_sequence)
         return RTSSmoother(
-            kwargs["detection_std"], process_std=kwargs["process_std"], kalman_order=0, anisotropy=specs.anisotropy
+            detection_std=kwargs["detection_std"],
+            process_std=kwargs["process_std"],
+            kalman_order=0,
+            anisotropy=specs.anisotropy,
         ).run(video, tracks)
 
     if kwargs["linker"] == "NN":  # NN
@@ -288,7 +290,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
         anisotropy=anisotropy,
     )
 
-    if fiji_software is not None:  # Compute Bio meteics if the path to Fiji software is given
+    if fiji_software is not None:  # Compute Bio metrics if the path to Fiji software is given, but pretty long to run
         bio_metric = ctc_metrics.BioMetricsv2(fiji_software)
 
         bio = bio_metric.run(path, seq, n_digit)
