@@ -7,15 +7,15 @@ import numpy as np
 import torch
 import dask.array as da
 from tqdm import tqdm
-from scipy.sparse import csr_array
+from scipy.sparse import csr_array  # type: ignore
 
-from trackastra.model import Trackastra
-from trackastra.utils import normalize
-from trackastra.data import (
+from trackastra.model import Trackastra  # type: ignore
+from trackastra.utils import normalize  # type: ignore
+from trackastra.data import (  # type: ignore
     get_features,
     build_windows,
 )
-from trackastra.model.predict import predict_windows
+from trackastra.model.predict import predict_windows  # type: ignore
 from trackastra.model import TrackingTransformer
 
 import byotrack
@@ -28,7 +28,7 @@ from byotrack.implementation.linker.frame_by_frame.nearest_neighbor import (
 )
 
 
-def dict_builder(nodes: List[Dict], weights: List[Tuple]):
+def dict_builder(nodes: List[Dict], weights: Tuple[Tuple]):
     """
     Build the dictionnary matching with the Trackastra's graph
 
@@ -210,7 +210,7 @@ def predict_windows_dist(
         )
     )
 
-    results = dict()
+    results: dict[str, object] = {}
     results["nodes"] = node_properties
     results["weights"] = weights
 
@@ -224,6 +224,7 @@ class NewTrackastra(Trackastra):
 
     def __init__(self, transformer, train_args, delta_t=4, intra_weight=0, device=None):
         super().__init__(transformer, train_args, device)
+        self.transformer.config["window"] = 5
         self.delta_t = delta_t
         self.intra_weight = intra_weight
         logging.basicConfig(level=logging.INFO)
@@ -231,20 +232,14 @@ class NewTrackastra(Trackastra):
 
     def _predict(
         self,
-        imgs: np.ndarray | da.Array,
-        masks: np.ndarray | da.Array,
+        imgs: np.ndarray,
+        masks: np.ndarray,
         edge_threshold: float = 0.05,
         n_workers: int = 0,
-        normalize_imgs: bool = True,
         progbar_class=tqdm,
     ):
         self.logger.info("Predicting weights for candidate graph")
-        if normalize_imgs:
-            if isinstance(imgs, da.Array):
-                imgs = imgs.map_blocks(normalize)
-            else:
-                imgs = normalize(imgs)
-
+        imgs = normalize(imgs)
         self.transformer.eval()
 
         features = get_features(
@@ -281,15 +276,10 @@ class NewTrackastra(Trackastra):
         masks: np.ndarray | da.Array,
         edge_threshold: float = 0.05,
         n_workers: int = 0,
-        normalize_imgs: bool = True,
         progbar_class=tqdm,
     ):
         self.logger.info("Predicting weights for candidate graph")
-        if normalize_imgs:
-            if isinstance(imgs, da.Array):
-                imgs = imgs.map_blocks(normalize)
-            else:
-                imgs = normalize(imgs)
+        imgs = normalize(imgs)
 
         self.transformer.eval()
 
@@ -312,6 +302,7 @@ class NewTrackastra(Trackastra):
             windows=windows,
             features=features,
             model=self.transformer,
+            intra_window_weight=self.intra_weight,
             edge_threshold=edge_threshold,
             spatial_dim=masks.ndim - 1,
             progbar_class=progbar_class,
@@ -362,8 +353,8 @@ class TrackaByoParameters(NearestNeighborParameters):
 
     def __init__(
         self,
-        max_dist: float,
-        association_threshold: float = 0.69,  # A définir
+        max_dist: float = 0.0,
+        association_threshold: float = 0.69,
         n_valid=1,
         n_gap=3,
         association_method: Union[str, AssociationMethod] = AssociationMethod.OPT_SMOOTH,
@@ -404,10 +395,6 @@ class TrackaByoLinker(NearestNeighborLinker):
         self,
         specs: TrackaByoParameters,
         model: NewTrackastra,
-        # detections: List[
-        #     Dict
-        # ],  # List of detections from Trackastra (nodes) used to with the weights to make links
-        # weights: List[Tuple],  # List of the weights of assocations between nodes
         optflow: Optional[byotrack.OpticalFlow] = None,
         features_extractor: Optional[byotrack.FeaturesExtractor] = None,
         save_all=False,
@@ -416,19 +403,15 @@ class TrackaByoLinker(NearestNeighborLinker):
         self.specs: TrackaByoParameters
         self.model = model
         self.cost_dict: dict[Tuple, float]
+        if self.specs.n_gap == 0:  # If n_gap =0 window size of 4 seems to be a bit better
+            self.model.delta_t = 1
+            self.model.transformer.config["window"] = 4
 
         if self.specs.fill_gap and not self.optflow:
             warnings.warn("Optical flow has not been provided. Gap cannot be filled")
 
-        # if self.specs.n_gap == 3:
-        #     self.model.transformer.config["window"] = 5
-        self.model.delta_t = self.specs.n_gap + 1
-
     def run(
-        self,
-        video: Union[Sequence[np.ndarray], np.ndarray],
-        detections_sequence: Sequence[byotrack.Detections],
-        dist: bool = True,
+        self, video: Union[Sequence[np.ndarray], np.ndarray], detections_sequence: Sequence[byotrack.Detections]
     ) -> Collection[byotrack.Track]:
         """Run the linker on a whole video
 
@@ -462,18 +445,18 @@ class TrackaByoLinker(NearestNeighborLinker):
         # Convert Byotrack datas for Trackastra
 
         vid = np.stack([frame.squeeze() for frame in video], axis=0)
-        masks = []
+        masks_list = []
         for detection in detections_sequence:
             mask = detection.segmentation.cpu().numpy()
-            masks.append(mask)
-        masks = np.stack(masks)
+            masks_list.append(mask)
+        masks = np.stack(masks_list)
 
         # Then compute the cost
-        if dist:
+        if self.specs.max_dist > 0.0:
             self.model.transformer.config["spatial_pos_cutoff"] = self.specs.max_dist
-            predictions = self.model._predict_dist(vid, masks)
+            predictions = self.model._predict_dist(vid, masks)  # pylint: disable=W0212
         else:
-            predictions = self.model._predict(vid, masks)
+            predictions = self.model._predict(vid, masks)  # pylint: disable=W0212
         nodes = predictions["nodes"]
         weights = predictions["weights"]
         self.cost_dict = dict_builder(nodes, weights)
@@ -498,7 +481,7 @@ class TrackaByoLinker(NearestNeighborLinker):
         byotrack.Track.check_tracks(tracks, warn=True)
         return tracks
 
-    def cost(self, frame: np.ndarray, detections: byotrack.Detections) -> Tuple[torch.tensor, float]:
+    def cost(self, _: np.ndarray, detections: byotrack.Detections) -> Tuple[torch.Tensor, float]:
         """Compute the association cost between active tracks and detections
 
         For likelihood association, you could provide the association threshold as a probability
@@ -533,94 +516,3 @@ class TrackaByoLinker(NearestNeighborLinker):
                     except IndexError:
                         break
         return (cost, self.specs.association_threshold)
-
-    # def associate(self, frame: np.ndarray, detections: byotrack.Detections):
-    #     """Produces links between the current tracks and detections
-
-    #     Optionnally it handles merges and splits by assocating a second time.
-
-    #     Args:
-    #         frame_id (np.ndarray): Index of the current frame
-    #         detections (byotrack.Detections): Current detections
-
-    #     Returns:
-    #         torch.Tensor: Links (i, j)
-    #             Shape: (L, 2), dtype: int32
-    #     """
-    #     cost, threshold = self.cost(frame, detections)
-    #     self._links = self.specs.association_method.solve(cost, threshold)
-
-    #     self._unmatched_detections = torch.full((len(detections),), True)
-    #     self._unmatched_detections[self._links[:, 1]] = False
-
-    #     if self.specs.merge_factor == 0 and self.specs.split_factor == 0:
-    #         return self._links  # No merge or splits
-
-    #     unmatched_tracks = torch.full((len(self.active_tracks),), True)
-    #     unmatched_tracks[self._links[:, 0]] = False
-    #     valid_tracks = torch.tensor(
-    #         [
-    #             (track.track_state == TrackHandler.TrackState.VALID)
-    #             for track in self.active_tracks
-    #         ],
-    #         dtype=torch.bool,
-    #     )
-
-    #     if self.specs.merge_factor > 0:
-    #         # We simply do a 2nd association between unassociated VALID tracks with associated detections
-    #         tracks_mask = unmatched_tracks & valid_tracks
-
-    #         # TODO: Mass factor
-    #         # self.active_mass[tracks_mask]
-
-    #         self._merge_links = self.specs.association_method.solve(
-    #             cost[tracks_mask][:, ~self._unmatched_detections],
-    #             threshold * self.specs.merge_factor,
-    #         )
-
-    #         # Relabel
-    #         self._merge_links[:, 0] = torch.arange(len(self.active_tracks))[
-    #             tracks_mask
-    #         ][self._merge_links[:, 0]]
-    #         self._merge_links[:, 1] = torch.arange(len(detections))[
-    #             ~self._unmatched_detections
-    #         ][self._merge_links[:, 1]]
-
-    #     if self.specs.split_factor > 0:
-    #         # We simply do a 2nd association between associated tracks with unassociated detections
-
-    #         # Split mass factor
-    #         # We increase the distance if the split is not evenly weighted and if it does not sum at the previous mass
-    #         track_mass = self.active_mass[self._links[:, 0]]
-    #         associated_mass = detections.mass[self._links[:, 1]]
-    #         non_associated_mass = detections.mass[self._unmatched_detections]
-
-    #         even_factor = torch.maximum(
-    #             associated_mass[:, None], non_associated_mass[None, :]
-    #         ) / torch.minimum(associated_mass[:, None], non_associated_mass[None, :])
-    #         sum_ = associated_mass[:, None] + non_associated_mass[None, :]
-    #         mass_factor = torch.maximum(track_mass[:, None], sum_) / torch.minimum(
-    #             track_mass[:, None], sum_
-    #         )
-
-    #         # TODO: Check this impact
-    #         # Disable mass and even factor for trackastra as the model is already responsible for mitosis costs
-    #         # mass_factor = 1.0
-    #         # even_factor = 1.0
-
-    #         self._split_links = self.specs.association_method.solve(
-    #             cost[~unmatched_tracks][:, self._unmatched_detections]
-    #             * even_factor
-    #             * mass_factor,
-    #             threshold * self.specs.split_factor,
-    #         )
-
-    #         # Relabel
-    #         self._split_links[:, 0] = torch.arange(len(self.active_tracks))[
-    #             ~unmatched_tracks
-    #         ][self._split_links[:, 0]]
-    #         self._split_links[:, 1] = torch.arange(len(detections))[
-    #             self._unmatched_detections
-    #         ][self._split_links[:, 1]]
-
-    #     return self._links

@@ -133,3 +133,4 @@ dmypy.json
 
 #test code
 examples/ctc/test_code.ipynb
+examples/ctc/test2.ipynb

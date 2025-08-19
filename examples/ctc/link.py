@@ -51,21 +51,6 @@ def get_average_min_dist(detections_sequence: List[byotrack.Detections]) -> floa
     return sum_min_dist / (count + (count == 0))
 
 
-# def mean_max_min_displacementw(detections_sequence: List[byotrack.Detections]) -> float:
-#     """Roughly estimate cell motion"""
-#     sum_min_dist = 0.0
-#     count = 0
-#     max_min_dist = 0.0
-#     for detections in detections_sequence:
-#         if len(detections) <= 1:
-#             continue
-
-#         count += len(detections)
-#         sum_min_dist += torch.cdist(detections.position, detections.position).sort(dim=1).values[:, 1].sum().item()
-
-#     return sum_min_dist / (count + (count == 0))
-
-
 def link(video: byotrack.Video, detections_sequence: Sequence[byotrack.Detections], **kwargs) -> List[byotrack.Track]:
     specs: kalman_linker.FrameByFrameLinkerParameters
     linker: kalman_linker.FrameByFrameLinker
@@ -74,6 +59,7 @@ def link(video: byotrack.Video, detections_sequence: Sequence[byotrack.Detection
         model = trackabyo_linker.NewTrackastra.from_pretrained("ctc")
         specs = trackabyo_linker.TrackaByoParameters(
             max_dist=kwargs["association_threshold"],
+            n_gap=3 if kwargs["n_gap"] > 0 else 0,
             split_factor=kwargs["split_factor"],
             anisotropy=(kwargs["anisotropy"], 1.0, 1.0),
         )
@@ -302,6 +288,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
         anisotropy=anisotropy,
     )
 
+    if fiji_software is not None:  # Compute Bio meteics if the path to Fiji software is given
+        bio_metric = ctc_metrics.BioMetricsv2(fiji_software)
+
+        bio = bio_metric.run(path, seq, n_digit)
+
+        print("BIO score :", bio)
+
     if eval_software is not None:  # Evaluate if the path to the software is given
         metric = ctc_metrics.CTCMetrics(eval_software)
 
@@ -315,13 +308,6 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
         )
 
         print("TRA:", tra)
-
-    if fiji_software is not None:  # Compute Bio meteics if the path to Fiji software is given
-        bio_metric = ctc_metrics.BioMetricsv2(fiji_software)
-
-        bio = bio_metric.run(path, seq, n_digit)
-
-        print("BIO score :", bio)
 
 
 if __name__ == "__main__":
@@ -366,6 +352,7 @@ if __name__ == "__main__":
     parser.add_argument("--win_size", type=int, default=0, help="Farneback window")
     parser.add_argument("--attachment", type=float, default=10.0, help="Regularity of TVL1")
     parser.add_argument("--eval_software", type=str, default=None, help="Path to the evalutation software")
+    parser.add_argument("--fiji_software", type=str, default=None, help="Path to the fiji software")
 
     args = parser.parse_args()
     print(args)
@@ -386,4 +373,5 @@ if __name__ == "__main__":
         win_size=args.win_size,
         attachment=args.attachment,
         eval_software=args.eval_software,
+        fiji_software=args.fiji_software,
     )
