@@ -63,7 +63,13 @@ def link(video: byotrack.Video, detections_sequence: Sequence[byotrack.Detection
             split_factor=kwargs["split_factor"],
             anisotropy=(kwargs["anisotropy"], 1.0, 1.0),
         )
-        linker = trackabyo_linker.TrackaByoLinker(specs)
+        if kwargs["model"] is not None:
+            model = trackabyo_linker.NewTrackastra.from_pretrained(
+                kwargs["model"], model_dir=pathlib.Path(__file__).parent / ".models"
+            )
+        else:
+            model = None
+        linker = trackabyo_linker.TrackaByoLinker(specs, model)
         # Runs with the real video for the moment, not really a frame by frame linker
         return list(linker.run(video, detections_sequence))
 
@@ -149,6 +155,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
     seq: int,
     *,
     linker: Optional[str] = None,
+    model: Optional[str] = None,
     association_threshold=0.0,
     detection_std=0.0,
     process_std=0.0,
@@ -254,6 +261,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
 
     parameters = {
         "linker": linker,
+        "model": model,
         "association_threshold": association_threshold,
         "detection_std": detection_std,
         "process_std": process_std,
@@ -317,7 +325,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--dataset", default="BF-C2DL-HSC", help="Dataset name")
     parser.add_argument("--seq", type=int, default=1, help="Sequence to analyze")
-    parser.add_argument("--linker", type=str, default=None, help="Linker to run (KOFT | SKT)")
+    parser.add_argument("--linker", type=str, default=None, help="Linker to run (KOFT | SKT | TB)")
+    parser.add_argument("--model", type=str, default=None, help="model of Trackastra if TB linker")
     parser.add_argument("--association_threshold", type=float, default=0.0, help="Association threshold")
     parser.add_argument(
         "--detection_std",
@@ -359,6 +368,7 @@ if __name__ == "__main__":
         args.dataset,
         args.seq,
         linker=args.linker,
+        model=args.model,
         association_threshold=args.association_threshold,
         detection_std=args.detection_std,
         process_std=args.process_std,

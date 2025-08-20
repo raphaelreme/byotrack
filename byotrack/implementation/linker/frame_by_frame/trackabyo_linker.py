@@ -272,6 +272,13 @@ class NewTrackastra(Trackastra):
 
         return predictions
 
+    @classmethod
+    def from_pretrained(cls, name, device=None, download_dir=None, model_dir=None):
+        if model_dir is not None:
+            return cls.from_folder(model_dir / name, device)
+        else:
+            return super().from_pretrained(name, device, download_dir)
+
 
 @dataclasses.dataclass
 class TrackaByoParameters(NearestNeighborParameters):

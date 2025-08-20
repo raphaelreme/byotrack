@@ -1,6 +1,5 @@
 import dataclasses
 from typing import Optional, Tuple, Union
-import warnings
 
 import numpy as np
 import torch
@@ -109,9 +108,6 @@ class NearestNeighborLinker(FrameByFrameLinker):
         super().__init__(specs, optflow, features_extractor, save_all)
         self.specs: NearestNeighborParameters
         self.active_positions = torch.zeros(0, 2)
-
-        if self.specs.fill_gap and not self.optflow:
-            warnings.warn("Optical flow has not been provided. Gap cannot be filled")
 
     def reset(self, dim=2) -> None:
         super().reset(dim)
