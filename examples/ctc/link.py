@@ -171,6 +171,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
     fiji_software: Optional[str] = None,
 ):
     path = pathlib.Path(data_path) / dataset
+    print(path)
     n_digit = len(next((path / f"{seq:02}").glob("t*.tif")).stem[1:])
 
     # Load the video and normalize it
@@ -326,7 +327,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", default="BF-C2DL-HSC", help="Dataset name")
     parser.add_argument("--seq", type=int, default=1, help="Sequence to analyze")
     parser.add_argument("--linker", type=str, default=None, help="Linker to run (KOFT | SKT | TB)")
-    parser.add_argument("--model", type=str, default=None, help="model of Trackastra if TB linker")
+    parser.add_argument("--model", type=str, default="ctc", help="model of Trackastra if TB linker")
     parser.add_argument("--association_threshold", type=float, default=0.0, help="Association threshold")
     parser.add_argument(
         "--detection_std",

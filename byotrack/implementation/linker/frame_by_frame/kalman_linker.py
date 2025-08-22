@@ -230,10 +230,11 @@ class KalmanLinker(FrameByFrameLinker):
         super().__init__(specs, optflow, features_extractor, save_all)
 
         self.specs: KalmanLinkerParameters
+        dim = 2 if isinstance(self.specs.detection_std, float) else 3
         self.kalman_filter = torch_kf.ckf.constant_kalman_filter(
             self.specs.detection_std,
             self.specs.process_std,
-            dim=2,
+            dim=dim,
             order=self.specs.kalman_order,
         )
         self.dtype = torch.float32
