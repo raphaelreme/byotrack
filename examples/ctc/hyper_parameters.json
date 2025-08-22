@@ -28,7 +28,6 @@
         "split_factor": 1.5
     },
     "Fluo-N2DL-HeLa": {
-        "linker": "SKT",
         "split_factor": 1.25
     },
     "Fluo-N3DH-CE": {
@@ -40,5 +39,8 @@
     },
     "Fluo-N3DH-SIM+": {
         "n_gap": 0
-    }
+    },
+    "PhC-C2DH-U373":{},
+    "PhC-C2DL-PSC":{}
+
 }

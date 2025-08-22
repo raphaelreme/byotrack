@@ -489,3 +489,63 @@ class BioMetrics:
                 )
 
             return self.run(output_path, 1)
+
+
+class BioMetricsv2:
+    """Wrapper around the CTC "Biological measures" Fiji plugin [10]
+
+    It allows the computations of BIO metrics for the Cell Tracking Challenge [10].
+
+    Note:
+        This implementation requires Fiji to be installed (https://imagej.net/downloads)
+        with the CTC plugins (https://github.com/CellTrackingChallenge/fiji-plugins)
+
+    Attributes:
+        runner (byotrack.fiji.FijiRunner): Fiji runner
+        last_metrics (Tuple[float, float, float, float]): Sub metrics information for the last computed BIO
+            It consists of ("CT", "TF", "BC(i)", "CCA"). Their average gives the BIO metric.
+
+    """
+
+    def __init__(self, fiji_path: Union[str, os.PathLike]) -> None:
+        """Constructor
+
+        Args:
+            fiji_path (str | os.PathLike): Path to the fiji executable
+                The executable can be found inside the installation folder of Fiji.
+                Linux: Fiji.app/ImageJ-<os>
+                Windows: Fiji.app/ImageJ-<os>.exe
+                MacOs: Fiji.app/Contents/MacOs/ImageJ-<os>
+
+        """
+        self.runner = fiji.FijiRunnerv2(fiji_path)
+        self.last_metrics = (0.0, 0.0, 0.0, 0.0)
+
+    def run(self, dataset: Union[str, os.PathLike], seq=1, n_digit=4, model="") -> float:
+        """Run the CTC "Biological measures" plugin on the given dataset.
+
+        The dataset should already have results stored in it. It expects the CTC format.
+
+        Args:
+            dataset (Union[str, os.PathLike]): Path to the dataset to evaluate.
+            seq (int): Sequence to evaluate inside the dataset.
+                The plugin will compare {dataset}/{seq:02}_RES with {dataset}/{seq:02}_GT
+                Default: 1
+            n_digit (int): Number of digits used to encode time in file names.
+                It is dataset dependant, but in ByoTrack, by default we use 4 digits.
+                Default: 4
+            model (str): Suffixe to add to the RES directory
+
+        Returns:
+            float: The evaluated metric
+        """
+        dataset = str(dataset)
+        outputs = self.runner.run(f"{dataset}/{seq:02}_RES{model}", f"{dataset}/{seq:02}_GT", n_digit)
+
+        if outputs == [-1.0, -1.0, -1.0, -1.0]:
+            raise RuntimeError("Cannot parse outputs, the CTC software probably found an error")
+            # imagej module doesn't return error if there is a problem with the inputs, just puts all metrics to -1.0
+
+        self.last_metrics = tuple((output if output >= 0.0 else 0.0) for output in outputs)
+        n = sum(x != -1.0 for x in outputs)
+        return sum(self.last_metrics) / n

@@ -16,7 +16,7 @@ import byotrack
 import byotrack.api.features_extractor
 import byotrack.dataset.ctc as ctc_data
 from byotrack.implementation.optical_flow import skimage as sk, opencv
-from byotrack.implementation.linker.frame_by_frame import nearest_neighbor, kalman_linker, koft
+from byotrack.implementation.linker.frame_by_frame import nearest_neighbor, kalman_linker, koft, trackabyo_linker
 from byotrack.implementation.refiner.interpolater import ForwardBackwardInterpolater
 import byotrack.metrics.ctc as ctc_metrics
 
@@ -50,25 +50,29 @@ def get_average_min_dist(detections_sequence: List[byotrack.Detections]) -> floa
     return sum_min_dist / (count + (count == 0))
 
 
-# def mean_max_min_displacementw(detections_sequence: List[byotrack.Detections]) -> float:
-#     """Roughly estimate cell motion"""
-#     sum_min_dist = 0.0
-#     count = 0
-#     max_min_dist = 0.0
-#     for detections in detections_sequence:
-#         if len(detections) <= 1:
-#             continue
-
-#         count += len(detections)
-#         sum_min_dist += torch.cdist(detections.position, detections.position).sort(dim=1).values[:, 1].sum().item()
-
-#     return sum_min_dist / (count + (count == 0))
-
-
 def link(video: byotrack.Video, detections_sequence: Sequence[byotrack.Detections], **kwargs) -> List[byotrack.Track]:
     specs: kalman_linker.FrameByFrameLinkerParameters
     linker: kalman_linker.FrameByFrameLinker
     optflow: byotrack.OpticalFlow
+    if kwargs["linker"] == "TB":
+        specs = trackabyo_linker.TrackaByoParameters(
+            association_threshold=kwargs["association_threshold"],
+            n_gap=3 if kwargs["n_gap"] > 0 else 0,
+            detection_std=kwargs["detection_std"],
+            process_std=kwargs["process_std"],
+            split_factor=kwargs["split_factor"],
+            anisotropy=(kwargs["anisotropy"], 1.0, 1.0),
+        )
+        if kwargs["model"] is not None:
+            model = trackabyo_linker.NewTrackastra.from_pretrained(
+                kwargs["model"], model_dir=pathlib.Path(__file__).parent / ".models"
+            )
+        else:
+            model = None
+        linker = trackabyo_linker.TrackaByoLinker(specs, model)
+        # Runs with the real video for the moment, not really a frame by frame linker
+        return list(linker.run(video, detections_sequence))
+
     if kwargs["linker"] == "NN":  # NN
         specs = nearest_neighbor.NearestNeighborParameters(
             association_threshold=kwargs["association_threshold"],  # Greedy is good
@@ -151,6 +155,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
     seq: int,
     *,
     linker: Optional[str] = None,
+    model: Optional[str] = None,
     association_threshold=0.0,
     detection_std=0.0,
     process_std=0.0,
@@ -163,8 +168,10 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
     attachment=10.0,
     detections_sequence=None,
     eval_software: Optional[str] = None,
+    fiji_software: Optional[str] = None,
 ):
     path = pathlib.Path(data_path) / dataset
+    print(path)
     n_digit = len(next((path / f"{seq:02}").glob("t*.tif")).stem[1:])
 
     # Load the video and normalize it
@@ -255,6 +262,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
 
     parameters = {
         "linker": linker,
+        "model": model,
         "association_threshold": association_threshold,
         "detection_std": detection_std,
         "process_std": process_std,
@@ -286,6 +294,13 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
         anisotropy=anisotropy,
     )
 
+    if fiji_software is not None:  # Compute Bio metrics if the path to Fiji software is given, but pretty long to run
+        bio_metric = ctc_metrics.BioMetricsv2(fiji_software)
+
+        bio = bio_metric.run(path, seq, n_digit)
+
+        print("BIO score :", bio)
+
     if eval_software is not None:  # Evaluate if the path to the software is given
         metric = ctc_metrics.CTCMetrics(eval_software)
 
@@ -311,7 +326,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--dataset", default="BF-C2DL-HSC", help="Dataset name")
     parser.add_argument("--seq", type=int, default=1, help="Sequence to analyze")
-    parser.add_argument("--linker", type=str, default=None, help="Linker to run (KOFT | SKT)")
+    parser.add_argument("--linker", type=str, default=None, help="Linker to run (KOFT | SKT | TB)")
+    parser.add_argument("--model", type=str, default="ctc", help="model of Trackastra if TB linker")
     parser.add_argument("--association_threshold", type=float, default=0.0, help="Association threshold")
     parser.add_argument(
         "--detection_std",
@@ -343,6 +359,7 @@ if __name__ == "__main__":
     parser.add_argument("--win_size", type=int, default=0, help="Farneback window")
     parser.add_argument("--attachment", type=float, default=10.0, help="Regularity of TVL1")
     parser.add_argument("--eval_software", type=str, default=None, help="Path to the evalutation software")
+    parser.add_argument("--fiji_software", type=str, default=None, help="Path to the fiji software")
 
     args = parser.parse_args()
     print(args)
@@ -352,6 +369,7 @@ if __name__ == "__main__":
         args.dataset,
         args.seq,
         linker=args.linker,
+        model=args.model,
         association_threshold=args.association_threshold,
         detection_std=args.detection_std,
         process_std=args.process_std,
@@ -363,4 +381,5 @@ if __name__ == "__main__":
         win_size=args.win_size,
         attachment=args.attachment,
         eval_software=args.eval_software,
+        fiji_software=args.fiji_software,
     )
