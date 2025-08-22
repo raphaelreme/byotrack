@@ -28,7 +28,6 @@
         "split_factor": 1.5
     },
     "Fluo-N2DL-HeLa": {
-        "linker": "SKT",
         "split_factor": 1.25
     },
     "Fluo-N3DH-CE": {
