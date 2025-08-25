@@ -57,6 +57,8 @@ Here is the complete list:
     - Spot Tracking Blocks plugin: [Install an Icy plugin](https://icy.bioimageanalysis.org/tutorial/how-to-install-an-icy-plugin/)
 - TrackMateLinker
     - Fiji: [Download Fiji](https://imagej.net/downloads)
+- TrackOnStraLinker
+    - TrackAstra: [Install trackastra](https://github.com/weigertlab/trackastra#installation)
 - SkimageOpticalFlow
     - scikit-image: [Install scikit-image](https://scikit-image.org/docs/stable/user_guide/install.html)
 
