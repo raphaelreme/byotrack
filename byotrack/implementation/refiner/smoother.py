@@ -11,6 +11,7 @@ import byotrack
 
 
 # TODO: Add a KOFTSmoother ? that uses optical flow to smooth tracks as in KOFT
+# TODO: Support for float64 and cuda ?
 
 
 class RTSSmoother(byotrack.Refiner):  # pylint: disable=too-few-public-methods
@@ -41,10 +42,12 @@ class RTSSmoother(byotrack.Refiner):  # pylint: disable=too-few-public-methods
         kalman_order (int): Order of the Kalman filter to use.
             0 for brownian motions, 1 for directed brownian motion, 2 for accelerated brownian motions, etc...
             Default: 1
-        anisotropy (Tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
-            for each axis, depth first). This will be used to scale distances.
-            More precisely, given std(s) are divided by the anisotropy.
-            Default: (1., 1., 1.)
+        anisotropy (Tuple[float, float, float]): Deprecated and ignored. If the data is anisotrope, it should directly
+            be incorporated inside detection_std and process_std. Will be removed in a future version.
+        initial_std_factor (float): The initial state is created with an initial uncertainty
+            set to the measurement_std of the Kalman Filter on measured states and this factor times
+            the process_std for unmeasured states.
+            Default: 10.0
 
     """
 
@@ -56,13 +59,22 @@ class RTSSmoother(byotrack.Refiner):  # pylint: disable=too-few-public-methods
         detection_std: Union[float, torch.Tensor] = 3.0,
         process_std: Union[float, torch.Tensor] = 1.5,
         kalman_order: int = 1,
+        *,
         anisotropy: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+        initial_std_factor=10.0,
     ) -> None:
         super().__init__()
         self.detection_std = detection_std
         self.process_std = process_std
         self.kalman_order = kalman_order
-        self.anisotropy = anisotropy
+        self.initial_std_factor = initial_std_factor
+
+        if anisotropy != (1.0, 1.0, 1.0):
+            warnings.warn(
+                "'anisotropy' is deprecated and will be removed in a future version; it is ignored.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
     def run(  # pylint: disable=too-many-locals
         self, _: Union[Sequence[np.ndarray], np.ndarray], tracks: Collection[byotrack.Track]
@@ -72,11 +84,9 @@ class RTSSmoother(byotrack.Refiner):  # pylint: disable=too-few-public-methods
 
         dim = next(iter(tracks)).points.shape[-1]
 
-        anisotropy = torch.tensor(self.anisotropy)[-dim:]
-
         kalman_filter = torch_kf.ckf.constant_kalman_filter(
-            self.detection_std / anisotropy,
-            self.process_std / anisotropy,
+            self.detection_std,
+            self.process_std,
             dim=dim,
             order=self.kalman_order,
         )
@@ -93,13 +103,17 @@ class RTSSmoother(byotrack.Refiner):  # pylint: disable=too-few-public-methods
             is_defined[track.start + offset : track.start + len(track), i] = True
             offsets.append(offset)
 
-        # Filtering
+        # Initial state (see KalmanLinker)
+        process_std = torch.broadcast_to(torch.as_tensor(self.process_std), (dim,)) * self.initial_std_factor
+        process_std = torch.cat([process_std**2] * (kalman_filter.state_dim // dim))  # Expand to state_dim
+
         initial_state = torch_kf.GaussianState(
             torch.zeros(1, kalman_filter.state_dim, 1),
-            kalman_filter.process_noise[None] * torch.eye(kalman_filter.state_dim) * 10,
+            torch.diag(process_std)[None],
         )
         initial_state.covariance[:, :dim, :dim] = kalman_filter.measurement_noise
 
+        # Filtering
         states = torch_kf.GaussianState(
             torch.zeros(positions.shape[0], positions.shape[1], kalman_filter.state_dim, 1),
             torch.zeros(positions.shape[0], positions.shape[1], kalman_filter.state_dim, kalman_filter.state_dim),

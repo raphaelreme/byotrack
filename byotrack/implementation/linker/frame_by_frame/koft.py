@@ -79,10 +79,10 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
             or LIKELIHOOD `cost_method`. As this may be detrimental, it is disabed by default.
             Default: 0.0 (Process_std is constant)
         initial_std_factor (float): The uncertainties on initial velocities/accelerations are set
-            to initial_std_factor * process_std. Having a small factor will prevent handling correctly
-            starting tracks that already moves on their first frames. But large values will lead to large uncertainty
-            on the first prediction, making it hard to associate to a detection with MAHALANOBIS
-            or LIKELIHOOD methods. Typical values lies in 3.0 to 10.0.
+            to initial_std_factor * process_std. See `KalmanLinker.build_initial_covariance`.
+            Having a small factor will prevent handling correctly starting tracks with large initial velocity
+            on their first frames.
+            Typical values lies between 3.0 to 100.0.
             Default: 10.0
 
     """
@@ -346,20 +346,15 @@ class KOFTLinker(KalmanLinker):
         # Infinite uncertainty on the prior position => Given positional measurement, we initialize on its position
         #                                               with the positional measurement uncertainty.
         # For derivatives, we assume they are centered on 0 (no bias toward a direction) with an uncertainty of
-        # initial_std * process_std:
+        # initial_std_factor * process_std:
         # Small factors (~1) are not suited for tracking objects that appears with a large initial velocity.
         # Large factors (>> 1) will create association problem on the second frame, as the predicted
         # position inherit from this uncertainty.
         # As in KOFT, the velocities are measured, it could be set to a higher value.
         # For the Brownian motion, the process_std directly gives the initial uncertainty on velocity
-        std_factor = self.specs.initial_std_factor if self.specs.kalman_order != 0 else 1.0
         initial_state = torch_kf.GaussianState(
             torch.zeros(len(unmatched_measures), self.kalman_filter.state_dim, 1, dtype=self.dtype),
-            (torch.eye(self.kalman_filter.state_dim, dtype=self.dtype) * (std_factor * self.specs.process_std) ** 2)[
-                None
-            ]
-            .expand(len(unmatched_measures), self.kalman_filter.state_dim, self.kalman_filter.state_dim)
-            .clone(),
+            torch.stack([self.build_initial_covariance(detections.dim)] * len(unmatched_measures)),
         )
         initial_state.mean[:, : detections.dim, 0] = unmatched_measures
         initial_state.covariance[:, : detections.dim, : detections.dim] = self.kalman_filter.measurement_noise[

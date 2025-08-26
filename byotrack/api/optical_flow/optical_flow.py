@@ -180,7 +180,7 @@ class OpticalFlow(ABC):
 
         """
         *dims, channels = moving.shape
-        points = np.indices(dims, np.float32).reshape(len(dims), -1).transpose()
+        points: np.ndarray = np.indices(dims, np.float32).reshape(len(dims), -1).transpose()
         points = self.transform(flow_map, points).transpose().reshape(len(dims), *dims)
 
         return np.concatenate(
