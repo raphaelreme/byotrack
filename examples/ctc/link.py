@@ -18,6 +18,7 @@ import byotrack.dataset.ctc as ctc_data
 from byotrack.implementation.optical_flow import skimage as sk, opencv
 from byotrack.implementation.linker.frame_by_frame import nearest_neighbor, kalman_linker, koft
 from byotrack.implementation.refiner.interpolater import ForwardBackwardInterpolater
+from byotrack.implementation.refiner.smoother import RTSSmoother
 import byotrack.metrics.ctc as ctc_metrics
 
 
@@ -69,6 +70,24 @@ def link(video: byotrack.Video, detections_sequence: Sequence[byotrack.Detection
     specs: kalman_linker.FrameByFrameLinkerParameters
     linker: kalman_linker.FrameByFrameLinker
     optflow: byotrack.OpticalFlow
+    if kwargs["linker"] == "TOS":  # TrackOnStra
+        from byotrack.implementation.linker.frame_by_frame import trackonstra  # pylint:disable=import-outside-toplevel
+
+        specs = trackonstra.TrackOnStraParameters(
+            positional_cutoff=kwargs["association_threshold"],
+            n_gap=kwargs["n_gap"],
+            split_factor=kwargs["split_factor"],
+            anisotropy=(kwargs["anisotropy"], 1.0, 1.0),
+        )
+        linker = trackonstra.TrackOnStraLinker(specs)
+        linker.setup(video, detections_sequence)
+        tracks = linker.run(video, detections_sequence)
+        return RTSSmoother(
+            detection_std=kwargs["detection_std"],
+            process_std=kwargs["process_std"],
+            kalman_order=kwargs["kalman_order"],
+        ).run(video, tracks)
+
     if kwargs["linker"] == "NN":  # NN
         specs = nearest_neighbor.NearestNeighborParameters(
             association_threshold=kwargs["association_threshold"],  # Greedy is good
