@@ -21,7 +21,7 @@ from .base import AssociationMethod, FrameByFrameLinker, FrameByFrameLinkerParam
 
 def build_cost_dict(
     nodes: List[Dict[str, Any]], weights: Iterable[Tuple[Tuple[int, int], float]]
-) -> Dict[Tuple[int, int, int, int], float]:
+) -> Dict[Tuple[int, int, int], Dict[int, float]]:
     """Build the cost dictionnary from Trackastra data format.
 
     It converts the feasible tracking graph predicted by trackastra into a mapping from edge to cost.
@@ -35,14 +35,18 @@ def build_cost_dict(
             Format: [((node_id, node_id_2), weight), ...]
 
     Returns:
-        Dict[Tuple[int, int, int, int], float]: Cost dictionnary of the feasible tracking graph.
+        Dict[Tuple[int, int, int],Dict[int,float]]: Cost dictionnary of the feasible tracking graph.
+        For every (frame1,node1,frame2) there is a dictionnary with key node2 and the value the cost of the edge.
     """
-    cost_dict = {}
+    cost_dict: Dict[Tuple[int, int, int], Dict[int, float]] = {}
     node_by_id = {node["id"]: node for node in nodes}
-    for (id1, id2), weight in weights:
-        node1 = node_by_id[id1]
-        node2 = node_by_id[id2]
-        cost_dict[(node1["time"], node1["label"] - 1, node2["time"], node2["label"] - 1)] = -np.log(weight)
+    for (id_1, id_2), weight in weights:
+        node_1 = node_by_id[id_1]
+        node_2 = node_by_id[id_2]
+        key = (node_1["time"], node_1["label"] - 1, node_2["time"])
+        if key not in cost_dict:
+            cost_dict[key] = {}
+        cost_dict[key][node_2["label"] - 1] = float(-np.log(weight))
     return cost_dict
 
 
@@ -203,7 +207,7 @@ class TrackOnStraLinker(FrameByFrameLinker):
             self.model.transformer.config["window"] = self.specs.n_gap + 2
 
         # Initialize empty cost_dict
-        self.cost_dict: Dict[Tuple[int, int, int, int], float] = {}
+        self.cost_dict: Dict[Tuple[int, int, int], Dict[int, float]] = {}
 
         if optflow is not None:
             warnings.warn("OpticalFlow is not supported by this linker, it will be ignored")
@@ -270,23 +274,20 @@ class TrackOnStraLinker(FrameByFrameLinker):
                 Shape: (n_tracks, n_dets), dtype: float
             float: The association threshold to use. Simply returns -ln(association_treshold)
         """
-        # XXX: The current implementation is quite slow with numerous targets
         n = len(self.active_tracks)
         m = detections.length
         cost = torch.full((n, m), torch.inf)
         for index, track in enumerate(self.active_tracks):
-            for index_det in range(m):
-                for i in range(1, self.specs.n_gap + 2):
-                    try:
-                        edge = (
-                            self.frame_id - i,
-                            track.detection_ids[-i],
-                            self.frame_id,
-                            index_det,
-                        )
-                        if edge in self.cost_dict:
-                            cost[index, index_det] = float(self.cost_dict[edge])
-                            break
-                    except IndexError:
-                        break
+            # Find most recent valid detection
+            for tau in range(1, self.specs.n_gap + 2):
+                if len(track.detection_ids) >= tau and track.detection_ids[-tau] != -1:
+                    frame_prev = self.frame_id - tau
+                    det_prev = track.detection_ids[-tau]
+
+                    # Direct lookup: all possible detections from cost_dict
+                    edges = self.cost_dict.get((frame_prev, det_prev, self.frame_id), {})
+                    for index_det, edge_cost in edges.items():
+                        cost[index, index_det] = edge_cost
+                    break
+
         return (cost, -np.log(self.specs.association_threshold))
