@@ -91,6 +91,9 @@ class RTSSmoother(byotrack.Refiner):  # pylint: disable=too-few-public-methods
             order=self.kalman_order,
         )
 
+        # Starting time reference (positions[0] correspond to positions at start)
+        start = min(track.start for track in tracks)
+
         positions = byotrack.Track.tensorize(tracks)
         is_defined = torch.full((positions.shape[0], positions.shape[1]), False)
         offsets: List[int] = []
@@ -100,7 +103,7 @@ class RTSSmoother(byotrack.Refiner):  # pylint: disable=too-few-public-methods
             if offset != 0:  # Handle tracks starting by NaN values
                 warnings.warn("A track is starting with NaN values. It will be clipped.")
 
-            is_defined[track.start + offset : track.start + len(track), i] = True
+            is_defined[track.start + offset - start : track.start + len(track) - start, i] = True
             offsets.append(offset)
 
         # Initial state (see KalmanLinker)
@@ -130,7 +133,6 @@ class RTSSmoother(byotrack.Refiner):  # pylint: disable=too-few-public-methods
                 states[frame_id, kept] = kalman_filter.predict(states[frame_id - 1, kept])
 
             # Initialization
-            # print(frame_id, was_defined, is_defined[frame_id], starting, kept, measured)
             assert measured[starting].all()  # Always measured on start point
             states[frame_id, starting] = initial_state
             states.mean[frame_id, starting, :dim, 0] = positions[frame_id, starting]
@@ -162,7 +164,7 @@ class RTSSmoother(byotrack.Refiner):  # pylint: disable=too-few-public-methods
             new_tracks.append(
                 byotrack.Track(
                     track.start,
-                    states.mean[track.start + offsets[i] : track.start + len(track), i, :dim, 0],
+                    states.mean[track.start + offsets[i] - start : track.start + len(track) - start, i, :dim, 0],
                     track.identifier,
                     track.detection_ids[offsets[i] :],
                     merge_id=track.merge_id,
