@@ -4,8 +4,12 @@ from typing import List, Union
 import warnings
 
 import numpy as np
-from stardist.models import StarDist2D, StarDist3D  # type: ignore
 import torch
+
+# pylint: disable=import-error
+from stardist.models import StarDist2D, StarDist3D  # type: ignore
+
+# pylint: enable=import-error
 
 import byotrack
 
