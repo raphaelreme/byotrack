@@ -197,7 +197,7 @@ def load_tracks(path: Union[str, os.PathLike]) -> List[byotrack.Track]:
     return tracks
 
 
-def save_tracks(tracks: Collection[byotrack.Track], path: Union[str, os.PathLike]) -> None:
+def save_tracks(tracks: Collection[byotrack.Track], path: Union[str, os.PathLike], name: str = "ByoTrack") -> None:
     """Save tracks in Icy format
 
     .. warning:: Icy do not support partial tracks (track with undefined positions). Before calling this function
@@ -229,11 +229,13 @@ def save_tracks(tracks: Collection[byotrack.Track], path: Union[str, os.PathLike
     Args:
         tracks (Collection[Track]): Tracks to save. (Should not contain any NaN positions)
         path (str | os.PathLike): Output path
+        name (str): Name of the tracks that will be displayed by TrackManager
+            Default: ByoTrack
 
     """
     root = ET.Element("root")
     ET.SubElement(root, "trackfile", {"version": "1"})
-    track_group = ET.SubElement(root, "trackgroup", {"description": "ByoTrack"})
+    track_group = ET.SubElement(root, "trackgroup", {"description": name})
     for track in tracks:
         track_element = ET.SubElement(track_group, "track", {"id": str(track.identifier)})
 
