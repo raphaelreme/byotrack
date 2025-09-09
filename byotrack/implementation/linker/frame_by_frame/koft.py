@@ -354,7 +354,7 @@ class KOFTLinker(KalmanLinker):
         # For the Brownian motion, the process_std directly gives the initial uncertainty on velocity
         initial_state = torch_kf.GaussianState(
             torch.zeros(len(unmatched_measures), self.kalman_filter.state_dim, 1, dtype=self.dtype),
-            torch.stack([self.build_initial_covariance(detections.dim)] * len(unmatched_measures)),
+            torch.stack([self.build_initial_covariance(detections.dim)] * (1 + len(unmatched_measures)))[1:],
         )
         initial_state.mean[:, : detections.dim, 0] = unmatched_measures
         initial_state.covariance[:, : detections.dim, : detections.dim] = self.kalman_filter.measurement_noise[
