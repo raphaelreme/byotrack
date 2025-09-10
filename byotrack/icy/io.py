@@ -81,48 +81,63 @@ def save_detections(  # pylint: disable=too-many-locals
         path (str | os.PathLike): Output path
 
     """
-    dim = detections_sequence[0].dim
-
     root = ET.Element("root")
     for frame_id, detections in enumerate(detections_sequence):
-        for label, bbox in enumerate(detections.bbox):
+        shape = torch.tensor(detections.shape)
+        start = detections.bbox[:, : detections.dim]
+        end = start + detections.bbox[:, detections.dim :]
+
+        # Filter outside of frame detections
+        invalid = torch.logical_or(end.min(dim=-1).values <= 0, (start >= shape).any(dim=-1))
+
+        # Clip on frame shape
+        start = torch.maximum(torch.tensor(0), start)
+        end = torch.minimum(shape, end)
+
+        for label in range(detections.length):
             roi = ET.SubElement(root, "roi")
-            if dim == 2:
-                i, j, height, width = bbox.tolist()
-                mask = detections.segmentation[i : i + height, j : j + width] == label + 1
+
+            if invalid[label]:
+                continue
+
+            if detections.dim == 2:
+                i, j = start[label].tolist()
+                end_i, end_j = end[label].tolist()
+                mask = detections.segmentation[i:end_i, j:end_j] == label + 1
 
                 ET.SubElement(roi, "classname").text = "plugins.kernel.roi.roi2d.ROI2DArea"
                 ET.SubElement(roi, "t").text = str(frame_id)
                 ET.SubElement(roi, "z").text = "0"
                 ET.SubElement(roi, "boundsX").text = str(j)
                 ET.SubElement(roi, "boundsY").text = str(i)
-                ET.SubElement(roi, "boundsW").text = str(width)
-                ET.SubElement(roi, "boundsH").text = str(height)
+                ET.SubElement(roi, "boundsW").text = str(end_j - j)
+                ET.SubElement(roi, "boundsH").text = str(end_i - i)
 
                 # The mask is converted into bytes and zipped
-                compressed_bytes = zlib.compress(bytes(mask.reshape(height * width).numpy()), 2)
+                compressed_bytes = zlib.compress(bytes(mask.reshape(-1).numpy()), 2)
 
                 # and then converted to the good string format: byte:byte:...:byte
                 ET.SubElement(roi, "boolMaskData").text = ":".join(map(lambda byte: hex(byte)[2:], compressed_bytes))
             else:
+                k, i, j = start[label].tolist()
+                end_k, end_i, end_j = end[label].tolist()
                 ET.SubElement(roi, "classname").text = "plugins.kernel.roi.roi3d.ROI3DArea"
                 ET.SubElement(roi, "t").text = str(frame_id)
 
-                k, i, j, depth, height, width = bbox.tolist()
-                for z in range(k, k + depth):
+                for z in range(k, end_k):
                     slice_ = ET.SubElement(roi, "slice")
-                    mask = detections.segmentation[z, i : i + height, j : j + width] == label + 1
+                    mask = detections.segmentation[z, i:end_i, j:end_j] == label + 1
 
                     ET.SubElement(slice_, "classname").text = "plugins.kernel.roi.roi2d.ROI2DArea"
                     ET.SubElement(slice_, "t").text = str(frame_id)
                     ET.SubElement(slice_, "z").text = str(z)
-                    ET.SubElement(slice_, "boundsX").text = str(j)
-                    ET.SubElement(slice_, "boundsY").text = str(i)
-                    ET.SubElement(slice_, "boundsW").text = str(width)
-                    ET.SubElement(slice_, "boundsH").text = str(height)
+                    ET.SubElement(roi, "boundsX").text = str(j)
+                    ET.SubElement(roi, "boundsY").text = str(i)
+                    ET.SubElement(roi, "boundsW").text = str(end_j - j)
+                    ET.SubElement(roi, "boundsH").text = str(end_i - i)
 
                     # The mask is converted into bytes and zipped
-                    compressed_bytes = zlib.compress(bytes(mask.reshape(height * width).numpy()), 2)
+                    compressed_bytes = zlib.compress(bytes(mask.reshape(-1).numpy()), 2)
 
                     # and then converted to the good string format: byte:byte:...:byte
                     ET.SubElement(slice_, "boolMaskData").text = ":".join(
