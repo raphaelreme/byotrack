@@ -185,11 +185,12 @@ def _segmentation_from_bbox_3d(bbox: np.ndarray, shape: Tuple[int, int, int]) ->
 
 def _segmentation_from_position(position: torch.Tensor, shape: Tuple[int, ...]) -> torch.Tensor:
     position = position.round().int()
-    valid = (position > 0).all(dim=-1) & (position < torch.tensor(shape)).all(dim=-1)
+    valid = (position >= 0).all(dim=-1) & (position < torch.tensor(shape)).all(dim=-1)
+    labels = torch.arange(1, position.shape[0] + 1, dtype=torch.int32)[valid]
     position = position[valid]
 
     segmentation = torch.zeros(shape, dtype=torch.int32)
-    segmentation[position.T.tolist()] = torch.arange(1, position.shape[0] + 1, dtype=torch.int32)
+    segmentation[position.T.tolist()] = labels
     return segmentation
 
 
