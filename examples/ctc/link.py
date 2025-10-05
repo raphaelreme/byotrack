@@ -75,6 +75,8 @@ def link(video: byotrack.Video, detections_sequence: Sequence[byotrack.Detection
 
         specs = trackonstra.TrackOnStraParameters(
             positional_cutoff=kwargs["association_threshold"],
+            association_method="sparse_opt_smooth",  # Sparse linking (faster)
+            n_valid=1,  # No spurious detections
             n_gap=kwargs["n_gap"],
             split_factor=kwargs["split_factor"],
             anisotropy=(kwargs["anisotropy"], 1.0, 1.0),

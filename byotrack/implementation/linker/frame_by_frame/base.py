@@ -368,6 +368,8 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
             if handler.track_state in (handler.TrackState.INVALID, handler.TrackState.HYPOTHETICAL):
                 continue  # Ignore non-valid tracks
 
+            # TODO: What about recently split tracks: The split needs to be canceled in collect without further proofs
+
             points = torch.cat(
                 [
                     positions[track_id : track_id + 1]

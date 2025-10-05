@@ -231,12 +231,7 @@ class KalmanLinker(FrameByFrameLinker):
         super().__init__(specs, optflow, features_extractor, save_all)
 
         self.specs: KalmanLinkerParameters
-        self.kalman_filter = torch_kf.ckf.constant_kalman_filter(
-            self.specs.detection_std,
-            self.specs.process_std,
-            dim=2,
-            order=self.specs.kalman_order,
-        )
+        self.kalman_filter = torch_kf.ckf.constant_kalman_filter(1.0, 1.0, dim=2, order=self.specs.kalman_order)
         self.dtype = torch.float32
 
         self.active_states = torch_kf.GaussianState(
