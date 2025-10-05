@@ -40,5 +40,9 @@
     },
     "Fluo-N3DH-SIM+": {
         "n_gap": 0
-    }
+    },
+    "PhC-C2DH-U373": {
+        "split_factor": 0.0
+    },
+    "PhC-C2DL-PSC": {}
 }

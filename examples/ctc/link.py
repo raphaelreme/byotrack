@@ -355,7 +355,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--n_gap",
-        type=float,
+        type=int,
         default=1,
         help="Number of miss detected allowed in tracks",
     )

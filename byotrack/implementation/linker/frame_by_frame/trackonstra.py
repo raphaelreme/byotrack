@@ -3,10 +3,12 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import warnings
 
 import numpy as np
+from packaging import version
 import torch
 import tqdm.auto as tqdm
 
 # pylint: disable=import-error
+import trackastra  # type: ignore
 from trackastra.data import get_features, build_windows  # type: ignore
 from trackastra.model import Trackastra, TrackingTransformer  # type: ignore
 from trackastra.model.predict import predict_windows  # type: ignore
@@ -65,10 +67,15 @@ class TrackastraFlex(Trackastra):  # pylint: disable=too-few-public-methods
         self.delta_t = delta_t
         self.intra_weight = intra_weight
 
-    def _predict(  # pylint: disable=unused-argument
-        self, imgs: np.ndarray, masks: np.ndarray, edge_threshold: float = 0.05, n_workers: int = 0, progbar_class=None
+    def predict_with_gap(
+        self,
+        imgs: np.ndarray,
+        masks: np.ndarray,
+        edge_threshold: float = 0.05,
+        n_workers: int = 0,
     ):
         """Same function as the original _predict but it calls predict_windows with the model delta_t"""
+        # Note: It lags a bit behind the 0.4.0 implem that has added new parameters to _predict
 
         print("Predicting weights for candidate graph")  # Use print as ByoTrack do not use logging yet
         imgs = normalize(imgs)
@@ -81,10 +88,12 @@ class TrackastraFlex(Trackastra):  # pylint: disable=too-few-public-methods
             progbar_class=lambda iterable, **kwargs: tqdm.tqdm(iterable, **kwargs, dynamic_ncols=True),
         )
         print("Building windows")
+        kwargs = {"as_torch": True} if version.parse(trackastra.__version__) >= version.parse("0.4.0") else {}
         windows = build_windows(
             features,
             window_size=self.transformer.config["window"],
             progbar_class=lambda iterable, **kwargs: tqdm.tqdm(iterable, **kwargs, dynamic_ncols=True),
+            **kwargs,
         )
         print("Predicting windows")
         predictions = predict_windows(
@@ -231,17 +240,13 @@ class TrackOnStraLinker(FrameByFrameLinker):
         """
         # Convert Byotrack format to TrackAstra
         imgs = np.asarray(video)[..., 0]
+        masks = np.zeros(imgs.shape, dtype=np.uint16)
 
-        masks_list = []
-        for detection in detections_sequence:
-            mask = detection.segmentation.cpu().numpy()
-            masks_list.append(mask)
-        masks = np.stack(masks_list)
+        for i, detection in enumerate(detections_sequence):
+            masks[i] = detection.segmentation.cpu().numpy().astype(np.uint16)
 
         # Then compute the cost
-        predictions = self.model._predict(  # pylint: disable=protected-access
-            imgs, masks, edge_threshold=self.specs.association_threshold
-        )
+        predictions = self.model.predict_with_gap(imgs, masks, edge_threshold=self.specs.association_threshold)
 
         nodes = predictions["nodes"]
         weights = predictions["weights"]
