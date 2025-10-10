@@ -368,8 +368,6 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
             if handler.track_state in (handler.TrackState.INVALID, handler.TrackState.HYPOTHETICAL):
                 continue  # Ignore non-valid tracks
 
-            # TODO: What about recently split tracks: The split needs to be canceled in collect without further proofs
-
             points = torch.cat(
                 [
                     positions[track_id : track_id + 1]
@@ -389,7 +387,7 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
                     merge_id=handler.merge_id,
                 )
             )
-        return tracks
+        return self._remove_single_split(tracks)
 
     @abstractmethod
     def motion_model(self) -> None:
@@ -626,8 +624,82 @@ class FrameByFrameLinker(byotrack.OnlineLinker):  # pylint: disable=too-many-ins
 
         return active_mask
 
+    def _remove_single_split(self, tracks: List[byotrack.Track]) -> List[byotrack.Track]:
+        """Handle the 'single split' edge case that may occur after `collect`.
+
+        Usually `_undo_split` removes splits when one of the children is invalidated. But when `collect`
+        is called (usually at the end of the video), hypothetical tracks (neither confirmed nor invalidated)
+        are dropped by default. In particular, if a hypothetical track is a child of a split, only the other child
+        will remain ('single split').
+
+        This method removes single splits by stitching the parent track with their only child.
+
+        Warning: It will modify some of the `tracks` inplace
+
+        Args:
+            tracks (List[byotrack.Track]): Constructed tracks to be checked.
+
+        Returns:
+            List[byotrack.Track]: Tracks after correction for single splits.
+        """
+        if self.specs.split_factor <= 0.0:
+            return tracks
+
+        track_from_id = {track.identifier: track for track in tracks}
+        splits: Dict[int, List[int]] = {track.identifier: [] for track in tracks}
+        merges: Dict[int, List[int]] = {track.identifier: [] for track in tracks}
+        for track in tracks:
+            if track.parent_id != -1:
+                splits[track.parent_id].append(track.identifier)
+            if track.merge_id != -1:
+                merges[track.merge_id].append(track.identifier)
+
+        for identifier in [identifier for identifier in splits if len(splits[identifier]) == 1]:
+            parent = track_from_id[identifier]
+            child = track_from_id[splits[identifier][0]]
+
+            points = torch.cat((parent.points, child.points), dim=0)
+            detection_ids: Optional[torch.Tensor] = None
+            if parent.detection_ids is not None:
+                assert child.detection_ids is not None, "Incompatible track format"
+                detection_ids = torch.cat((parent.detection_ids, child.detection_ids), dim=0)
+
+            # We have to keep the child id (as it may have to be handled in the next iteration)
+            fused = byotrack.Track(
+                parent.start,
+                points,
+                child.identifier,
+                detection_ids,
+                merge_id=child.merge_id,
+                parent_id=parent.parent_id,
+            )
+
+            # Update the data
+            # 1. Mergers into parent needs to be updated
+            # 2. If parent has itself a parent, it needs also to be updated
+            # 3. Then parent can be removed as it no longer exists
+            # 4. Note: If child merges or splits, it is not impacted as fused share the same identifier
+            # assert not merges[child.identifier]  # Child is from a split not a merge
+            # assert parent.merge_id == -1  # Parent splits and do not merge
+            for merger in merges[parent.identifier]:
+                track_from_id[merger].merge_id = fused.identifier
+                merges[fused.identifier].append(merger)
+
+            if parent.parent_id != -1:
+                splits[parent.parent_id].remove(parent.identifier)
+                splits[parent.parent_id].append(fused.identifier)
+
+            merges.pop(identifier)
+            splits.pop(identifier)
+            track_from_id.pop(identifier)
+
+            # Replace child by fused
+            track_from_id[child.identifier] = fused
+
+        return list(track_from_id.values())
+
     def _undo_split(self, track: TrackHandler, still_active: List[TrackHandler]):
-        """Undo a split if one of the child track is invalidated.
+        """Undo a split if one of the children track is invalidated.
 
         It finds the finished parent track handler and the valid other child handler and
         concatenates them back together in a single valid track handler.

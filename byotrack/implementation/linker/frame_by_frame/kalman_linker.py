@@ -316,7 +316,7 @@ class KalmanLinker(FrameByFrameLinker):
                     )
                 )
 
-            return tracks
+            return self._remove_single_split(tracks)
 
         return super().collect()
 
