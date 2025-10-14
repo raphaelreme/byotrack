@@ -395,7 +395,7 @@ class WaveletDetector(byotrack.BatchDetector):
             detections_list.append(
                 byotrack.Detections(
                     {
-                        "segmentation": torch.tensor(segmentation),
+                        "segmentation": torch.from_numpy(segmentation),
                         # "confidence": put areas instead of deleting them ?
                     },
                     frame_id=i,

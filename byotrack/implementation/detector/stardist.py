@@ -63,8 +63,8 @@ class StarDistDetector(byotrack.BatchDetector):
             detections_list.append(
                 byotrack.Detections(
                     {
-                        "segmentation": torch.tensor(segmentation, dtype=torch.int32),
-                        "confidence": torch.tensor(data["prob"], dtype=torch.float32),
+                        "segmentation": torch.from_numpy(segmentation.astype(np.int32)),
+                        "confidence": torch.from_numpy(data["prob"].astype(np.float32)),
                         # Could use points data for position (but has been rounded to int, let's be more precise)
                         # "position": torch.tensor(data["points"], dtype=torch.float32),
                     },

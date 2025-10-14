@@ -49,7 +49,7 @@ class GroundTruthDetector(byotrack.BatchDetector):
         detections_sequence = []
         for frame in batch:
             detections_sequence.append(
-                byotrack.Detections({"segmentation": torch.tensor(frame[..., 0], dtype=torch.int32)})
+                byotrack.Detections({"segmentation": torch.from_numpy(frame[..., 0].astype(np.int32))})
             )
 
         return detections_sequence

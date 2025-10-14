@@ -19,4 +19,8 @@ def parse_bool_from_env(key: str, default: bool):
     return default
 
 
+# Compress segmentation mask in Detections to reduce RAM usage (Experimental feature)
+ZSTD_SEG = parse_bool_from_env("ZSTD_SEG", False)
+
+# Cache numba compilation to improve future runtime
 NUMBA_CACHE = parse_bool_from_env("NUMBA_CACHE", True)

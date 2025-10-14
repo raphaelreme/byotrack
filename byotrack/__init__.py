@@ -89,7 +89,7 @@ Please refer to the ![official documentation](https://byotrack.readthedocs.io/en
 """
 
 # Import API and main features but no implementation
-from byotrack._env import NUMBA_CACHE
+from byotrack._env import ZSTD_SEG, NUMBA_CACHE
 from byotrack.api.detector.detections import Detections
 from byotrack.api.detector.detector import BatchDetector, Detector
 from byotrack.api.linker import Linker, OnlineLinker

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from typing import Dict, List, Sequence, Tuple, Union, overload
 
 import numba  # type: ignore
@@ -10,6 +11,11 @@ import torch
 import byotrack  # pylint: disable=cyclic-import
 
 from ... import utils
+
+if sys.version_info >= (3, 14):
+    from compression import zstd
+else:
+    from backports import zstd
 
 
 def _check_segmentation(segmentation: torch.Tensor) -> None:
@@ -118,6 +124,10 @@ def _median_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
 
     # Compute medians
     for instance in range(n):
+        if counts[instance] == 0:
+            median[instance] = np.nan
+            continue
+
         for axis in range(len(segmentation.shape)):
             median[instance, axis] = np.median(positions[instance, : counts[instance], axis])
 
@@ -132,7 +142,7 @@ def _bbox_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     dim = len(segmentation.shape)
 
     bbox = np.zeros((n, 2 * dim), dtype=np.int32)
-    mini = np.ones((n, dim), dtype=np.int32) * np.inf
+    mini = np.full((n, dim), np.iinfo(np.int32).max, dtype=np.int32)
     maxi = np.zeros((n, dim), dtype=np.int32)
 
     for index in np.ndindex(*segmentation.shape):
@@ -142,8 +152,12 @@ def _bbox_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
                 mini[instance, i] = min(mini[instance, i], index[i])
                 maxi[instance, i] = max(maxi[instance, i], index[i])
 
-    bbox[:, :dim] = mini
-    bbox[:, dim:] = maxi - mini + 1
+    # Keep 0 for undefined element
+    defined = mini[:, 0] != np.iinfo(np.int32).max
+
+    bbox[defined, :dim] = mini[defined]
+    bbox[defined, dim:] = maxi[defined] - mini[defined] + 1
+
     return bbox
 
 
@@ -269,6 +283,31 @@ def relabel_consecutive(segmentation: Union[torch.Tensor, np.ndarray], inplace=T
     return segmentation
 
 
+def compress(tensor: torch.Tensor, level=3) -> torch.Tensor:
+    """Compress a tensor using zstd.
+
+    Experimental."""
+    compressed = zstd.compress(tensor.numpy().tobytes(), level=level)
+    return torch.frombuffer(compressed, dtype=torch.uint8)
+
+
+def decompress(tensor: torch.Tensor, dtype=torch.int32) -> torch.Tensor:
+    """Decompress a tensor using zstd.
+
+    Experimental."""
+    decompressed = zstd.decompress(tensor.numpy().tobytes())
+    return torch.frombuffer(decompressed, dtype=dtype)
+
+
+# XXX: PyTorch allocation is quite bad with small tensors (that can results from zipping for instance)
+#      Small tensors are typically allocated from cached segmentations, preventing freeing
+#      the memory required to store the segmentations. It is quite unclear yet how this works.
+#      Our current weird fix is to allocate the segmentation mask on numpy and then using from_numpy
+#      which seems to avoid this issue. Otherwise, one would probably have to rethink the all Detections class
+#      Or use ugly fixes like glibc.malloc_trim (that seems to work on linux also).
+#      See https://github.com/pytorch/pytorch/issues/165319
+
+
 class Detections:
     """Detections for a given frame
 
@@ -329,6 +368,8 @@ class Detections:
 
     """
 
+    # XXX: Don't relabel, and allow non consecutive/undefined detections? (needs to be handled by linkers)
+
     def __init__(self, data: Dict[str, torch.Tensor], frame_id: int = -1, use_median_position=True) -> None:
         self.length = -1
         self.dim = -1
@@ -359,6 +400,11 @@ class Detections:
             assert self.dim in (-1, dim)
             self.length = length
             self.dim = dim
+
+            # Compress seg
+            if byotrack.ZSTD_SEG:
+                data["shape"] = torch.tensor(data["segmentation"].shape)
+                data["segmentation"] = compress(data["segmentation"].reshape(-1))
 
         if "condidence" in data:
             _check_confidence(data["confidence"])
@@ -394,6 +440,11 @@ class Detections:
         if segmentation is None:
             segmentation = self._extrapolate_segmentation()
             self._lazy_extrapolated_data["segmentation"] = segmentation
+            if byotrack.ZSTD_SEG:
+                self._lazy_extrapolated_data["segmentation"] = compress(segmentation.reshape(-1))
+
+        if byotrack.ZSTD_SEG:
+            segmentation = decompress(segmentation).reshape(self.shape)
 
         return segmentation
 
@@ -462,11 +513,19 @@ class Detections:
 
         """
         if "segmentation" in self.data:
-            if self.use_median_position:
-                return torch.tensor(_median_from_segmentation(self.data["segmentation"].numpy()))
-            return torch.tensor(_position_from_segmentation(self.data["segmentation"].numpy()))
+            segmentation = self.data["segmentation"]
 
-        return self.data["bbox"][:, : self.dim] + (self.data["bbox"][:, self.dim :] - 1) / 2
+            if byotrack.ZSTD_SEG:
+                segmentation = decompress(segmentation).reshape(self.shape)
+
+            if self.use_median_position:
+                return torch.from_numpy(_median_from_segmentation(segmentation.numpy()))
+            return torch.from_numpy(_position_from_segmentation(segmentation.numpy()))
+
+        position = self.data["bbox"][:, : self.dim] + (self.data["bbox"][:, self.dim :] - 1) / 2
+        position[self.data["bbox"][:, self.dim :].min(dim=-1).values == 0] = torch.nan
+
+        return position
 
     def _extrapolate_bbox(self) -> torch.Tensor:
         """Extrapolate bbox from data
@@ -475,10 +534,18 @@ class Detections:
 
         """
         if "segmentation" in self.data:
-            return torch.tensor(_bbox_from_segmentation(self.data["segmentation"].numpy()))
+            segmentation = self.data["segmentation"]
+
+            if byotrack.ZSTD_SEG:
+                segmentation = decompress(segmentation).reshape(self.shape)
+
+            return torch.from_numpy(_bbox_from_segmentation(segmentation.numpy()))
+
+        invalid = torch.isnan(self.data["position"]).any(dim=-1)
 
         bbox = torch.ones((self.length, 4), dtype=torch.int32)
-        bbox[:, : self.dim] = self.data["position"].round().int()
+        bbox[invalid] = 0
+        bbox[~invalid, : self.dim] = self.data["position"][~invalid].round().int()
         return bbox
 
     def _extrapolate_segmentation(self) -> torch.Tensor:
@@ -490,7 +557,7 @@ class Detections:
 
         """
         if "bbox" in self.data:
-            return torch.tensor(_segmentation_from_bbox(self.data["bbox"].numpy(), self.shape))
+            return torch.from_numpy(_segmentation_from_bbox(self.data["bbox"].numpy(), self.shape))
 
         return _segmentation_from_position(self.data["position"], self.shape)
 
@@ -500,7 +567,12 @@ class Detections:
 
     def _extrapolate_mass(self) -> torch.Tensor:
         if "segmentation" in self.data:
-            return torch.tensor(_compute_mass(self.data["segmentation"].numpy()), dtype=torch.int32)
+            segmentation = self.data["segmentation"]
+
+            if byotrack.ZSTD_SEG:
+                segmentation = decompress(segmentation).reshape(self.shape)
+
+            return torch.from_numpy(_compute_mass(segmentation.numpy()))
 
         if "bbox" in self.data:
             return self.data["bbox"][:, self.dim :].prod(dim=-1)
@@ -530,6 +602,15 @@ class Detections:
         data = torch.load(path, map_location="cpu", weights_only=True)
         assert isinstance(data, dict)
         frame_id = data.pop("frame_id")
+
+        # Handle compressed segmentation
+        if "segmentation" in data:
+            segmentation: torch.Tensor = data["segmentation"]
+            if segmentation.ndim == 1:
+                assert segmentation.dtype == torch.uint8
+                assert "shape" in data
+
+                data["segmentation"] = decompress(segmentation).reshape(*data["shape"].tolist())
 
         return Detections(data, frame_id)
 
