@@ -3,5 +3,6 @@ black
 build
 mypy
 pylint
+scipy-stubs;python_version>='3.10'
 twine
 types-tqdm

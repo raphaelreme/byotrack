@@ -91,7 +91,7 @@ Please refer to the ![official documentation](https://byotrack.readthedocs.io/en
 # Import API and main features but no implementation
 from byotrack._env import ZSTD_SEG, NUMBA_CACHE
 from byotrack.api.detector.detections import Detections
-from byotrack.api.detector.detector import BatchDetector, Detector
+from byotrack.api.detector.detector import BatchDetector, Detector, DetectionsRefiner
 from byotrack.api.linker import Linker, OnlineLinker
 from byotrack.api.features_extractor import FeaturesExtractor, MultiFeaturesExtractor
 from byotrack.api.optical_flow.optical_flow import OpticalFlow

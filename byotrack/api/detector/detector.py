@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Sequence, Union
+from typing import List, Optional, Sequence, Union
 
 import numpy as np
 import tqdm.auto as tqdm
@@ -110,3 +110,51 @@ class BatchDetector(Detector):
             Sequence[byotrack.Detections]: Detections for each given frame
 
         """
+
+
+class DetectionsRefiner(ABC):
+    """Abstract class for method to improve a coarse detection result
+
+    This assumes the refining can be done independently for each frame.
+
+    Warning: The class is still experimental and may change in future versions
+
+    """
+
+    progress_bar_description = "Detections Refiner"
+
+    @abstractmethod
+    def apply(self, detections: byotrack.Detections, frame: Optional[np.ndarray] = None) -> byotrack.Detections:
+        """Refines Detections of the given frame
+
+        Args:
+            detections (byotrack.Detections): Detections to refine
+            frame (Optional[np.ndarray]): The associated frame of the video (optional)
+                Shape: ([D, ]H, W, C)
+                Default: None
+
+        Returns:
+            byotrack.Detections: Refined detections
+        """
+
+    def run(
+        self,
+        detections_sequence: Sequence[byotrack.Detections],
+        video: Union[Sequence[np.ndarray], np.ndarray, None] = None,
+    ) -> List[byotrack.Detections]:
+        """Run the refiner on a full video / detections sequence
+
+        Args:
+            detections_sequence (Sequence[byotrack.Detections]): Sequence of T detections to refine
+            video (Sequence[np.ndarray] | np.ndarray | None): Optional corresponding sequence of T frames.
+                Each frame is expected to have a shape ([D, ]H, W, C)
+
+        Returns:
+            Sequence[byotrack.Detections]: Sequence of the T refined detections
+        """
+        # XXX: Could run with MP? (depends if apply itself is MP)
+        refined_detections = []
+        for i, detections in enumerate(tqdm.tqdm(detections_sequence, desc=self.progress_bar_description)):
+            refined_detections.append(self.apply(detections, video[i] if video is not None else None))
+
+        return refined_detections

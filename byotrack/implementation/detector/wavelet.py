@@ -2,12 +2,12 @@ import time
 from typing import cast, List, Optional, Union, Type
 import warnings
 
-import numba  # type: ignore
 import numpy as np
 import scipy.ndimage as ndi  # type: ignore
 import torch
 
 import byotrack
+from .refiners import Watershed, filter_objects_on_size
 
 
 class B3SplineUWT(torch.nn.Module):
@@ -292,33 +292,6 @@ class B3SplineUWTApprox2(torch.nn.Module):
         return (x - y)[:, 0]
 
 
-@numba.njit(cache=byotrack.NUMBA_CACHE)
-def filter_small_objects(segmentation: np.ndarray, min_area: float) -> None:
-    """Filter small instances from the segmentation in place
-
-    Args:
-        segmentation (np.ndarray): Segmentation mask to filtered inplace
-            Shape ([D, ]H, W), dtype: integer
-        min_area (float): Minimum number of pixels to be kept in the segmentation.
-
-    """
-    segmentation = segmentation.reshape(-1)
-    area = np.zeros(segmentation.max(), np.uint)
-
-    for i in range(segmentation.size):
-        instance = segmentation[i] - 1
-        if instance != -1:
-            area[instance] += 1
-
-    to_delete = area < min_area
-
-    for i in range(segmentation.size):
-        instance = segmentation[i] - 1
-        if instance != -1:
-            if to_delete[instance]:
-                segmentation[i] = 0
-
-
 class WaveletDetector(byotrack.BatchDetector):
     """Detection of bright spots using B3SplineUWT
 
@@ -332,7 +305,7 @@ class WaveletDetector(byotrack.BatchDetector):
     1. UWT decomposition
     2. Scale selection
     3. Noise filtering
-    4. Connected components extraction
+    4. Connected components labeling (CCL) / Watershed labeling (WL)
 
     The multi scales behavior (choosing multiple scales) was implemented but we decided to drop it.
     It adds complexity without real advantages from our experience.
@@ -344,12 +317,18 @@ class WaveletDetector(byotrack.BatchDetector):
       that will try to find the fastest option for your case, or manually by modifying the `b3swt` parameter.
     * Thresholding -> We follow the original paper using k times the std
 
+    Watershed can optionnally be used instead of CCL. This enables the separation of close spots. This leads to
+    a tradeoff between under-segmentation with CCL and over-segmentation with WL. Note that contrary to
+    `WatershedRefiner`, watershed is run on the wavelet coefficients rather than the image/distance transform.
+
     Attributes:
         scale (int): Scale of the wavelet coefficients used. With small scales, the detector focus on
             smaller objects.
         k (float): Noise threshold. Following the paper, the wavelet coefficients
             are filtered if coef \\le k \\sigma. (The higher the less spots you retrieve)
-        min_area (float): Filter resulting spots that are too small (less than min_area pixels)
+        min_area, max_area (float): Filter too small/large resulting spots (less/more than min_area/max_area pixels)
+        watershed (Optional[Watershed]): Optional watershed to replace the CCL step.
+            Default: None (Use Connected Component Labeling)
         device (torch.device): Device on which run the B3SplineUWT
             Default to cpu
         b3swt (B3SplineUWT): Undecimated wavelet transform
@@ -359,11 +338,23 @@ class WaveletDetector(byotrack.BatchDetector):
 
     progress_bar_description = "Detections (Wavelet)"
 
-    def __init__(self, scale=2, k=3.0, min_area=10.0, device: Optional[torch.device] = None, **kwargs):
+    def __init__(
+        self,
+        scale=2,
+        k=3.0,
+        *,
+        min_area=3.0,
+        max_area=float("inf"),
+        watershed: Optional[Watershed] = None,
+        device: Optional[torch.device] = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.scale = scale
         self.k = k
         self.min_area = min_area
+        self.max_area = max_area
+        self.watershed = watershed
         self.device = device if device else torch.device("cpu")
         self.b3swt: Union[B3SplineUWT, B3SplineUWTApprox1, B3SplineUWTApprox2]
         self.b3swt = B3SplineUWT(scale + 1, return_all=False).to(self.device)
@@ -383,14 +374,20 @@ class WaveletDetector(byotrack.BatchDetector):
         # Thresholding. Shape: (B, [D, ]H, W)
         masks = (coefficients >= self.compute_threshold(coefficients)).cpu().numpy()
 
-        # Instance segmentation by connected components
+        # Instance segmentation by connected components or watershed
         detections_list = []
         for i, mask in enumerate(masks):
-            segmentation = np.zeros(mask.shape, dtype=np.int32)
-            ndi.label(mask, output=segmentation)  # 1-hop (4-ways in 2D) connected components by default
+            if self.watershed is None:
+                segmentation = np.zeros(mask.shape, dtype=np.int32)
+                ndi.label(mask, output=segmentation)  # 1-hop (4-ways in 2D) connected components by default
+            else:
+                image = coefficients[i].numpy()
+                image -= image.min()
+                image /= image.max()
+                segmentation = self.watershed.watershed(mask, image)
 
-            if self.min_area:
-                filter_small_objects(segmentation, self.min_area)
+            if self.min_area > 0 or self.max_area < float("inf"):
+                filter_objects_on_size(segmentation, self.min_area, self.max_area)
 
             detections_list.append(
                 byotrack.Detections(
