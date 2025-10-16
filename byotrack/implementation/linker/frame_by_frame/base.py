@@ -165,8 +165,7 @@ class TrackHandler:  # pylint: disable=too-many-instance-attributes
 
             if self.track_state == TrackHandler.TrackState.HYPOTHETICAL:
                 self.track_state = TrackHandler.TrackState.INVALID
-
-            if self.last_association > self.n_gap:
+            elif self.last_association > self.n_gap:
                 self.track_state = TrackHandler.TrackState.FINISHED
         else:
             self.last_association = 0
