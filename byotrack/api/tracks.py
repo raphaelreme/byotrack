@@ -25,27 +25,41 @@ def _check_detection_ids(detection_ids: torch.Tensor, size: int) -> None:
     assert detection_ids.dtype is torch.int32
 
 
-def _check_tracks(tracks: Collection[Track]):
+def _check_tracks(tracks: Collection[Track]) -> bool:
     """Check consistency of a Collection of tracks. See `Track.check_tracks`"""
     id_to_track = {track.identifier: track for track in tracks}
     merge_count: Dict[int, int] = {}
     parent_count: Dict[int, int] = {}
+    valid = True
 
-    assert len(id_to_track) == len(tracks), "Found duplicated identifiers"
+    if len(id_to_track) != len(tracks):
+        warnings.warn("Found duplicated identifiers")
+        valid = False
 
     for track in tracks:
         if track.parent_id != -1:
             parent = id_to_track[track.parent_id]
             end = parent.start + len(parent)
-            assert track.start == end, (
-                f"Track {parent.identifier} (Last frame: {end - 1} splits into track {track.identifier}. "
-                f"But track {track.identifier} starts at {track.start} != {end}."
-            )
+
+            if track.start != end:
+                warnings.warn(  # Warn also for gap in splitting (though theoretically valid)
+                    f"Track {parent.identifier} (Last frame: {end - 1}) splits into track {track.identifier}. "
+                    f"But track {track.identifier} starts at {track.start} != {end}."
+                )
+                valid = track.start - end < 0
 
             parent_count[track.parent_id] = parent_count.get(track.parent_id, 0) + 1
         if track.merge_id != -1:
             child = id_to_track[track.merge_id]
             end = track.start + len(track)
+
+            if end != child.start:
+                warnings.warn(  # Warn also for gap in merging (though theoretically valid)
+                    f"Track {track.identifier} (Last frame: {end - 1}) merges into track {child.identifier}. "
+                    f"But track {child.identifier} starts at {child.start} != {end}."
+                )
+                valid = child.start - end < 0
+
             assert end == child.start, (
                 f"Track {track.identifier} (Last frame: {end - 1}) merges into track {child.identifier}. "
                 f"But track {child.identifier} starts at {child.start} != {end}."
@@ -53,36 +67,42 @@ def _check_tracks(tracks: Collection[Track]):
             merge_count[track.merge_id] = merge_count.get(track.merge_id, 0) + 1
 
     for merge_id, count in merge_count.items():
-        assert count == 2, f"Track {merge_id} is the results of {count} ! = 2 tracks."
+        if count != 2:
+            warnings.warn(f"Track {merge_id} is the results of {count} ! = 2 tracks.")
 
     for parent_id, count in parent_count.items():
-        assert count == 2, f"{parent_id} splits into {count} ! = 2 tracks."
+        if count != 2:
+            warnings.warn(f"{parent_id} splits into {count} ! = 2 tracks.")
+
+    return valid
 
 
 class Track:
     """Track for a given particle
 
-    A track is defined by an (non-unique) identifier, a starting frame and a succession of positions.
+    A track is defined by a positive identifier, a starting frame and a succession of positions.
     In a detect-then-track context, a track can optionally contains the detection identifiers
     for each time frame (-1 if non-linked to any particular detection at this time frame)
 
+    It supports target splitting and merging through a mapping between tracks with `parent_id` and
+    `merge_id` attributes. By construction, when a track splits, it terminates (and the children are born).
+
     Attributes:
-        identifier (int): Identifier of the track (non-unique)
+        identifier (int): Identifier of the track (positive)
         start (int): Starting frame of the track
         points (torch.Tensor): Positions (i, j) of the particle (from starting frame to ending frame)
             Shape: (T, dim), dtype: float32
         detection_ids (torch.Tensor): Detection id for each time frame (-1 if unknown or non-linked
             to a particular detection at this time frame)
             Shape: (T,), dtype: int32
-        merge_id (int): Optional identifier to the merged track. This allows to handle 2-way merges
-            (such as cell divisions in a reversed temporal order). The target track
-            should start on the frame following the end of this track. This should not be used
-            to do tracklet stitching (See `DistStitcher` for such use cases)
-            Default: -1 (Merged to no one)
-        parent_id (int) Optional identifier to a parent track. This allows to handle 2-way splits (such as
-            cell divisions). The parent track should end one frame before the start of this track.
+        merge_id (int): Optional identifier to the merged track. This allows to handle merges (such as cell divisions
+            in a reversed temporal order). At least one other track should share the same merge_id.
             This should not be used to do tracklet stitching (See `DistStitcher` for such use cases)
-            Default: -1
+            Default: -1 (Merged to no one)
+        parent_id (int) Optional identifier to a parent track. This allows to handle splits / target spawning (such as
+            cell divisions). At least one other track should share the same parent_id.
+            This should not be used to do tracklet stitching (See `DistStitcher` for such use cases)
+            Default: -1 (No parent)
 
     """
 
@@ -231,7 +251,7 @@ class Track:
 
             {
                 "offset": int
-                "ids": Tensor (N, ), int64
+                "ids": Tensor (N, ), int32
                 "points": Tensor (T, N, dim), float32
                 "det_ids": Tensor (T, N), int32
                 "merge_ids": Tensor (N, ), int32
@@ -309,21 +329,16 @@ class Track:
         It will check that each track in the Collection has a different identifier.
         And it will check that merge_ids and parent_ids are correctly defined:
 
-        1. 2 tracks should have the same merge id to a third one starting right after the two ended.
-        2. 2 tracks should have the same parent id to a third one finishing right before the two started.
+        1. Several tracks should have the same merge id to another following one.
+        2. Several tracks should have the same parent id to another preceding one.
 
         Args:
             tracks (Collection[Track]): Collection of tracks to check
             warn (bool): Will only raise a warning instead of an Exception
 
         """
-        if warn:
-            try:
-                _check_tracks(tracks)
-            except (IndexError, AssertionError) as err:
-                warnings.warn(f"Inconsistent tracks: {err}")
-        else:
-            _check_tracks(tracks)
+        if not _check_tracks(tracks) and not warn:
+            raise ValueError("Invalid tracks")
 
     @staticmethod
     def reverse(tracks: Collection[Track], video_length=-1) -> List[Track]:

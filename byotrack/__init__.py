@@ -97,6 +97,7 @@ from byotrack.api.features_extractor import FeaturesExtractor, MultiFeaturesExtr
 from byotrack.api.optical_flow.optical_flow import OpticalFlow
 from byotrack.api.refiner import Refiner
 from byotrack.api.tracker import BatchMultiStepTracker, MultiStepTracker, Tracker
+from byotrack.api.tracking_graph import TrackingGraph
 from byotrack.api.tracks import Track
 from byotrack.video import Video, VideoTransformConfig
 
