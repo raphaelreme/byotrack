@@ -2,6 +2,7 @@
 black
 build
 mypy
+numba
 pylint
 scipy-stubs;python_version>='3.10'
 twine
