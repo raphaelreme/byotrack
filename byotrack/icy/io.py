@@ -94,6 +94,8 @@ def save_detections(  # pylint: disable=too-many-locals
         start = torch.maximum(torch.tensor(0), start)
         end = torch.minimum(shape, end)
 
+        segmentation = detections.segmentation  # Convert once if ZSTD
+
         for label in range(detections.length):
             roi = ET.SubElement(root, "roi")
 
@@ -103,7 +105,7 @@ def save_detections(  # pylint: disable=too-many-locals
             if detections.dim == 2:
                 i, j = start[label].tolist()
                 end_i, end_j = end[label].tolist()
-                mask = detections.segmentation[i:end_i, j:end_j] == label + 1
+                mask = segmentation[i:end_i, j:end_j] == label + 1
 
                 ET.SubElement(roi, "classname").text = "plugins.kernel.roi.roi2d.ROI2DArea"
                 ET.SubElement(roi, "t").text = str(frame_id)
