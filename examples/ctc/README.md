@@ -22,7 +22,7 @@ $ pip install -r requirements.txt  # Without conda, you can simply run this line
 To run a single tracking on a specific dataset:
 
 ```bash
-$ # Activate your environement if not already done
+$ # Activate your environment if not already done
 $ conda activate byotrack
 $
 $ # Run the script for the specific dataset.
@@ -36,7 +36,7 @@ $ python link.py --data_path $CTC_PATH --dataset BF-C2DL-HSC --seq 1
 To run on all datasets of the CLB, we provided the `run_clb.py` script:
 
 ```bash
-$ # Activate your environement if not already done
+$ # Activate your environment if not already done
 $ conda activate byotrack
 $
 $ # Run on all datasets/seq.

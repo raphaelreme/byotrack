@@ -1,10 +1,148 @@
 [build-system]
-requires = [
-    "setuptools>=46.4.0",
-    "wheel"
+requires = ["uv_build>=0.9.7,<0.10.0"]
+build-backend = "uv_build"
+
+[project]
+name = "byotrack"
+version = "1.4.1"
+description = "Biological Multiple Object Tracking in Python"
+readme = "README.md"
+authors = [
+    { name = "Raphael Reme", email = "raphaelreme-dev@protonmail.com" }
 ]
-build-backend = "setuptools.build_meta"
+maintainers = [
+    { name = "Raphael Reme", email = "raphaelreme-dev@protonmail.com" }
+]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["Tracking", "Segmentation", "Optical Flow", "Optimization", "Visualization", "Biological Imaging"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+
+requires-python = ">=3.10"
+dependencies = [
+    "backports-zstd; python_full_version < '3.14'",
+    "networkx",
+    "numba",
+    "numpy",
+    "opencv-python < 4.13",
+    "pillow",
+    "platformdirs",
+    "pylapy[scipy]",
+    "scipy",
+    "scikit-image",
+    "tifffile[all]",
+    "torch",
+    "torch-kf",
+    "torch-tps",
+    "tqdm",
+    "typing-extensions ; python_full_version < '3.12'",
+]
 
 
-[tool.black]
-line-length=120
+[project.optional-dependencies]
+full = [
+    "matplotlib",
+    "stardist; python_full_version < '3.14'",
+    "tensorflow; python_full_version < '3.14'",
+    "trackastra",
+]
+
+
+[dependency-groups]
+dev = [
+    "filterpy",
+    "ipywidgets",
+    "matplotlib",
+    "mypy",
+    "notebook",
+    "prek",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "scipy-stubs",
+    "types-networkx",
+    "types-tqdm",
+]
+
+
+[project.urls]
+Homepage = "https://github.com/raphaelreme/byotrack"
+Documentation = "https://byotrack.readthedocs.io/en/latest"
+Repository = "https://github.com/raphaelreme/byotrack"
+Issues = "https://github.com/raphaelreme/byotrack/issues"
+
+
+
+
+[tool.uv]
+python-preference = "only-managed"
+
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+
+
+# Format
+format.docstring-code-format = true
+format.indent-style = "space"
+format.quote-style = "double"
+format.line-ending = "lf"
+format.skip-magic-trailing-comma = false
+
+# Lint
+lint.select = ["ALL"]
+
+lint.ignore = [
+    "ANN001",  # Checked by mypy which allows default args not to be typed
+    "COM812",  # Recommended by ruff as we use the formatter
+    "D100",  # Module docstring
+    "D107",  # __init__ docstring
+    "EM", "TRY003",  # Let's rely on standard exceptions
+    "FIX", "TD",  # Ignore TODO, FIXME, XXX
+]
+
+lint.future-annotations = true
+lint.flake8-annotations.allow-star-arg-any = true
+lint.flake8-annotations.ignore-fully-untyped = true
+lint.flake8-annotations.mypy-init-return = true
+lint.pep8-naming.ignore-names = [
+    "i",
+    "j",
+    "k",
+    "n",
+    "t",
+]
+lint.pydocstyle.convention = "google"
+lint.pylint.max-args = 8
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["INP001", "D103", "S101", "ANN201", "SLF001", "T201"]
+"examples/ctc/*.py" = ["INP001", "D103", "S101", "ANN201", "SLF001", "T201", "NPY002", "ERA001", "PLR2004"]
+"*.ipynb" = ["ERA001", "T201", "SLF001", "PLR2004", "E501"]
+
+[tool.mypy]
+enable_error_code = ["ignore-without-code"]
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+strict = true
+
+markers = ["cuda: requires CUDA."]
+
+[tool.coverage.run]
+source = ["byotrack"]
+
+[tool.typos.default.extend-words]
+Tung = "Tung"
+fpr = "fpr"

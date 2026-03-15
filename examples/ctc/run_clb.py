@@ -1,4 +1,4 @@
-"""All linking experiments for the CLB (See `link.py`)
+"""All linking experiments for the CLB (See `link.py`).
 
 Submitted to the CLB in Nov. 2024. Cleaned in Jan. 2025.
 """
@@ -7,10 +7,11 @@ import argparse
 import json
 import pathlib
 import subprocess
-from typing import Any, Dict
+from typing import Any
 
 
-def build_params_string(params: Dict[str, Any]) -> str:
+def build_params_string(params: dict[str, Any]) -> str:
+    """Build the command-line params from the parameters."""
     args = []
     for key, value in params.items():
         args.append(f"--{key}={value}")
@@ -18,9 +19,10 @@ def build_params_string(params: Dict[str, Any]) -> str:
     return " ".join(args)
 
 
-def run_clb(data_path: str, default_parameters=False):
+def run_clb(data_path: str, *, default_parameters=False) -> None:
+    """Run the full CLB experiments."""
     folder = pathlib.Path(__file__).parent
-    params: Dict[str, Dict[str, Any]] = json.loads((folder / "hyper_parameters.json").read_text())
+    params: dict[str, dict[str, Any]] = json.loads((folder / "hyper_parameters.json").read_text())
 
     if default_parameters:  # Erase parameters
         params = {dataset: {} for dataset in params}
@@ -28,7 +30,7 @@ def run_clb(data_path: str, default_parameters=False):
     for dataset, params_ in params.items():
         for seq in [1, 2]:
             args = build_params_string(params_)
-            subprocess.run(
+            subprocess.run(  # noqa: S602
                 f"python {folder / 'link.py'} --data_path {data_path} --dataset {dataset} --seq {seq} {args}",
                 check=True,
                 shell=True,
@@ -50,5 +52,5 @@ if __name__ == "__main__":
 
     run_clb(
         args_.data_path,
-        args_.default_parameters,
+        default_parameters=args_.default_parameters,
     )

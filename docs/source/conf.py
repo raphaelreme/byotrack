@@ -1,9 +1,9 @@
-# Configuration file for the Sphinx documentation builder.
+# Configuration file for the Sphinx documentation builder.  # noqa: INP001
 
 # -- Project information
 
 project = "ByoTrack"
-copyright = "2023, Raphael Reme"
+copyright = "2023, Raphael Reme"  # noqa: A001
 author = "Raphael Reme"
 
 # -- General configuration

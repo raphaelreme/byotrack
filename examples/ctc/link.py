@@ -1,30 +1,34 @@
-"""Script based on ByoTrack for solving the Cell Linking Benchmark (CLB) of the Cell Tracking Challenge (CTC)
+"""Script based on ByoTrack for solving the Cell Linking Benchmark (CLB) of the Cell Tracking Challenge (CTC).
 
 Submitted to the CLB in Nov. 2024. Cleaned in Jan. 2025.
 """
 
+from __future__ import annotations
+
 import argparse
 import pathlib
-from typing import List, Optional, Sequence
+from typing import TYPE_CHECKING, Any
 
 import cv2
 import numpy as np
-import skimage  # type: ignore
+import skimage  # type: ignore[import-untyped]
 import torch
 
 import byotrack
-import byotrack.api.features_extractor
 import byotrack.dataset.ctc as ctc_data
-from byotrack.implementation.optical_flow import skimage as sk, opencv
-from byotrack.implementation.linker.frame_by_frame import nearest_neighbor, kalman_linker, koft
+import byotrack.metrics.ctc as ctc_metrics
+from byotrack.implementation.linker.frame_by_frame import kalman_linker, koft, nearest_neighbor
+from byotrack.implementation.optical_flow import opencv
+from byotrack.implementation.optical_flow import skimage as sk
 from byotrack.implementation.refiner.interpolater import ForwardBackwardInterpolater
 from byotrack.implementation.refiner.smoother import RTSSmoother
-import byotrack.metrics.ctc as ctc_metrics
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
-def get_average_size(detections_sequence: List[byotrack.Detections]) -> float:
-    """Get the average size of cells in the dataset"""
-
+def get_average_size(detections_sequence: list[byotrack.Detections]) -> float:
+    """Get the average size of cells in the dataset."""
     total_size = 0
     count = 0
     for detections in detections_sequence:
@@ -37,8 +41,8 @@ def get_average_size(detections_sequence: List[byotrack.Detections]) -> float:
     return total_size / (count + (count == 0))
 
 
-def get_average_min_dist(detections_sequence: List[byotrack.Detections]) -> float:
-    """Get the average minimal distance between cells in the dataset"""
+def get_average_min_dist(detections_sequence: list[byotrack.Detections]) -> float:
+    """Get the average minimal distance between cells in the dataset."""
     sum_min_dist = 0.0
     count = 0
     for detections in detections_sequence:
@@ -66,12 +70,15 @@ def get_average_min_dist(detections_sequence: List[byotrack.Detections]) -> floa
 #     return sum_min_dist / (count + (count == 0))
 
 
-def link(video: byotrack.Video, detections_sequence: Sequence[byotrack.Detections], **kwargs) -> List[byotrack.Track]:
+def link(
+    video: byotrack.Video, detections_sequence: Sequence[byotrack.Detections], **kwargs: Any
+) -> list[byotrack.Track]:
+    """Run CTC linking with the given kwargs."""
     specs: kalman_linker.FrameByFrameLinkerParameters
     linker: kalman_linker.FrameByFrameLinker
     optflow: byotrack.OpticalFlow
     if kwargs["linker"] == "TOS":  # TrackOnStra
-        from byotrack.implementation.linker.frame_by_frame import trackonstra  # pylint:disable=import-outside-toplevel
+        from byotrack.implementation.linker.frame_by_frame import trackonstra  # noqa: PLC0415
 
         specs = trackonstra.TrackOnStraParameters(
             positional_cutoff=kwargs["association_threshold"],
@@ -135,7 +142,7 @@ def link(video: byotrack.Video, detections_sequence: Sequence[byotrack.Detection
         )
 
     # KOFT
-    if video.ndim == 5:  # 3D, but tvl1 is quite slow and unprecise in CTC
+    if video.ndim == 5:  # 3D, but tvl1 is quite slow and imprecise in CTC
         optflow = sk.SkimageOpticalFlow(
             skimage.registration.optical_flow_tvl1,
             downscale=4,
@@ -166,12 +173,12 @@ def link(video: byotrack.Video, detections_sequence: Sequence[byotrack.Detection
     return list(linker.run(video, detections_sequence))
 
 
-def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches,too-many-statements
+def main(  # noqa: C901, PLR0913, PLR0915
     data_path: str,
     dataset: str,
     seq: int,
     *,
-    linker: Optional[str] = None,
+    linker: str | None = None,
     association_threshold=0.0,
     detection_std=0.0,
     process_std=0.0,
@@ -183,8 +190,9 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
     win_size=0,
     attachment=10.0,
     detections_sequence=None,
-    eval_software: Optional[str] = None,
-):
+    eval_software: str | None = None,
+) -> None:
+    """Load the data, estimate args, run the linking, and store & evaluate."""
     path = pathlib.Path(data_path) / dataset
     n_digit = len(next((path / f"{seq:02}").glob("t*.tif")).stem[1:])
 
@@ -206,7 +214,7 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
     if video.ndim == 4:  # 2D
         anisotropy = 1.0
 
-    # Anisotropy is computed if not given based on detections (Depends on direciton)
+    # Anisotropy is computed if not given based on detections (Depends on direction)
     if video.ndim == 5 and anisotropy <= 0.0:  # 3D
         sizes = sum(
             detections.bbox[:, detections.dim :].to(torch.float32).mean(axis=0) for detections in detections_sequence
@@ -256,12 +264,8 @@ def main(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branche
         )  # The flow has no reason to be scaled
 
     if split_factor < 0:
-        if (
-            cell_increase > 0.3 and cell_increase * len(detections_sequence[0]) > 1
-        ):  # At least 30% of augmentation of cells to activate mitose
-            split_factor = 1.0
-        else:
-            split_factor = 0.0
+        # At least 30% of augmentation of cells to activate mitose
+        split_factor = 1.0 if cell_increase > 0.3 and cell_increase * len(detections_sequence[0]) > 1 else 0.0
 
     # For 3D videos, we could do a conversion 3D to 2D for simple 3D (but it is complex
     # and useful only for computational time)
@@ -363,7 +367,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--win_size", type=int, default=0, help="Farneback window")
     parser.add_argument("--attachment", type=float, default=10.0, help="Regularity of TVL1")
-    parser.add_argument("--eval_software", type=str, default=None, help="Path to the evalutation software")
+    parser.add_argument("--eval_software", type=str, default=None, help="Path to the evaluation software")
 
     args = parser.parse_args()
     print(args)

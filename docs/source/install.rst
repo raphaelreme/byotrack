@@ -39,8 +39,6 @@ Here is the complete list:
 
 * StarDistDetector
     * stardist (+ tensorflow): `Install stardist <https://github.com/stardist/stardist#installation>`_
-* KalmanLinker & KOFTLinker & RTSSmoother
-    * torch_kf: `Install torch-kf <https://github.com/raphaelreme/torch-kf#install>`_
 * IcyEMHTLinker
     * Icy: `Download Icy <https://icy.bioimageanalysis.org/download/>`_
     * Spot Tracking Blocks plugin: `Install an Icy plugin <https://icy.bioimageanalysis.org/tutorial/how-to-install-an-icy-plugin/>`_
@@ -48,8 +46,5 @@ Here is the complete list:
     * Fiji: `Download Fiji <https://imagej.net/downloads>`_
 * TrackOnStraLinker
     * TrackAstra: `Install trackastra <https://github.com/weigertlab/trackastra#installation>`_
-* SkimageOpticalFlow
-    * scikit-image: `Install scikit-image <https://scikit-image.org/docs/stable/user_guide/install.html>`_
-
 
 For visualization with `byotrack.visualize` module, you need to `install matplotlib <https://matplotlib.org/stable/install/index.html>`_
