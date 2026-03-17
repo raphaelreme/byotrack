@@ -22,9 +22,9 @@ def load_metadata(path: str | os.PathLike) -> dict[str, torch.Tensor]:
     It loads the outputted metadata from SINETRA (position, size, rotation and intensity weight)
     See: https://github.com/raphaelreme/SINETRA
 
-    Format:
+    JSON Format:
 
-    .. code-block:: json
+    .. code-block:: python
 
         {
             "mu": torch.Tensor (T, N, D)  # Position

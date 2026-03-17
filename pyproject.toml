@@ -73,6 +73,13 @@ dev = [
     "types-networkx",
     "types-tqdm",
 ]
+doc = [
+    "ipython",
+    "nbsphinx",
+    "pandoc",
+    "sphinx",
+    "sphinx-rtd-theme",
+]
 
 
 [project.urls]
@@ -86,6 +93,7 @@ Issues = "https://github.com/raphaelreme/byotrack/issues"
 
 [tool.uv]
 python-preference = "only-managed"
+default-groups = "all"
 
 
 [tool.ruff]

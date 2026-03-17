@@ -5,91 +5,43 @@
 
 ![pipeline](docs/source/images/tracking.svg)
 
-**ByoTrack** is a **Python library for tracking biological objects in
-microscopy videos (2D and 3D)**.
+**ByoTrack** *is a Python library for tracking biological objects in microscopy videos (2D and 3D)*.
 
-The goal of ByoTrack is to provide a **fast, modular, and
-research-friendly tracking framework** that integrates naturally with
-the **Python scientific ecosystem** and existing **bioimage analysis
-platforms**.
+Its goal is to provide a **fast, modular, and research-friendly tracking framework** that integrates
+seamlessly with the **Python scientific ecosystem** and established **bioimage analysis platforms** such as
+*Fiji*, *Icy* and *Napari*.
 
-Many classical bioimage tools (such as **Icy** and **Fiji/ImageJ**)
-provide powerful tracking algorithms, but they are primarily implemented
-in **Java**, which makes experimentation and integration with modern
-Python-based methods---especially **deep learning models**---more
-difficult.
+ByoTrack defines a **modular tracking API** that can be easily extended to design and evaluate new methods.
+It also includes implementations of several **state-of-the-art detection and tracking** approaches following this API.
 
-ByoTrack bridges this gap by providing a **clean Python API for object
-tracking pipelines**, allowing researchers to easily combine:
+Some components are **implemented natively** in Python (e.g. *WaveletDetector*, *KalmanLinker*, *KOFT*, *RTSSmoother*,
+*EMC2Stitcher*), while others **wrap existing tools** (e.g. *StarDistDetector*, *IcyEMHTLinker*, *TrackMateLinker*),
+integrating with external software.
 
--   Classical computer vision algorithms
--   Modern deep learning detectors
--   Existing bioimage software
--   Custom research methods
+In addition, ByoTrack provides utilities for **data loading and preprocessing**, as well
+as **evaluation and visualization** of tracking results.
 
+> [!NOTE]
+> ByoTrack has been primarily developed for scenarios involving up to a few thousand targets in 2D or 3D microscopy data.
+> Some components assume that individual frames fit in memory, which may limit scalability to very large 3D volumes.
+> If you encounter limitations with your use case, feel free to open an issue or contribute a pull request.
 
-------------------------------------------------------------------------
-
-## Key Features
-
-### Fast and scalable
-
--   Built with **NumPy**, **PyTorch**, and **Numba**
--   Efficient computations for large microscopy datasets
--   Designed to scale to long videos and dense tracking problems
-
-### Support for 2D and 3D microscopy
-
--   Track objects in **2D or 3D videos**
--   Compatible with common microscopy file formats
-
-### Online tracking
-
--   Most algorithms can process frames **sequentially** never loading the full video in memory
--   Suitable for **real-time pipelines**
-
-### Modular architecture
-
-Tracking is decomposed into independent components (Tracking-By-Detection):
-
-    Video → Detection → Detection Refinement → Linking → Track Refinement
-
-Each component can be **replaced or extended**, making ByoTrack
-ideal for research and development of new tracking approaches.
-
-
-### Deep learning integration
-
-Works naturally with Python ML frameworks for both detections and tracking.
-
--   Detections converted from np.array or torch.tensor
--   Detectors may wrap Tensorflow or PyTorch DL-solutions (see **StarDistDetector**)
--   Linking may exploit deep-learning computed costs (see **TrackOnStraLinker**)
--   Linkers may use its own DL features extraction methods online.
-
-### Interoperability with bioimage tools
-
-ByoTrack integrates with established platforms:
-
--   **Fiji / ImageJ**
--   **Icy**
--   **Napari** (in progress)
-
-This allows users to combine **existing tracking algorithms** with
-Python workflows.
-
+🏆 **ByoTrack (PAST-FR)** won the [Cell Linking Benchmark](https://celltrackingchallenge.net/latest-clb-results/) of
+the *Cell Tracking Challenge* with its **SKT/KOFT** implementation
+(see our [paper](https://ieeexplore.ieee.org/abstract/document/10635656/) for details).
 
 ------------------------------------------------------------------------
 
 ## Installation
 
+### pip
+
 ``` bash
 pip install byotrack
 ```
 
-Some implementations require additional dependencies that are not installed with the library, to use them you need to install their dependencies on your own.
-Here is the complete list:
-
+Some components require additional dependencies that are not installed with the library by default.
+For these components, you need to install their specific dependencies. Here is the complete list:
 
 - *StarDistDetector*
     - StarDist (+ Tensorflow): [Install StarDist](https://github.com/stardist/stardist#installation)
@@ -102,6 +54,62 @@ Here is the complete list:
     - TrackAstra: [Install trackastra](https://github.com/weigertlab/trackastra#installation)
 
 For visualization, with `byotrack.visualize` module you need to [install Matplotlib](https://matplotlib.org/stable/install/index.html).
+
+
+### From source
+
+```bash
+git clone git@github.com:raphaelreme/byotrack.git  # OR https://github.com/raphaelreme/byotrack.git
+cd byotrack
+pip install .
+```
+
+------------------------------------------------------------------------
+
+## Getting started
+
+```python
+import byotrack
+
+# Load some specific implementations
+from byotrack.implementation.detector.wavelet import WaveletDetector
+from byotrack.implementation.linker.icy_emht import IcyEMHTLinker
+from byotrack.implementation.refiner.cleaner import Cleaner
+from byotrack.implementation.refiner.stitching import EMC2Stitcher
+
+# Read a video from a path, normalize and aggregate channels
+video = byotrack.Video(video_path)
+transform_config = VideoTransformConfig(aggregate=True, normalize=True, q_min=0.01, q_max=0.999)
+video.set_transform(transform_config)
+
+# Create a multi step tracker
+## First the detector
+## Smaller scale <=> search for smaller spots
+## The noise threshold is linear with k. If you increase it, you will retrieve less spots.
+detector = WaveletDetector(scale=1, k=3.0, min_area=5)
+
+## Second the linker
+## Hyperparameters are automatically chosen by Icy
+linker = IcyEMHTLinker(icy_path)
+
+## Finally refiners
+## If needed you can add Cleaning and Stitching operations
+refiners = []
+if True:
+    refiners.append(Cleaner(5, 3.5))  # Split tracks on position jumps and drop small ones
+    refiners.append(EMC2Stitcher())  # Merge tracks if they track the same particle
+
+tracker = byotrack.MultiStepTracker(detector, linker, refiners)
+
+# Run the tracker
+tracks = tracker.run(video)
+
+# Save tracks
+byotrack.Track.save(tracks, output_path)
+```
+
+Please refer to the [official documentation](https://byotrack.readthedocs.io/en/latest/) (https://byotrack.readthedocs.io/en/latest/).
+
 
 ------------------------------------------------------------------------
 
@@ -226,73 +234,30 @@ Currently implemented:
 
 More metrics will be added in future releases.
 
-------------------------------------------------------------------------
-
-## Getting started
-
-```python
-import byotrack
-
-# Load some specific implementations
-from byotrack.implementation.detector.wavelet import WaveletDetector
-from byotrack.implementation.linker.icy_emht import IcyEMHTLinker
-from byotrack.implementation.refiner.cleaner import Cleaner
-from byotrack.implementation.refiner.stitching import EMC2Stitcher
-
-# Read a video from a path, normalize and aggregate channels
-video = byotrack.Video(video_path)
-transform_config = VideoTransformConfig(aggregate=True, normalize=True, q_min=0.01, q_max=0.999)
-video.set_transform(transform_config)
-
-# Create a multi step tracker
-## First the detector
-## Smaller scale <=> search for smaller spots
-## The noise threshold is linear with k. If you increase it, you will retrieve less spots.
-detector = WaveletDetector(scale=1, k=3.0, min_area=5)
-
-## Second the linker
-## Hyperparameters are automatically chosen by Icy
-linker = IcyEMHTLinker(icy_path)
-
-## Finally refiners
-## If needed you can add Cleaning and Stitching operations
-refiners = []
-if True:
-    refiners.append(Cleaner(5, 3.5))  # Split tracks on position jumps and drop small ones
-    refiners.append(EMC2Stitcher())  # Merge tracks if they track the same particle
-
-tracker = byotrack.MultiStepTracker(detector, linker, refiners)
-
-# Run the tracker
-tracks = tracker.run(video)
-
-# Save tracks
-byotrack.Track.save(tracks, output_path)
-```
-
-Please refer to the [official documentation](https://byotrack.readthedocs.io/en/latest/) (https://byotrack.readthedocs.io/en/latest/).
-
 
 ------------------------------------------------------------------------
 
 ## Cell Tracking Challenge
 
-Our submission to the **Cell Linking Benchmark** of the Cell Tracking Challenge is available in the [examples/ctc](examples/ctc/README.md) folder.
+Our submission (PAST-FR) to the [**Cell Linking Benchmark**](https://celltrackingchallenge.net/latest-clb-results/) of the Cell Tracking Challenge is available in the [examples/ctc](examples/ctc/README.md) folder.
+
 
 
 ------------------------------------------------------------------------
 
 ## Contributing
 
-Contributions are welcome.
+Contributions are very welcome! Feel free to open an issue or submit a pull request.
 
-Typical contributions include:
+Typical contributions could include:
 
 -   New detections or linking algorithms
 -   Dataset loaders
 -   Evaluation metrics
+-   New data format
+-   Track analysis methods
 
-Guidelines will be added soon.
+See the contribution guidelines.
 
 ------------------------------------------------------------------------
 
@@ -318,40 +283,31 @@ If you use ByoTrack in your research, please cite:
 
 * [1] F. De Chaumont, S. Dallongeville, N. Chenouard, et al., "Icy:
       an open bioimage informatics platform for extended reproducible
-      research", Nature methods, vol. 9, no. 7, pp. 690–696, 2012.
+      research", Nature methods, 2012.
 * [2] J.-C. Olivo-Marin, "Extraction of spots in biological images
-      using multiscale products", Pattern Recognition, vol. 35, no. 9,
-      pp. 1989–1996, 2002.
+      using multiscale products", Pattern Recognition, 2002.
 * [3] U. Schmidt, M. Weigert, C. Broaddus, and G. Myers, "Cell detection
-      with star-convex polygons", in Medical Image Computing and
-      Computer Assisted Intervention–MICCAI 2018: 21st International
-      Conference, Granada, Spain, September 16-20, 2018, Proceedings,
-      Part II 11. Springer, 2018, pp. 265–273.
+      with star-convex polygons", MICCAI, 2018.
 * [4] N. Chenouard, I. Bloch, and J.-C. Olivo-Marin, "Multiple hypothesis
-      tracking for cluttered biological image sequences",
-      IEEE transactions on pattern analysis and machine intelligence,
-      vol. 35, no. 11, pp. 2736–3750, 2013.
+      tracking for cluttered biological image sequences", IEEE TPAMI, 2013.
 * [5] T. Lagache, A. Hanson, J. Perez-Ortega, et al., "Tracking calcium
       dynamics from individual neurons in behaving animals",
-      PLoS computational biology, vol. 17, pp. e1009432, 10 2021.
+      PLoS Computational Biology, 2021.
 * [6] J. Schindelin, I. Arganda-Carreras, E. Frise, et al., "Fiji:
       an open-source platform for biological-image analysis", Nature
-      Methods, 9(7), 676–682, 2012.
+      Methods, 2012.
 * [7] K. Jaqaman, D. Loerke, M. Mettlen, et al., "Robust single-particle
-      tracking in live-cell time-lapse sequences.", Nature Methods, 5(8),
-      695–702, 2008.
+      tracking in live-cell time-lapse sequences.", Nature Methods, 2008.
 * [8] J.-Y. Tinevez, N. Perry, J. Schindelin, et al., "TrackMate: An
       open and extensible platform for single-particle tracking.",
-      Methods, 115, 80–90, 2017.
+      Methods, 2017.
 * [9] R. Reme, A. Newson, E. Angelini, J.-C. Olivo-Marin and T. Lagache,
       "Particle tracking in biological images with optical-flow enhanced
-      kalman filtering", in International Symposium on Biomedical Imaging
-      (ISBI2024).
+      kalman filtering", IEEE ISBI, 2024.
 * [10] M. Maška, V. Ulman, D. Svoboda, P. Matula, et al., "A benchmark for
        comparison of cell tracking algorithms", in Bioinformatics, 2014.
 * [11] R. Reme, A. Newson, E. Angelini, J.-C. Olivo-Marin and T. Lagache,
        "SINETRA: a Versatile Framework for Evaluating Single Neuron Tracking
-       in Behaving Animals", arXiv preprint arXiv:2411.09462, 2024.
+       in Behaving Animals", IEEE ISBI, 2025.
 * [12] A. Genovesio, Z. Belhassine, and J.-C. Olivo-Marin, "Adaptive gating
-       in Gaussian Bayesian multi-target tracking", in 2004 International
-       Conference on Image Processing (ICIP'04).
+       in Gaussian Bayesian multi-target tracking", IEEE ICIP, 2004.

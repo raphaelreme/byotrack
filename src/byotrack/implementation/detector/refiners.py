@@ -159,6 +159,7 @@ class Watershed:
     Warning: This part is still experimental and may change in the following versions
 
     The algorithm works in 2 steps:
+
     1. Local maxima extraction that will defined the new labels. These are defined on a given image, or from
        the distance transform of binary mask to label. Neighboring local maxima are clustered with `ndi.label`
        to reduce oversegmentation (with a binary dilation to bridge over small gaps).
@@ -167,11 +168,11 @@ class Watershed:
     Attributes:
         maximum_footprint (np.ndarray | None): Binary kernel to use for maximum filtering. Local maxima are defined
             as pixels that are equal or above all their neighbors defined in this kernel.
-            Shape: ([d, ]h, w), dtype: np.bool_
+            Shape: ([d, ]h, w), dtype: bool
             By default, the footprint is a 3x3 square/cube (considering only direct neighbors, including diagonal ones)
         maximum_dilation (np.ndarray | None): Apply binary dilation to the local maxima mask before running
             `ndi.label`. Connected local maxima are merged in a single label before running watershed.
-            Shape: ([d, ]h, w), dtype: np.bool_
+            Shape: ([d, ]h, w), dtype: bool
             By default, dilation is not applied. Only direct maxima neighbors (including diagonal ones) are merged.
         min_peak_intensity (float): Filter local maxima based on their intensity.
 

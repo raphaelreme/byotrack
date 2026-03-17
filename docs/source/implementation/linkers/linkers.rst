@@ -9,5 +9,6 @@ Linkers
    nearest_neighbor
    kalman
    koft
+   trackonstra
    icy_emht
    trackmate

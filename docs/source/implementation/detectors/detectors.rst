@@ -7,3 +7,4 @@ Detectors
 
    wavelet
    stardist
+   detection_refiners
