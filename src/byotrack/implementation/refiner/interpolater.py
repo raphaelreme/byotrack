@@ -52,9 +52,14 @@ class ForwardBackwardInterpolater(byotrack.Refiner):
         self.kwargs = kwargs
 
     @override
-    def run(self, video: Sequence[np.ndarray] | np.ndarray, tracks: Collection[byotrack.Track]) -> list[byotrack.Track]:
+    def run(
+        self, video: Sequence[np.ndarray] | np.ndarray | None, tracks: Collection[byotrack.Track]
+    ) -> list[byotrack.Track]:
         if not tracks:
             return []
+
+        if video is None:
+            raise ValueError("video is required for ForwardBackwardInterpolater.")
 
         tracks_matrix = byotrack.Track.tensorize(tracks, frame_range=(0, len(video)) if self.full else None)
         start, end = (0, len(video))

@@ -34,9 +34,14 @@ class DistStitcher(byotrack.Refiner):
         self.lap_solver = pylapy.LapSolver()
 
     @override
-    def run(self, video: Sequence[np.ndarray] | np.ndarray, tracks: Collection[byotrack.Track]) -> list[byotrack.Track]:
+    def run(
+        self, video: Sequence[np.ndarray] | np.ndarray | None, tracks: Collection[byotrack.Track]
+    ) -> list[byotrack.Track]:
         if not tracks:
             return []
+
+        if video is None:  # XXX: Could we handle this later (only in flow propagation of EMC2?)
+            raise ValueError("video is required for DistSticher.")
 
         dist = self.dist(video, tracks)
         links = self.lap_solver.solve(dist, self.eta)

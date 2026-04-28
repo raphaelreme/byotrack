@@ -164,14 +164,17 @@ class TrackMateLinker(byotrack.Linker):
         self.specs = specs
 
     @override
-    def run(self, video, detections_sequence: Sequence[byotrack.Detections]) -> list[byotrack.Track]:
+    def run(self, video, detections_sequence: Sequence[byotrack.DetectionsLike]) -> list[byotrack.Track]:
+        # Convert into Detections
+        detections_sequence_ = [byotrack.as_detections(detections) for detections in detections_sequence]
+
         try:
             self.specs.save(self.parameters_file)
-            fiji.save_detections(detections_sequence, self.detections_file)
+            fiji.save_detections(detections_sequence_, self.detections_file)
             self._run_fiji()
 
             tracks = fiji.load_tracks(self.tracks_file)
-            update_detection_ids(tracks, detections_sequence)
+            update_detection_ids(tracks, detections_sequence_)
 
             # Sort tracks by starting time and then position (Prevents indeterministic behaviors with some post
             # processing steps)

@@ -350,7 +350,7 @@ class KalmanLinker(FrameByFrameLinker):
         self.projections = self.kalman_filter.project(self.active_states)
 
     @override
-    def cost(self, frame: np.ndarray, detections: byotrack.Detections) -> tuple[torch.Tensor, float]:
+    def cost(self, frame: np.ndarray | None, detections: byotrack.Detections) -> tuple[torch.Tensor, float]:
         anisotropy = torch.tensor(self.specs.anisotropy)[-detections.dim :]
 
         if self.specs.cost == Cost.EUCLIDEAN:
@@ -380,7 +380,9 @@ class KalmanLinker(FrameByFrameLinker):
         return cost, -torch.log(torch.tensor(self.specs.association_threshold)).item()
 
     @override
-    def post_association(self, frame: np.ndarray, detections: byotrack.Detections, active_mask: torch.Tensor) -> None:
+    def post_association(
+        self, frame: np.ndarray | None, detections: byotrack.Detections, active_mask: torch.Tensor
+    ) -> None:
         positions = detections.position.to(self.dtype)
 
         # Update the state of associated tracks (unassociated tracks keep the predicted state)

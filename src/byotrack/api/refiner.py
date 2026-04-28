@@ -22,13 +22,14 @@ class Refiner(ABC):
 
     @abstractmethod
     def run(
-        self, video: Sequence[np.ndarray] | np.ndarray, tracks: Collection[byotrack.Track]
+        self, video: Sequence[np.ndarray] | np.ndarray | None, tracks: Collection[byotrack.Track]
     ) -> Collection[byotrack.Track]:
         """Run the refiner on a whole video.
 
         Args:
-            video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames (array).
-                Each array is expected to have a shape ([D, ]H, W, C)
+            video (Sequence[np.ndarray] | np.ndarray | None): Optional sequence of T frames (array).
+                Each array is expected to have a shape ([D, ]H, W, C). Some refiners may
+                not require any video. In that case, you may provide explicitly None.
             tracks (Collection[byotrack.Track]): Tracks of particles
 
         Returns:

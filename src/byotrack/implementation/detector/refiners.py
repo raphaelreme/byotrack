@@ -10,6 +10,7 @@ import skimage
 import torch
 
 import byotrack
+from byotrack.api.detections.segmentation_detections import SegmentationDetections
 
 if sys.version_info < (3, 12):
     from typing_extensions import override
@@ -18,54 +19,22 @@ else:
 
 
 @numba.njit(cache=byotrack.NUMBA_CACHE)
-def filter_objects_on_size(segmentation: np.ndarray, min_area: float, max_area: float) -> np.ndarray:
-    """Filter instances from the segmentation in-place if they do not fit size criteria.
-
-    Args:
-        segmentation (np.ndarray): Segmentation mask that will be filtered in-place
-            Shape ([D, ]H, W), dtype: int
-        min_area (float): Minimum number of pixels to be kept in the segmentation.
-        max_area (float): Maximum number of pixels to be kept in the segmentation.
-
-    Returns:
-        np.ndarray: Deleted instances
-
-    """
-    segmentation = segmentation.reshape(-1)
-    area = np.zeros(segmentation.max(), np.uint)
-
-    for i in range(segmentation.size):
-        instance = segmentation[i] - 1
-        if instance != -1:
-            area[instance] += 1
-
-    to_delete = (area < min_area) | (area > max_area)
-
-    for i in range(segmentation.size):
-        instance = segmentation[i] - 1
-        if instance != -1 and to_delete[instance]:
-            segmentation[i] = 0
-
-    return to_delete
-
-
-@numba.njit(cache=byotrack.NUMBA_CACHE)
-def filter_objects_on_intensity(
+def _to_filter_based_on_intensity(
     segmentation: np.ndarray, intensity: np.ndarray, mini: float, maxi: float, min_peak: float
 ) -> np.ndarray:
-    """Filter instances from the segmentation in-place if they do not fit intensity criteria.
+    """Find instances to filter in the segmentation mask if they do not fit intensity criteria.
 
     Args:
-        segmentation (np.ndarray): Segmentation mask that will be filtered in-place
-            Shape ([D, ]H, W), dtype: int
+        segmentation (np.ndarray): Consecutive instance segmentation mask.
+            Shape ([D, ]H, W), dtype: int.
         intensity (np.ndarray): Intensity map (frame with aggregated channels)
-            Shape ([D, ]H, W), dtype: float
+            Shape ([D, ]H, W), dtype: float.
         mini (float): Minimum intensity (summed) to be kept in the segmentation.
         maxi (float): Maximum intensity (summed) to be kept in the segmentation.
         min_peak (float): Minimum peak intensity to be kept in the segmentation.
 
     Returns:
-        np.ndarray: Deleted instances
+        np.ndarray: Instances to delete
 
     """
     segmentation = segmentation.reshape(-1)
@@ -79,14 +48,7 @@ def filter_objects_on_intensity(
             sum_intensity[instance] += intensity[i]
             max_intensity[instance] = max(intensity[i], max_intensity[instance])
 
-    to_delete = (sum_intensity < mini) | (sum_intensity > maxi) | (max_intensity < min_peak)
-
-    for i in range(segmentation.size):
-        instance = segmentation[i] - 1
-        if instance != -1 and to_delete[instance]:
-            segmentation[i] = 0
-
-    return to_delete
+    return (sum_intensity < mini) | (sum_intensity > maxi) | (max_intensity < min_peak)
 
 
 class FilterDetections(byotrack.DetectionsRefiner):
@@ -119,38 +81,23 @@ class FilterDetections(byotrack.DetectionsRefiner):
 
     @override
     def apply(self, detections, frame=None):
-        segmentation = detections.segmentation.numpy().copy()
-        deleted = filter_objects_on_size(segmentation, self.min_area, self.max_area)
+        detections = byotrack.as_detections(detections)
+
+        to_delete = self.min_area < detections.mass < self.max_area
 
         if self.min_intensity > 0.0 or self.min_peak > 0.0 or self.max_intensity < float("inf"):
             if frame is None:
                 raise ValueError("Cannot filter on intensity without a given frame")
 
-            intensity = frame.mean(axis=-1)  # Sum channels
+            intensity = frame.mean(axis=-1)  # Average channels
 
-            deleted |= filter_objects_on_intensity(
-                segmentation, intensity, self.min_intensity, self.max_intensity, self.min_peak
+            to_delete |= torch.from_numpy(
+                _to_filter_based_on_intensity(
+                    detections.segmentation.numpy(), intensity, self.min_intensity, self.max_intensity, self.min_peak
+                )
             )
 
-        kept = ~torch.tensor(deleted)
-
-        data: dict[str, torch.Tensor] = {}
-
-        for key, value in detections.data.items():
-            if key == "segmentation":
-                data[key] = torch.from_numpy(segmentation)
-                continue
-
-            if value.shape[0] == len(detections):  # pos, bbox, confidence and others
-                data[key] = detections.data[key][kept]
-            else:
-                data[key] = detections.data[key]
-
-        return byotrack.Detections(
-            data,
-            frame_id=detections.frame_id,
-            use_median_position=detections.use_median_position,
-        )
+        return detections.filter(~to_delete)
 
 
 class Watershed:
@@ -251,6 +198,8 @@ class WatershedRefiner(byotrack.DetectionsRefiner):
     It will convert the instance segmentation of Detections into a binary one, and then apply
     watershed labeling (see `Watershed`).
 
+    Note that ``confidence`` and ``labels`` are not preserved by the current implementation.
+
     Warning: This is still experimental and this may change in future versions
 
     Args:
@@ -287,9 +236,9 @@ class WatershedRefiner(byotrack.DetectionsRefiner):
 
     @override
     def apply(self, detections, frame=None):
-        if "segmentation" not in detections.data:
+        if not isinstance(detections, SegmentationDetections):
             warnings.warn(
-                "Watershed can only be applied to segmented Detections. This refiner is skipped", stacklevel=2
+                "Watershed can only be applied to SegmentationDetections. This refiner is skipped", stacklevel=2
             )
             return detections
 
@@ -330,8 +279,9 @@ class WatershedRefiner(byotrack.DetectionsRefiner):
 
             segmentation = self.watershed.watershed(mask, edt)
 
-        return byotrack.Detections(
-            {"segmentation": torch.from_numpy(segmentation)},
-            frame_id=detections.frame_id,
-            use_median_position=detections.use_median_position,
+        return SegmentationDetections(
+            torch.from_numpy(segmentation),
+            position_method=detections._position_fn,  # noqa: SLF001
+            cache=detections._use_cache,  # noqa: SLF001
+            compress=detections._compress,  # noqa: SLF001
         )

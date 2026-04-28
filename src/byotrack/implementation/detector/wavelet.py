@@ -5,12 +5,12 @@ import time
 import warnings
 from typing import TYPE_CHECKING, Any, cast
 
+import numba  # type: ignore[import-untyped]
 import numpy as np
 import scipy.ndimage as ndi  # type: ignore[import-untyped]
 import torch
 
 import byotrack
-from byotrack.implementation.detector.refiners import filter_objects_on_size
 
 if TYPE_CHECKING:
     from byotrack.implementation.detector.refiners import Watershed
@@ -26,6 +26,38 @@ _DIM_TO_CONV: dict[int, type[torch.nn.Conv1d | torch.nn.Conv2d | torch.nn.Conv3d
     2: torch.nn.Conv2d,
     3: torch.nn.Conv3d,
 }
+
+
+@numba.njit(cache=byotrack.NUMBA_CACHE)
+def filter_objects_on_size(segmentation: np.ndarray, min_area: float, max_area: float) -> np.ndarray:
+    """Filter instances from the segmentation in-place if they do not fit size criteria.
+
+    Args:
+        segmentation (np.ndarray): Segmentation mask that will be filtered in-place
+            Shape ([D, ]H, W), dtype: int
+        min_area (float): Minimum number of pixels to be kept in the segmentation.
+        max_area (float): Maximum number of pixels to be kept in the segmentation.
+
+    Returns:
+        np.ndarray: Deleted instances
+
+    """
+    segmentation = segmentation.reshape(-1)
+    area = np.zeros(segmentation.max(), np.uint)
+
+    for i in range(segmentation.size):
+        instance = segmentation[i] - 1
+        if instance != -1:
+            area[instance] += 1
+
+    to_delete = (area < min_area) | (area > max_area)
+
+    for i in range(segmentation.size):
+        instance = segmentation[i] - 1
+        if instance != -1 and to_delete[instance]:
+            segmentation[i] = 0
+
+    return to_delete
 
 
 class B3SplineUWT(torch.nn.Module):
@@ -371,7 +403,7 @@ class WaveletDetector(byotrack.BatchDetector):
         self.b3swt = B3SplineUWT(scale + 1, return_all=False).to(self.device)
 
     @override
-    def detect(self, batch: np.ndarray) -> list[byotrack.Detections]:
+    def detect(self, batch: np.ndarray) -> list[byotrack.SegmentationDetections]:
         if batch.shape[-1] != 1:
             raise ValueError("Multi channel images are not supported in WaveletDetector. Aggregate the channels first")
 
@@ -401,12 +433,9 @@ class WaveletDetector(byotrack.BatchDetector):
                 filter_objects_on_size(segmentation, self.min_area, self.max_area)
 
             detections_list.append(
-                byotrack.Detections(
-                    {
-                        "segmentation": torch.from_numpy(segmentation),
-                        # "confidence": put areas instead of deleting them ?
-                    },
-                    frame_id=i,
+                byotrack.SegmentationDetections(
+                    torch.from_numpy(segmentation),
+                    # confidence=...,  # put areas instead of deleting them?  # noqa: ERA001
                 )
             )
 

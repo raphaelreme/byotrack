@@ -23,39 +23,39 @@ else:
 class Linker(ABC):
     """Base class for linkers in videos.
 
-    Link detections through time to build tracks.
-
-    Each linker can define a set of parameters (See `ParametrizedObjectMixin`)
-
+    A linker solves the tracking as the optimal links of detections through time.
     """
 
     @abstractmethod
     def run(
-        self, video: Sequence[np.ndarray] | np.ndarray, detections_sequence: Sequence[byotrack.Detections]
+        self,
+        video: Sequence[np.ndarray] | np.ndarray | None,
+        detections_sequence: Sequence[byotrack.DetectionsLike],
     ) -> Collection[byotrack.Track]:
-        """Run the linker on a whole video.
+        """Run the linker on a whole sequence.
 
         Args:
-            video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames (array).
-                Each array is expected to have a shape ([D, ]H, W, C)
-            detections_sequence (Sequence[byotrack.Detections]): Detections for each frame
-                Detections is expected for each frame of the video, in the same order.
-                (Note that for a given frame, the Detections can be empty)
+            video (Sequence[np.ndarray] | np.ndarray | None): Optional video sequence of T frames.
+                Each frame (array) is expected to have a shape ([D, ]H, W, C). Some linkers may
+                not require any video. In that case, you may provide explicitly None.
+            detections_sequence (Sequence[byotrack.DetectionsLike]): Detections are expected for
+                for each frame of the video (sorted in time). Note that for a given frame, the
+                Detections can be empty (i.e. Detections.length = 0).
 
         Returns:
-            Collection[byotrack.Track]: Tracks of particles
+            Collection[byotrack.Track]: Tracks for the given detections.
 
         """
 
 
 class OnlineLinker(Linker):
-    """Online linker, it tracks particles one frame at a time.
+    """Online linker. Build tracks one frame at a time.
 
     The linking algorithm is dividing into three steps:
 
-    * reset: Reset the algorithm
-    * update: Update the algorithm with a new frame and detections
-    * collect: Collect the constructed tracks up to the last frame
+    * :meth:`reset`: Reset the algorithm.
+    * :meth:`update`: Update the algorithm with a new frame and its detections.
+    * :meth:`collect`: Collect the constructed tracks up to the last frame.
 
     """
 
@@ -73,16 +73,15 @@ class OnlineLinker(Linker):
         """
 
     @abstractmethod
-    def update(self, frame: np.ndarray, detections: byotrack.Detections) -> None:
+    def update(self, frame: np.ndarray | None, detections: byotrack.Detections) -> None:
         """Progress in the linking step by one frame.
 
         Will update the internal algorithm by a single frame and its detections.
 
         Args:
-            frame (np.ndarray): Frame of the video
+            frame (np.ndarray | None): Optional frame of the video.
                 Shape: ([D, ]H, W, C), dtype: float
-            detections (byotrack.Detections): Detections for the given frame
-
+            detections (byotrack.Detections): Detections for the given frame.
         """
 
     @abstractmethod
@@ -96,28 +95,45 @@ class OnlineLinker(Linker):
 
     @override
     def run(
-        self, video: Sequence[np.ndarray] | np.ndarray, detections_sequence: Sequence[byotrack.Detections]
+        self,
+        video: Sequence[np.ndarray] | np.ndarray | None,
+        detections_sequence: Sequence[byotrack.DetectionsLike],
     ) -> Collection[byotrack.Track]:
-        if len(video) != len(detections_sequence):
-            warnings.warn(
-                f"""Expected to have one Detections for each frame of the video.
+        if video is not None and len(video) != len(detections_sequence):
+            if len(video) < len(detections_sequence):
+                warnings.warn(
+                    f"""Found less frames ({len(video)}) than Detections ({len(detections_sequence)}).
 
-            There are {len(detections_sequence)} Detections for {len(video)} frames.
-            This can lead to unexpected behavior. By default we assume that the first Detections
-            is aligned with the first frame and stop when the end of shortest sequence is reached.
-            """,
-                stacklevel=2,
-            )
+                    By default we assume that the first Detections are aligned with the first video frame.
+                    Tracking will be stopped with the last video frame.
+                    """,
+                    stacklevel=2,
+                )
+                detections_sequence = detections_sequence[: len(video)]
 
-        if len(video) == 0:
+            if len(video) > len(detections_sequence):
+                warnings.warn(
+                    f"""Found more frames ({len(video)}) than Detections ({len(detections_sequence)}).
+
+                    By default we assume that the first Detections are aligned with the first video frame.
+                    Tracking will be stopped with the last Detections.
+                    """,
+                    stacklevel=2,
+                )
+                video = video[: len(detections_sequence)]
+
+        if len(detections_sequence) == 0:
             return []
 
-        self.reset(video[0].ndim - 1)
+        progress_bar = tqdm.tqdm(desc=self.progress_bar_description, total=len(detections_sequence))
 
-        progress_bar = tqdm.tqdm(desc=self.progress_bar_description, total=min(len(video), len(detections_sequence)))
+        for frame_id, detections in enumerate(detections_sequence):
+            _detections = byotrack.as_detections(detections)
 
-        for frame, detections in zip(video, detections_sequence, strict=False):
-            self.update(frame, detections)
+            if frame_id == 0:  # Let's reset
+                self.reset(_detections.dim)
+
+            self.update(video[frame_id] if video is not None else None, _detections)
             progress_bar.update()
 
         progress_bar.close()

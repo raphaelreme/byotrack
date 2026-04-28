@@ -142,7 +142,7 @@ class NearestNeighborLinker(FrameByFrameLinker):
             )
 
     @override
-    def cost(self, frame: np.ndarray, detections: byotrack.Detections) -> tuple[torch.Tensor, float]:
+    def cost(self, frame: np.ndarray | None, detections: byotrack.Detections) -> tuple[torch.Tensor, float]:
         anisotropy = torch.tensor(self.specs.anisotropy)[-detections.dim :]
 
         return (
@@ -151,7 +151,9 @@ class NearestNeighborLinker(FrameByFrameLinker):
         )
 
     @override
-    def post_association(self, frame: np.ndarray, detections: byotrack.Detections, active_mask: torch.Tensor) -> None:
+    def post_association(
+        self, frame: np.ndarray | None, detections: byotrack.Detections, active_mask: torch.Tensor
+    ) -> None:
         # Update tracks positions with detections
         # Optionally using an EMA to reduce detections noise
         self.active_positions[self._links[:, 0]] -= (1.0 - self.specs.ema) * (

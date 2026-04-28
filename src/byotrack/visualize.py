@@ -211,14 +211,14 @@ class InteractiveVisualizer:
     def __init__(
         self,
         video: Sequence[np.ndarray] | np.ndarray = (),
-        detections_sequence: Sequence[byotrack.Detections] = (),
+        detections_sequence: Sequence[byotrack.DetectionsLike] = (),
         tracks: Collection[byotrack.Track] = (),
     ) -> None:
         if not (len(video) != 0 or detections_sequence or tracks):
             raise ValueError("No data to display")
 
         self.video = video
-        self.detections_sequence = detections_sequence
+        self.detections_sequence = [byotrack.as_detections(detections) for detections in detections_sequence]
         self.tracks = tracks
 
         self.frame_shape = self._get_frame_shape()

@@ -85,7 +85,9 @@ class RTSSmoother(byotrack.Refiner):
             )
 
     @override
-    def run(self, _: Sequence[np.ndarray] | np.ndarray, tracks: Collection[byotrack.Track]) -> list[byotrack.Track]:
+    def run(
+        self, video: Sequence[np.ndarray] | np.ndarray | None, tracks: Collection[byotrack.Track]
+    ) -> list[byotrack.Track]:
         if not tracks:
             return []
 

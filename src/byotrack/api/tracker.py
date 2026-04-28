@@ -73,7 +73,7 @@ class PauseableTQDM(tqdm.tqdm):
 class Tracker(ABC):
     """Base abstract tracker class.
 
-    A tracker can be run on a whole video and produces tracks
+    A tracker search for the optimal tracks in the given video.
 
     """
 
@@ -155,14 +155,9 @@ class BatchMultiStepTracker(MultiStepTracker):
         if len(video) == 0:
             return []
 
-        reader = None
-        if self.detector.add_true_frames and isinstance(video, byotrack.Video):
-            reader = video.reader
-
-        self.linker.reset()
+        self.linker.reset(video[0].ndim - 1)
 
         detections_sequence: Sequence[byotrack.Detections] = []
-        frame_ids: list[int] = []
 
         detect_bar = PauseableTQDM(desc=self.detector.progress_bar_description, total=len(video))
         link_bar = PauseableTQDM(desc=self.linker.progress_bar_description, total=len(video))
@@ -172,7 +167,6 @@ class BatchMultiStepTracker(MultiStepTracker):
         batch = np.zeros((self.detector.batch_size, *first.shape), dtype=first.dtype)
         batch[0] = first
         n = 1
-        frame_ids.append(reader.tell() if reader else 0)
 
         for frame in video[1:]:
             if n >= self.detector.batch_size:
@@ -184,7 +178,6 @@ class BatchMultiStepTracker(MultiStepTracker):
                 link_bar.unpause()
 
                 for i in range(n):
-                    detections_sequence[i].frame_id = frame_ids[i]
                     self.linker.update(batch[i], detections_sequence[i])
                     link_bar.update()
 
@@ -192,11 +185,9 @@ class BatchMultiStepTracker(MultiStepTracker):
                 link_bar.pause()
                 detect_bar.unpause()
 
-                frame_ids = []
                 n = 0
 
             batch[n] = frame
-            frame_ids.append(reader.tell() if reader else len(frame_ids))
             n += 1
 
         detections_sequence = self.detector.detect(batch[:n])
@@ -206,7 +197,6 @@ class BatchMultiStepTracker(MultiStepTracker):
         link_bar.unpause()
 
         for i in range(n):
-            detections_sequence[i].frame_id = frame_ids[i]
             self.linker.update(batch[i], detections_sequence[i])
             link_bar.update()
 

@@ -254,15 +254,18 @@ class IcyEMHTLinker(byotrack.Linker):
         self.full_specs = full_specs
 
     @override
-    def run(self, video, detections_sequence: Sequence[byotrack.Detections]) -> list[byotrack.Track]:
+    def run(self, video, detections_sequence: Sequence[byotrack.DetectionsLike]) -> list[byotrack.Track]:
+        # Convert into Detections
+        detections_sequence_ = [byotrack.as_detections(detections) for detections in detections_sequence]
+
         try:
             if self.full_specs:
-                self.full_specs.to_xml(detections_sequence).write(self.parameters_file)
-            icy.save_detections(detections_sequence, self.rois_file)
+                self.full_specs.to_xml(detections_sequence_).write(self.parameters_file)
+            icy.save_detections(detections_sequence_, self.rois_file)
             self._run_icy()
 
             tracks = icy.load_tracks(self.tracks_file)
-            update_detection_ids(tracks, detections_sequence)
+            update_detection_ids(tracks, detections_sequence_)
 
             # Sort tracks by starting time and then position (They seem to be randomly sorted otherwise and in addition
             # with EMC2 torch-tps approximate propagation it yields indeterministic behaviors)

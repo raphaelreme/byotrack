@@ -48,7 +48,8 @@ class FeaturesExtractor(ABC):
             detections (byotrack.Detections): Detected objects on the frame, for which features should be computed
 
         """
-        detections.data["features"] = self(frame, detections)
+        # XXX: Will probably evolve in the future.
+        detections.metadata["features"] = self(frame, detections)
 
 
 class MultiFeaturesExtractor(FeaturesExtractor):

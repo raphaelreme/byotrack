@@ -274,7 +274,9 @@ class TrackOnStraLinker(FrameByFrameLinker):
         pass  # No motion to model
 
     @override
-    def post_association(self, frame: np.ndarray, detections: byotrack.Detections, active_mask: torch.Tensor) -> None:
+    def post_association(
+        self, frame: np.ndarray | None, detections: byotrack.Detections, active_mask: torch.Tensor
+    ) -> None:
         # Simply store the position of the detection
         active_positions = torch.full((len(self.active_tracks), detections.dim), torch.nan)
 
@@ -286,7 +288,7 @@ class TrackOnStraLinker(FrameByFrameLinker):
         self.all_positions.append(active_positions)
 
     @override
-    def cost(self, frame: np.ndarray, detections: byotrack.Detections) -> tuple[torch.Tensor, float]:
+    def cost(self, frame: np.ndarray | None, detections: byotrack.Detections) -> tuple[torch.Tensor, float]:
         n = len(self.active_tracks)
         m = detections.length
         cost = torch.full((n, m), torch.inf)

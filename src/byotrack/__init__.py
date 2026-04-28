@@ -90,8 +90,17 @@ Please refer to the ![official documentation](https://byotrack.readthedocs.io/en
 
 # Import API and main features but no implementation
 from byotrack._env import NUMBA_CACHE, ZSTD_SEG
-from byotrack.api.detector.detections import Detections
-from byotrack.api.detector.detector import BatchDetector, DetectionsRefiner, Detector
+from byotrack.api.detections.bbox_detections import BBoxDetections
+from byotrack.api.detections.detections import (
+    Detections,
+    DetectionsLike,
+    as_detections,
+    fast_relabel,
+    relabel_consecutive,
+)
+from byotrack.api.detections.point_detections import PointDetections
+from byotrack.api.detections.segmentation_detections import SegmentationDetections
+from byotrack.api.detector import BatchDetector, DetectionsRefiner, Detector
 from byotrack.api.features_extractor import FeaturesExtractor, MultiFeaturesExtractor
 from byotrack.api.linker import Linker, OnlineLinker
 from byotrack.api.optical_flow.optical_flow import OpticalFlow
@@ -105,9 +114,11 @@ __version__ = "1.4.3"
 __all__ = [
     "NUMBA_CACHE",
     "ZSTD_SEG",
+    "BBoxDetections",
     "BatchDetector",
     "BatchMultiStepTracker",
     "Detections",
+    "DetectionsLike",
     "DetectionsRefiner",
     "Detector",
     "FeaturesExtractor",
@@ -116,10 +127,16 @@ __all__ = [
     "MultiStepTracker",
     "OnlineLinker",
     "OpticalFlow",
+    "PatchDetections",
+    "PointDetections",
     "Refiner",
+    "SegmentationDetections",
     "Track",
     "Tracker",
     "TrackingGraph",
     "Video",
     "VideoTransformConfig",
+    "as_detections",
+    "fast_relabel",
+    "relabel_consecutive",
 ]

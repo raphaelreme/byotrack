@@ -10,7 +10,6 @@ import sys
 import warnings
 from typing import TYPE_CHECKING
 
-import numba  # type: ignore[import-untyped]
 import numpy as np
 import tifffile  # type: ignore[import-untyped]
 import torch
@@ -19,7 +18,8 @@ import tqdm.auto as tqdm
 import byotrack
 import byotrack.utils
 import byotrack.video.reader
-from byotrack.api.detector.detections import _fast_unique, _position_from_segmentation, relabel_consecutive
+from byotrack.api.detections.detections import draw_disk_2d, draw_disk_3d, fast_relabel, labels_of, relabel_consecutive
+from byotrack.api.detections.segmentation_detections import _position_from_segmentation
 
 if TYPE_CHECKING:
     import os
@@ -55,15 +55,13 @@ class GroundTruthDetector(byotrack.BatchDetector):
     progress_bar_description = "Detections (Load from CTC format)"
 
     @override
-    def detect(self, batch: np.ndarray) -> list[byotrack.Detections]:
+    def detect(self, batch: np.ndarray) -> list[byotrack.SegmentationDetections]:
         if batch.shape[-1] != 1:
             raise ValueError("Multichannel segmentation are not supported")
         if not np.issubdtype(batch.dtype, np.integer):
             raise ValueError("GroundTruthDetector expects label (integer) encoded frames.")
 
-        return [
-            byotrack.Detections({"segmentation": torch.from_numpy(frame[..., 0].astype(np.int32))}) for frame in batch
-        ]
+        return [byotrack.SegmentationDetections(torch.from_numpy(frame[..., 0].astype(np.int32))) for frame in batch]
 
 
 def _parse_meta_data(file: pathlib.Path) -> dict[int, tuple[int, int, int]]:
@@ -158,10 +156,10 @@ def load_tracks(  # noqa: C901, PLR0912, PLR0915
         frame = frame[..., 0]
 
         # Compute the mapping done by relabel consecutive
-        unique = _fast_unique(frame)[1:] - 1  # Remove the background (0)
+        track_ids = labels_of(frame)
         positions = _position_from_segmentation(relabel_consecutive(frame, inplace=True))
 
-        for det_id, (track_id, position) in enumerate(zip(unique, positions, strict=True)):
+        for det_id, (track_id, position) in enumerate(zip(track_ids, positions, strict=True)):
             if track_id not in tracks_data:
                 tracks_data[track_id] = ([], [], [])
 
@@ -276,168 +274,13 @@ def _save_metadata(path: pathlib.Path, tracks: Collection[byotrack.Track]) -> No
     path.write_text("\n".join(lines))
 
 
-@numba.njit(parallel=True, cache=byotrack.NUMBA_CACHE)
-def _fast_relabel(segmentation: np.ndarray, mapping: np.ndarray) -> None:
-    """Inplace fast relabel with given mapping.
+def _build_radii(n: int, dim: int, radius: float, anisotropy: float) -> np.ndarray:
+    """Build a constant radii array accounting for anisotropy."""
+    radii = np.full((n, dim), radius, dtype=np.float32)
+    if dim == 3:  # noqa: PLR2004
+        radii[:, -1] /= anisotropy
 
-    It assumes that seg.max() is small before the number of pixels of the image (which is always the case in practice).
-    """
-    segmentation = segmentation.reshape(-1)
-
-    for i in numba.prange(segmentation.size):
-        if segmentation[i]:
-            segmentation[i] = mapping[segmentation[i] - 1]
-
-
-@numba.njit(parallel=True, cache=byotrack.NUMBA_CACHE)
-def _fast_disk_2d(
-    segmentation: np.ndarray,
-    bbox: np.ndarray,
-    positions: np.ndarray,
-    identifiers: np.ndarray,
-    radius: np.ndarray,
-    *,
-    overwrite=False,
-) -> None:
-    """Fast inplace drawing of disk in 2D.
-
-    Args:
-        segmentation (np.ndarray): Segmentation image to draw on
-            Shape: (H, W), dtype: uint16
-        bbox (np.ndarray): Indices to consider around the particles (see `draw_disk`)
-            Shape: (m, d), dtype: int
-        positions (np.ndarray): Positions of the disks' centers
-            Shape: (n, d), dtype: float32
-        identifiers (np.ndarray): Identifier of each disk
-            Shape: (n,), dtype: uint16
-        radius (np.ndarray): Radius of each disk
-            Shape: (n, ), dtype: float32
-        overwrite (bool): Overwrite pixels that are already written (!=0)
-            Default: False
-
-    """
-    positions_round = np.round(positions).astype(np.int64)
-    radius = radius**2
-    best_dist = np.full(segmentation.shape, np.inf, dtype=np.float32)
-
-    for k in range(positions_round.shape[0]):
-        for l in numba.prange(bbox.shape[0]):  # noqa: E741
-            pos = bbox[l] + positions_round[k]
-
-            i, j = pos
-
-            if not 0 <= i < segmentation.shape[0] or not 0 <= j < segmentation.shape[1]:
-                continue
-
-            if not overwrite and segmentation[i, j] != 0 and best_dist[i, j] == np.inf:
-                continue
-
-            delta = pos - positions[k]
-            dist = delta @ delta
-
-            if dist <= radius[k] and dist < best_dist[i, j]:
-                segmentation[i, j] = identifiers[k]
-                best_dist[i, j] = dist
-
-
-@numba.njit(parallel=True, cache=byotrack.NUMBA_CACHE)
-def _fast_disk_3d(
-    segmentation: np.ndarray,
-    bbox: np.ndarray,
-    positions: np.ndarray,
-    identifiers: np.ndarray,
-    radius: np.ndarray,
-    *,
-    anisotropy=1.0,
-    overwrite=False,
-) -> None:
-    """Fast inplace drawing of disk in 3D.
-
-    Args:
-        segmentation (np.ndarray): Segmentation image to draw on
-            Shape: (D, H, W), dtype: uint16
-        bbox (np.ndarray): Indices to consider around the particles (see `draw_disk`)
-            Shape: (m, d), dtype: int
-        positions (np.ndarray): Positions of the disks' centers
-            Shape: (n, d), dtype: float32
-        identifiers (np.ndarray): Identifier of each disk
-            Shape: (n,), dtype: uint16
-        radius (np.ndarray): Radius of each disk
-            Shape: (n, ), dtype: float32
-        anisotropy (float): Relative size of a pixel along the depth dimension
-            versus height/width dimensions.
-            Default: 1.0
-        overwrite (bool): Overwrite pixels that are already written (!=0)
-            Default: False
-
-    """
-    positions_round = np.round(positions).astype(np.int64)
-    radius = radius**2
-    best_dist = np.full(segmentation.shape, np.inf, dtype=np.float32)
-
-    for k in range(positions_round.shape[0]):
-        for l in numba.prange(bbox.shape[0]):  # noqa: E741
-            pos = bbox[l] + positions_round[k]
-
-            z, i, j = pos
-
-            if (
-                not 0 <= z < segmentation.shape[0]
-                or not 0 <= i < segmentation.shape[1]
-                or not 0 <= j < segmentation.shape[2]
-            ):
-                continue
-
-            if not overwrite and segmentation[z, i, j] != 0 and best_dist[z, i, j] == np.inf:
-                continue
-
-            delta = pos - positions[k]
-            delta[0] *= anisotropy  # Increase distance in Z by the anisotropy
-            dist = delta @ delta
-
-            if dist <= radius[k] and dist < best_dist[z, i, j]:
-                segmentation[z, i, j] = identifiers[k]
-                best_dist[z, i, j] = dist
-
-
-def draw_disk(
-    segmentation: np.ndarray,
-    positions: np.ndarray,
-    identifiers: np.ndarray,
-    radius: np.ndarray,
-    *,
-    anisotropy=1.0,
-    overwrite=False,
-) -> None:
-    """Draw disks on the segmentation.
-
-    Args:
-        segmentation (np.ndarray): Segmentation image to draw on
-            Shape: (D, H, W), dtype: uint16
-        positions (np.ndarray): Positions of the disks' centers
-            Shape: (n, d), dtype: float32
-        identifiers (np.ndarray): Identifier of each disk
-            Shape: (n,), dtype: uint16
-        radius (np.ndarray): Radius of each disk
-            Shape: (n, ), dtype: float32)
-        anisotropy (float): Relative size of a pixel along the depth dimension
-            versus height/width dimensions.
-            Default: 1.0
-        overwrite (bool): Overwrite pixels that are already written (!=0)
-            Default: False
-
-    """
-    # Wrapped to redirect in 2D/3D and numba does not support np.indices in 3.8
-    if segmentation.ndim == 3:  # noqa: PLR2004
-        thresh = round(radius.max())
-        bbox: np.ndarray = np.indices((thresh * 2 + 1, thresh * 2 + 1, thresh * 2 + 1)).transpose(1, 2, 3, 0) - thresh
-        bbox = bbox.reshape(-1, 3)
-        _fast_disk_3d(segmentation, bbox, positions, identifiers, radius, anisoptropy=anisotropy, overwrite=overwrite)
-    else:
-        thresh = round(radius.max())
-        bbox = np.indices((thresh * 2 + 1, thresh * 2 + 1)).transpose(1, 2, 0) - thresh
-        bbox = bbox.reshape(-1, 2)
-        _fast_disk_2d(segmentation, bbox, positions, identifiers, radius, overwrite=overwrite)
+    return radii
 
 
 def save_tracks(  # noqa: C901, PLR0912, PLR0913, PLR0915
@@ -548,25 +391,27 @@ def save_tracks(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
         if has_detections:
             segmentation = detections_sequence[frame_id].segmentation.clone().numpy().astype(np.uint16)
-            _fast_relabel(segmentation, det_to_track_ids + 1)  # Offset of 1 for track id as 0 is not valid for CTC
+            fast_relabel(segmentation, det_to_track_ids)
         else:
             segmentation = np.zeros(shape, dtype=np.uint16)
 
         # Add circle to the segmentation
         if disk_ids:
-            unique = set(_fast_unique(segmentation).tolist())
+            labels = set(labels_of(segmentation).tolist())
+
+            draw_disk = draw_disk_3d if segmentation.ndim == 3 else draw_disk_2d  # noqa: PLR2004
+
             draw_disk(
                 segmentation,
                 torch.stack(disk_positions).numpy(),
-                np.array(disk_ids, dtype=np.uint16) + 1,
-                np.full(len(disk_ids), default_radius, dtype=np.float32),
-                anisotropy=anisotropy,
+                _build_radii(len(disk_ids), segmentation.ndim, default_radius, anisotropy=anisotropy),
+                np.array(disk_ids, dtype=np.uint16),
                 overwrite=overwrite_detections,
             )
 
             # Safety checks because CTC is quite restrictive
-            new_unique = set(_fast_unique(segmentation).tolist())
-            diff = {identifier - 1 for identifier in unique.difference(new_unique)}
+            new_labels = set(labels_of(segmentation).tolist())
+            diff = labels.difference(new_labels)
             if diff:
                 warnings.warn(
                     f"Some tracks were fully occluded: {diff}. This will induce"
@@ -575,7 +420,7 @@ def save_tracks(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     stacklevel=2,
                 )
 
-            diff = {identifier for identifier in disk_ids if identifier + 1 not in new_unique}
+            diff = {identifier for identifier in disk_ids if identifier not in new_labels}
             if diff:
                 warnings.warn(
                     f"The disk of some added tracks are not found (outside of image or occluded): {diff}."

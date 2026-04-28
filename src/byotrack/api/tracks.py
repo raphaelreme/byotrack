@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 import torch
 
-from byotrack.api.detector.detections import _position_from_segmentation
+from byotrack.api.detections.segmentation_detections import _position_from_segmentation
 
 if TYPE_CHECKING:
     import os
@@ -386,7 +386,11 @@ class Track:
 
 
 def update_detection_ids(
-    tracks: Collection[Track], detections_sequence: Sequence[byotrack.Detections], *, using_segmentation=True
+    tracks: Collection[Track],
+    detections_sequence: Sequence[byotrack.Detections],
+    *,
+    threshold=1e-5,
+    use_segmentation=True,
 ) -> None:
     """Update the `detections_ids` attribute of each track inplace.
 
@@ -398,12 +402,14 @@ def update_detection_ids(
     as the track position without using any temporal/spatial smoothing.
 
     Args:
-        tracks (Collection[Track]): The tracks to update inplace
+        tracks (Collection[Track]): The tracks to update inplace.
         detections_sequence (Sequence[byotrack.Detections]): Detections for the different frames
-            It should directly be the detections used in the linking algorithm
-        using_segmentation (bool): Whether to use the segmentation to compute position of detections
-            or use position if available. (Icy and Fiji are only given the segmentation)
-            It uses the mean position (not the median).
+            It should directly be the detections used in the linking algorithm.
+        threshold (float): Distance threshold for matching with a detection.
+            Should be small to enforce a perfect match.
+            Default: 1e-5.
+        use_segmentation (bool): Extract the mean position from the `segmentation` property instead of
+            relying on the `position` property (Icy and Fiji are only given the segmentation).
 
     """
     if not tracks:
@@ -432,7 +438,7 @@ def update_detection_ids(
         valid_points = points[frame_id - frame_range[0]][valid_tracks]
 
         # If using seg, we rely solely on the segmentation
-        if using_segmentation and "position" in detections.data:
+        if use_segmentation:
             position = torch.tensor(_position_from_segmentation(detections.segmentation.numpy()))
         else:
             position = detections.position
@@ -440,7 +446,7 @@ def update_detection_ids(
         # Compute dist between tracks and detections at time t (Shape: (N_det, N_track))
         dist = (valid_points[None] - position[:, None]).abs().sum(dim=-1)
         mini, argmin = torch.min(dist, dim=0)
-        match = mini < 1e-5  # Keep only perfect matches  # noqa: PLR2004
+        match = mini < threshold  # Keep only perfect matches
         argmin = argmin[match]
 
         for i, track in enumerate(tracks_array[valid_tracks.numpy()][match.numpy()]):

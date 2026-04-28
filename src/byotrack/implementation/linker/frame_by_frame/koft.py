@@ -191,7 +191,7 @@ class KOFTLinker(KalmanLinker):
         if self.optflow is None:
             raise ValueError("KOFT requires an optical flow algorithm")
 
-        self.last_detections = byotrack.Detections(data={"position": torch.empty((0, 2))})
+        self.last_detections: byotrack.Detections = byotrack.PointDetections(torch.empty((0, 2), dtype=torch.float32))
 
     @override
     def reset(self, dim=2) -> None:
@@ -222,7 +222,7 @@ class KOFTLinker(KalmanLinker):
         )
         self.projections = self.kalman_filter.project(self.active_states)
 
-        self.last_detections = byotrack.Detections(data={"position": torch.empty((0, dim))})
+        self.last_detections = byotrack.PointDetections(torch.empty((0, dim), dtype=torch.float32))
 
     @override
     def motion_model(self) -> None:
@@ -276,7 +276,7 @@ class KOFTLinker(KalmanLinker):
         self.projections = self.kalman_filter.project(self.active_states)
 
     @override
-    def cost(self, frame: np.ndarray, detections: byotrack.Detections) -> tuple[torch.Tensor, float]:
+    def cost(self, frame: np.ndarray | None, detections: byotrack.Detections) -> tuple[torch.Tensor, float]:
         anisotropy = torch.tensor(self.specs.anisotropy)[-detections.dim :]
 
         if self.specs.cost == Cost.EUCLIDEAN:
@@ -324,7 +324,9 @@ class KOFTLinker(KalmanLinker):
         return cost, -torch.log(torch.tensor(self.specs.association_threshold)).item()
 
     @override
-    def post_association(self, frame: np.ndarray, detections: byotrack.Detections, active_mask: torch.Tensor) -> None:
+    def post_association(
+        self, frame: np.ndarray | None, detections: byotrack.Detections, active_mask: torch.Tensor
+    ) -> None:
         self.last_detections = detections  # Save detections (May be required)
         positions = detections.position.to(self.dtype)
 

@@ -402,7 +402,7 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
         """
 
     @abstractmethod
-    def cost(self, frame: np.ndarray, detections: byotrack.Detections) -> tuple[torch.Tensor, float]:
+    def cost(self, frame: np.ndarray | None, detections: byotrack.Detections) -> tuple[torch.Tensor, float]:
         """Compute the association cost between active tracks and detections.
 
         It also returns the threshold to use (Depending on the dist you use, association_threshold
@@ -413,7 +413,7 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
         and use -log(threshold) as the true threshold. (See `KalmanLinker` and `NearestNeighborLinker`)
 
         Args:
-            frame (np.ndarray): The current frame of the video
+            frame (np.ndarray | None): The current optional frame of the video
                 Shape: (H, W, C), dtype: float
             detections (byotrack.Detections): Detections for the given frame
 
@@ -426,14 +426,16 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
         """
 
     @abstractmethod
-    def post_association(self, frame: np.ndarray, detections: byotrack.Detections, active_mask: torch.Tensor) -> None:
+    def post_association(
+        self, frame: np.ndarray | None, detections: byotrack.Detections, active_mask: torch.Tensor
+    ) -> None:
         """Update the internal state of the tracker after `update_active_tracks`.
 
         It should update any internal model/data. It is also responsible to register the position of each active
         track in `all_positions` for the current time frame.
 
         Args:
-            frame (np.ndarray): The current frame of the video
+            frame (np.ndarray | None): The optional current frame of the video
                 Shape: (H, W, C), dtype: float
             detections (byotrack.Detections): Detections for the given frame
             active_mask (torch.Tensor): Boolean tensor indicating True for still active tracks
@@ -772,13 +774,13 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
         """
         return detections
 
-    def associate(self, frame: np.ndarray, detections: byotrack.Detections) -> torch.Tensor:
+    def associate(self, frame: np.ndarray | None, detections: byotrack.Detections) -> torch.Tensor:
         """Produces links between the current tracks and detections.
 
         Optionally it handles merges and splits by associating a second time.
 
         Args:
-            frame (np.ndarray): Current frame
+            frame (np.ndarray | None): Current frame (Optional)
             detections (byotrack.Detections): Current detections
 
         Returns:
@@ -844,7 +846,7 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
         return self._links
 
     @override
-    def update(self, frame: np.ndarray, detections: byotrack.Detections) -> None:
+    def update(self, frame: np.ndarray | None, detections: byotrack.Detections) -> None:
         if self.frame_id == -1:
             # Let's reset again just in case with the right dim
             self.reset(detections.dim)
@@ -853,6 +855,8 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
 
         # Compute the flow map if optflow given
         if self.optflow is not None:
+            if frame is None:
+                raise ValueError("No video was provided. Optical flow can not be computed.")
             self.optflow.update(frame)
 
         self.motion_model()
@@ -862,9 +866,11 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
         # Do not recompute the features if some are already registered
         remove_feats = False
         if self.features_extractor is not None:
-            if "features" in detections.data:
+            if "features" in detections.metadata:
                 warnings.warn("Some features are already computed. They will be used.", stacklevel=2)
             else:
+                if frame is None:
+                    raise ValueError("No video was provided, Features can not be extracted.")
                 remove_feats = True
                 self.features_extractor.register(frame, detections)
 
@@ -886,4 +892,4 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
 
         # Remove the computed features if save_all is False
         if not self.save_all and remove_feats:
-            detections.data.pop("features")
+            detections.metadata.pop("features")
