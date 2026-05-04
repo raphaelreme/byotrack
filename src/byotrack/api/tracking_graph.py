@@ -68,12 +68,13 @@ class TrackingGraph(nx.DiGraph):
         for track in tracks:
             id_to_first_node[track.identifier] = node_id
             previous_node = None
-            dim = track.points.shape[1]
+            dim = track.dim
             has_z = dim == 3  # noqa: PLR2004
             for i in range(len(track)):
                 coords = track.points[i]
-                if torch.isnan(coords).any():
-                    continue
+                # Let's keep NaN nodes
+                # >> if torch.isnan(coords).any():
+                # >>     continue
 
                 node_attrs: dict[str, float | int] = {
                     "t": track.start + i,
@@ -153,15 +154,18 @@ class TrackingGraph(nx.DiGraph):
         """
         trk_graph = TrackingGraph()
         for node_id in nx_graph.nodes:
-            node = nx_graph.nodes[node_id]
+            node = nx_graph.nodes[node_id].copy()
             node_attrs: dict[str, float | int] = {
-                "t": node[frame_key],
-                "y": node[y_key],
-                "x": node[x_key],
+                "t": node.pop(frame_key),
+                "y": node.pop(y_key),
+                "x": node.pop(x_key),
             }
             for key, attr in [(z_key, "z"), (track_key, "track_id"), (detection_key, "detection_id")]:  # Optional keys
                 if key in node:
-                    node_attrs[attr] = node[key]
+                    node_attrs[attr] = node.pop(key)
+
+            # Add remaining keys
+            node_attrs.update(node)
 
             trk_graph.add_node(node_id, **node_attrs)
 
@@ -170,7 +174,7 @@ class TrackingGraph(nx.DiGraph):
             if trk_graph.nodes[edge[1]]["t"] - trk_graph.nodes[edge[0]]["t"] <= 0:
                 raise ValueError("Backward edge are not supported")
 
-            trk_graph.add_edge(*edge)
+            trk_graph.add_edge(*edge, **nx_graph.edges[edge])
 
             # Set split and merges from metadata if it exists
             if nx_graph.edges[edge].get(split_key, False):
@@ -200,14 +204,13 @@ class TrackingGraph(nx.DiGraph):
         Returns:
             list[Track]: Tracks reconstructed from the graph.
         """
+        if len(self.nodes) == 0:
+            return []
+
         # First extract the required data, then build tracks
         segments = self._segments()
         segment_ids = self._identify_segments(segments)
         id_to_parent, id_to_merge = self._get_split_and_merge_ids(segments, segment_ids)
-
-        # Handle empty graph
-        if not segments:
-            return []
 
         dim = 2
         if "z" in self.nodes[segments[0][0]]:
@@ -245,6 +248,8 @@ class TrackingGraph(nx.DiGraph):
                     parent_id=id_to_parent.get(identifier, -1),
                 )
             )
+
+        byotrack.Track.check_tracks(tracks, warn=True)
 
         return tracks
 
@@ -294,7 +299,7 @@ class TrackingGraph(nx.DiGraph):
             start_nodes.extend(outs)
             segments.append(segment)
 
-        return segments
+        return sorted(segments)  # Preserve track order by node_id
 
     def _identify_segments(self, segments: list[list]) -> list[int]:
         """Assign a unique track id per segment.
@@ -307,13 +312,21 @@ class TrackingGraph(nx.DiGraph):
             track_id = -1
             for node in segment:
                 id_ = self.nodes[node].get("track_id", -1)
-                if id_ != track_id:
+                if id_ not in (track_id, -1):
                     if track_id == -1:
                         track_id = id_
                     else:
-                        warnings.warn(f"Found two different track_ids for the segment of node {node}", stacklevel=2)
+                        warnings.warn(
+                            f""""Found two different track_ids for the segment of node {node}.
+                            By default, the first track_id ({track_id}) is used and the others will be ignored. Note
+                            that this could indicate that an edge wrongly links two different tracks in the graph.""",
+                            stacklevel=2,
+                        )
 
             segment_ids.append(track_id)
+
+        if len(segment_ids) == 0:  # pragma: no cover
+            return []
 
         # Ensure ids are different
         next_id = max(segment_ids) + 1
@@ -325,7 +338,11 @@ class TrackingGraph(nx.DiGraph):
                 continue
 
             if track_id in used:
-                warnings.warn(f"Found duplicate track_id {track_id}. Relabeled into {next_id}.", stacklevel=2)
+                warnings.warn(
+                    f"""Found duplicate track_id {track_id}. Relabeled into {next_id}.
+                    Note that this could indicate that an edge is missing between two independent segment.""",
+                    stacklevel=2,
+                )
                 segment_ids[i] = next_id
                 next_id += 1
                 continue

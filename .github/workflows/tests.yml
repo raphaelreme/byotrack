@@ -42,10 +42,13 @@ jobs:
           extra_args: --all-files --skip ruff-check --skip ruff-format
       - name: Format checking (ruff)
         run: uv run ruff format --check
-      # TODO: Tests ?
-      # - name: pytest
-      #   run: uv run pytest --cov --cov-branch --cov-report=xml
-      # - name: Upload results to Codecov
-      #   uses: codecov/codecov-action@v5
-      #   with:
-      #     token: ${{ secrets.CODECOV_TOKEN }}
+      - name: pytest (with numba)
+        run: uv run pytest tests
+      - name: pytest (coverage, numba disabled)
+        run: uv run pytest tests --cov --cov-branch --cov-report xml
+        env:
+          NUMBA_DISABLE_JIT: 1
+      - name: Upload results to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}

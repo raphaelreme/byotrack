@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 
 
 def _check_points(points: torch.Tensor) -> None:
-    """Check points validity (type, shape)."""
     if len(points.shape) != 2 or points.shape[0] == 0 or points.shape[1] not in (2, 3):  # noqa: PLR2004
         raise ValueError("Points tensor is expected to be (T, 2) or (T, 3) with T>0")
     if points.dtype is not torch.float32:
@@ -52,7 +51,7 @@ def _check_tracks(tracks: Collection[Track]) -> bool:  # noqa: C901
                     f"But track {track.identifier} starts at {track.start} != {end}.",
                     stacklevel=2,
                 )
-                valid = track.start - end < 0
+                valid = track.start - end > 0
 
             parent_count[track.parent_id] = parent_count.get(track.parent_id, 0) + 1
         if track.merge_id != -1:
@@ -65,13 +64,8 @@ def _check_tracks(tracks: Collection[Track]) -> bool:  # noqa: C901
                     f"But track {child.identifier} starts at {child.start} != {end}.",
                     stacklevel=2,
                 )
-                valid = child.start - end < 0
+                valid = child.start - end > 0
 
-            if end != child.start:
-                raise ValueError(
-                    f"Track {track.identifier} (Last frame: {end - 1}) merges into track {child.identifier}. "
-                    f"But track {child.identifier} starts at {child.start} != {end}."
-                )
             merge_count[track.merge_id] = merge_count.get(track.merge_id, 0) + 1
 
     for merge_id, count in merge_count.items():
@@ -150,6 +144,11 @@ class Track:
     def __len__(self) -> int:  # noqa: D105
         return self.points.shape[0]
 
+    @property
+    def dim(self) -> int:
+        """Return the dimension (2D or 3D) of the track."""
+        return self.points.shape[1]
+
     def __getitem__(self, frame_id: int) -> torch.Tensor:
         """Return the position of tracked target for the given frame_id.
 
@@ -197,7 +196,9 @@ class Track:
             raise ValueError("Cannot tensorize an empty collection of Tracks")
 
         # Find the spatial dimension (all tracks should share the same one)
-        dim = next(iter(tracks)).points.shape[1]
+        dim = max(track.dim for track in tracks)
+        if dim != min(track.dim for track in tracks):
+            raise ValueError("Tracks should share the same spatial dimension.")
 
         # Compute once start and end of each track
         starts = [track.start for track in tracks]
@@ -272,6 +273,8 @@ class Track:
             path (str | os.PathLike): Output path
 
         """
+        if not tracks:
+            raise ValueError("No tracks to save.")
         ids = torch.tensor([track.identifier for track in tracks])
         merge_ids = torch.tensor([track.merge_id for track in tracks])
         parent_ids = torch.tensor([track.parent_id for track in tracks])

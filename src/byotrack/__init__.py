@@ -88,6 +88,8 @@ Please refer to the ![official documentation](https://byotrack.readthedocs.io/en
 
 """
 
+import importlib.metadata
+
 # Import API and main features but no implementation
 from byotrack._env import NUMBA_CACHE, ZSTD_SEG
 from byotrack.api.detections.bbox_detections import BBoxDetections
@@ -110,7 +112,7 @@ from byotrack.api.tracking_graph import TrackingGraph
 from byotrack.api.tracks import Track
 from byotrack.video import Video, VideoTransformConfig
 
-__version__ = "1.4.3"
+__version__ = importlib.metadata.version("byotrack")
 __all__ = [
     "NUMBA_CACHE",
     "ZSTD_SEG",

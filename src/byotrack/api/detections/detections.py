@@ -293,13 +293,13 @@ def relabel_consecutive(segmentation: torch.Tensor | np.ndarray, *, inplace: boo
 def compress(tensor: torch.Tensor, level: int = 3) -> torch.Tensor:
     """Compress a tensor using zstd."""
     compressed = zstd.compress(tensor.numpy().tobytes(), level=level)
-    return torch.frombuffer(compressed, dtype=torch.uint8)
+    return torch.frombuffer(bytearray(compressed), dtype=torch.uint8)
 
 
 def decompress(tensor: torch.Tensor, dtype: torch.dtype = torch.int32) -> torch.Tensor:
     """Decompress a zstd-compressed tensor."""
     decompressed = zstd.decompress(tensor.numpy().tobytes())
-    return torch.frombuffer(decompressed, dtype=dtype)
+    return torch.frombuffer(bytearray(decompressed), dtype=dtype)
 
 
 _D = TypeVar("_D", bound="Detections")

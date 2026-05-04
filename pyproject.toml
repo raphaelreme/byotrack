@@ -135,7 +135,7 @@ lint.pydocstyle.convention = "google"
 lint.pylint.max-args = 8
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*.py" = ["INP001", "D103", "S101", "ANN201", "SLF001", "T201"]
+"tests/*.py" = ["INP001", "D103", "S101", "ANN201", "SLF001", "T201", "PLR2004", "ERA001", "NPY002"]
 "examples/ctc/*.py" = ["INP001", "D103", "S101", "ANN201", "SLF001", "T201", "NPY002", "ERA001", "PLR2004"]
 "*.ipynb" = ["ERA001", "T201", "SLF001", "PLR2004", "E501"]
 
@@ -150,6 +150,13 @@ markers = ["cuda: requires CUDA."]
 
 [tool.coverage.run]
 source = ["byotrack"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if sys.version",
+    "raise NotImplementedError",
+]
+
 
 [tool.typos.default.extend-words]
 Tung = "Tung"
