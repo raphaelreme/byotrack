@@ -1,44 +1,43 @@
 """ByoTrack.
 
-Unified python API for biological multiple object tracking (2D/3D).
+A Python library for tracking biological objects in microscopy videos (2D and 3D).
 
-Many bioimage informatics tools already implement their own tracking tools (Icy [1], ImageJ [6], ...)
-but most of them are implemented in Java which makes it difficult for non-Java developers to experiment
-with the code. It is also difficult to integrate deep learning algorithms (mainly developed in Python)
-into these software.
+ByoTrack provides a fast, modular, and research-friendly tracking framework that integrates
+seamlessly with the Python scientific ecosystem and established bioimage analysis platforms such as
+Fiji, Icy, and Napari.
 
-We provide a unified python API for tracking that can be easily extended with new (and old) algorithms.
-We also provide implementations of well-known algorithms following our API. ByoTrack is based on numpy,
-pytorch and numba allowing fast computations with the access to the full python ecosystem.
+It defines a modular tracking API that can be easily extended to design and evaluate new methods,
+and includes implementations of several state-of-the-art detection and tracking approaches.
 
-Overview:
-* Video
-    * Able to read most classical format (supported by opencv) + tiff
-    * Supports 2D and 3D.
-* Particle Tracking
-    * MultiStepTracker (Detect / Link / Refine)
-* Particle Detections
-    * Wavelet Detector [2] (Similar as the one in Icy [1] but coded in pytorch)
-    * Stardist [3] (Inference only. Training should be done with the
-        [official implementation](https://github.com/stardist/stardist))
-* Particle Linking
-    * Nearest neighbors using optical flow, kalman filters or both (KOFT) [9]
-    * EMHT [4] (Wraps the implementation in Icy [1], requires Icy to be installed)
-    * u-track / TrackMate [7] (Wraps the TrackMate [6, 8] implementation in ImageJ/Fiji, requires Fiji to be installed)
-* Tracks Refining
-    * Cleaning
-    * EMC2 [5]: Track stitching (gap closing)
-    * Interpolate missing positions
-* Optical Flow
-    * Support for Open-CV and Scikit-Image algorithms. Can be used for particle linking, track stitching
-    and interpolations.
-* Datasets
-    * Supports for loading annotations/video from datasets.
+Pipeline:
+---------
+
+    Video → Detection → Detection Refinement → Linking → Track Refinement → Tracks
+
+* **Detection**
+    * WaveletDetector [2]: PyTorch wavelet-based spot detector (inspired by Icy [1])
+    * StarDistDetector [3]: Wrapper for StarDist deep learning detector
+* **Detection Refinement**
+    * Detection filtering (intensity and size criteria)
+    * Watershed (semantic → instance segmentation)
+* **Linking**
+    * Nearest-neighbor (Euclidean, optical flow, Kalman/SKT [9], KOFT [9], adaptive gating [12])
+    * EMHT [4]: Wrapper around the Icy implementation
+    * TrackMate / u-track [7]: Wrapper around Fiji's TrackMate implementation [6, 8]
+    * TrackAstra wrapper
+* **Track Refinement**
+    * Cleaning: remove outlier tracks based on length and motion criteria
+    * EMC2 [5]: gap closing via tracklet stitching
+    * Interpolation: replace missed detections with interpolated positions
+    * Smoothing: RTS optimal Kalman smoother
+* **Optical Flow**
+    * OpenCV (2D only) and Scikit-Image (2D + 3D) wrappers
+    * Used for linking, stitching, and interpolation
+* **Datasets**
     * Cell Tracking Challenge (CTC) [10]
     * SINETRA [11]
-* Metrics:
-    * Support for some segmentation/detection/tracking metrics.
-        Currently, only CTC metrics are provided. More to come...
+* **Metrics**
+    * CTC segmentation, detection, and tracking metrics
 
 
 Getting started:
@@ -55,7 +54,7 @@ from byotrack.implementation.refiner.stitching import EMC2Stitcher
 
 # Read a video from a path, normalize and aggregate channels
 video = byotrack.Video(video_path)
-transform_config = VideoTransformConfig(aggregate=True, normalize=True, q_min=0.01, q_max=0.999)
+transform_config = byotrack.VideoTransformConfig(aggregate=True, normalize=True, q_min=0.01, q_max=0.999)
 video.set_transform(transform_config)
 
 # Create a multi step tracker
@@ -84,7 +83,7 @@ tracks = tracker.run(video)
 byotrack.Track.save(tracks, output_path)
 ```
 
-Please refer to the ![official documentation](https://byotrack.readthedocs.io/en/latest/?badge=latest)
+Please refer to the official documentation: https://byotrack.readthedocs.io/en/latest/
 
 """
 
