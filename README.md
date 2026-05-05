@@ -1,6 +1,11 @@
 # ByoTrack
 
-[![Lint and Test](https://github.com/raphaelreme/byotrack/actions/workflows/tests.yml/badge.svg)](https://github.com/raphaelreme/byotrack/actions/workflows/tests.yml)\
+[![License](https://img.shields.io/github/license/raphaelreme/byotrack)](https://github.com/raphaelreme/byotrack/raw/main/LICENSE)
+[![PyPi](https://img.shields.io/pypi/v/byotrack)](https://pypi.org/project/byotrack/)
+[![Python](https://img.shields.io/pypi/pyversions/byotrack)](https://pypi.org/project/byotrack/)
+[![Downloads](https://img.shields.io/pypi/dm/byotrack)](https://pypi.org/project/byotrack/)
+[![Codecov](https://codecov.io/github/raphaelreme/byotrack/graph/badge.svg)](https://codecov.io/github/raphaelreme/byotrack)
+[![Lint and Test](https://github.com/raphaelreme/byotrack/actions/workflows/tests.yml/badge.svg)](https://github.com/raphaelreme/byotrack/actions/workflows/tests.yml)
 [![Documentation Status](https://readthedocs.org/projects/byotrack/badge/?version=latest)](https://byotrack.readthedocs.io/en/latest/?badge=latest)
 
 ![pipeline](docs/source/images/tracking.svg)
