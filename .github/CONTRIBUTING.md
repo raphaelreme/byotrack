@@ -60,7 +60,7 @@ Please make sure your changes pass these checks before submitting a PR.
 
 ---
 
-<!-- ## Tests
+## Tests
 
 Tests are written using **pytest**.
 
@@ -75,7 +75,7 @@ uv run pytest --cov  # To see test coverage
 We use **codecov** in CI to monitor test coverage.
 New features should include appropriate tests, and bug fixes should ideally include a regression test.
 
---- -->
+---
 
 ## Commit hygiene
 
