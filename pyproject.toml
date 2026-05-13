@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "byotrack"
-version = "1.4.1"
+version = "1.4.2"
 description = "Biological Multiple Object Tracking in Python"
 readme = "README.md"
 authors = [
@@ -34,13 +34,13 @@ dependencies = [
     "networkx",
     "numba",
     "numpy",
-    "opencv-python < 4.13",
+    "opencv-python < 4.13",  # Until missing fonts are back
     "pillow",
     "platformdirs",
     "pylapy[scipy]",
     "scipy",
     "scikit-image",
-    "tifffile[all]",
+    "tifffile[all] < 2026",  # TODO: Fix VideoReader that rely on tifffile
     "torch",
     "torch-kf",
     "torch-tps",
