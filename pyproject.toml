@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "byotrack"
-version = "1.4.2"
+version = "1.4.3"
 description = "Biological Multiple Object Tracking in Python"
 readme = "README.md"
 authors = [
@@ -40,7 +40,7 @@ dependencies = [
     "pylapy[scipy]",
     "scipy",
     "scikit-image",
-    "tifffile[all] < 2026",  # TODO: Fix VideoReader that rely on tifffile
+    "tifffile[all]",
     "torch",
     "torch-kf",
     "torch-tps",

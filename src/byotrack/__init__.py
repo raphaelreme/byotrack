@@ -101,7 +101,7 @@ from byotrack.api.tracking_graph import TrackingGraph
 from byotrack.api.tracks import Track
 from byotrack.video import Video, VideoTransformConfig
 
-__version__ = "1.4.2"
+__version__ = "1.4.3"
 __all__ = [
     "NUMBA_CACHE",
     "ZSTD_SEG",

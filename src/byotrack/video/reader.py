@@ -362,7 +362,7 @@ class TiffVideoReader(VideoReader):
 
         shape = tuple(
             shape if axis not in self.ax_slice else slice_length(self.ax_slice[axis], shape)
-            for shape, axis in zip(self.video._shape_squeezed, self.axes, strict=False)  # noqa: SLF001
+            for shape, axis in zip(self.video.shape, self.axes, strict=False)
         )
 
         self.channels = shape[self.in_axes["C"]] if "C" in self.in_axes else 1
@@ -397,7 +397,7 @@ class TiffVideoReader(VideoReader):
             assert "T" not in axes[-self._page_dim :], "The temporal axis cannot be in the pages dimensions"
             return {axis: i for i, axis in enumerate(axes)}
 
-        axes_squeezed = self.video._axes_squeezed  # noqa: SLF001
+        axes_squeezed = self.video.axes
         in_axes = {axis: i for i, axis in enumerate(axes_squeezed)}
         if "S" in in_axes:  # Interpret S as C if possible
             if "C" in in_axes:
@@ -451,7 +451,7 @@ class TiffVideoReader(VideoReader):
     def _load(self):
         temporal_axis = self.in_axes["T"]
 
-        true_shape = self.video._shape_squeezed  # noqa: SLF001
+        true_shape = self.video.shape
         slices = tuple(slice(None) if axis not in self.ax_slice else self.ax_slice[axis] for axis in self.axes)
 
         # Compute stride and offset for the out of page dimensions
@@ -561,7 +561,7 @@ class FrameTiffLoader:
         if self.axes:
             return {axis: i for i, axis in enumerate(self.axes)}
 
-        axes_squeezed = series._axes_squeezed  # noqa: SLF001
+        axes_squeezed = series.axes
         axes = {axis: i for i, axis in enumerate(axes_squeezed)}
         if "S" in axes:
             if "C" in axes:
@@ -589,7 +589,7 @@ class FrameTiffLoader:
 
         if not self.ax_slice:
             output = tiff.asarray(series=0, level=self.level, squeeze=True)
-            assert output.shape == series._shape_squeezed, "Unable to read at the expected shape"  # noqa: SLF001
+            assert output.shape == series.shape, "Unable to read at the expected shape"
         else:
             slices = tuple(
                 slice(None) if axis not in self.ax_slice else self.ax_slice[axis]
@@ -610,7 +610,7 @@ class FrameTiffLoader:
         """Read the series using the given slice."""
         page_dim = len(series.keyframe.axes)
 
-        true_shape = series._shape_squeezed  # noqa: SLF001
+        true_shape = series.shape
         final_shape = tuple(slice_length(slice_, shape) for slice_, shape in zip(slices, true_shape, strict=False))
 
         # Compute stride and offset for the out of page dimensions
