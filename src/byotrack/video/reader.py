@@ -75,16 +75,16 @@ class VideoReader(metaclass=MetaVideoReader):
         * fps if known (-1 otherwise)
 
     Attributes:
-        supported_extensions (list[str]): Static attribute used by `open` method to automatically choose
-            which VideoReader to use.
-        path (pathlib.Path): Path of the current video
-        released (bool): True when release has been called (close and release memory)
-        fps (int): Frame rate (-1 if unknown)
-        shape (tuple[int, ...]): Spatial dimensions of frames (Height, Width[, Depth])
-        channels (int): Number of channels
-        length (int): Number of frames
-        dtype (np.dtype): Data type of frames
-        frame_id (int): Current frame id
+        supported_extensions (tuple[str, ...]): Static attribute used by the `open` factory to automatically
+            select the right VideoReader subclass for a given file extension.
+        path (pathlib.Path): Path of the current video.
+        released (bool): True when `release` has been called (file closed, memory freed).
+        fps (int): Frame rate in frames per second. -1 if unknown.
+        shape (tuple[int, ...]): Spatial dimensions of each frame ([D, ]H, W).
+        channels (int): Number of channels per frame.
+        length (int): Total number of frames.
+        dtype (np.dtype): Data type of the frames.
+        frame_id (int): Index of the current (buffered) frame.
 
     """
 
@@ -94,8 +94,8 @@ class VideoReader(metaclass=MetaVideoReader):
         """Constructor: Open the video file.
 
         Args:
-            path (str | os.PathLike): Path to the video to read
-            kwargs: Any additional kwargs are given to the underlying video reader
+            path (str | os.PathLike): Path to the video to read.
+            **kwargs: Additional kwargs forwarded to the underlying video reader.
 
         """
         self.path = pathlib.Path(path)
@@ -148,12 +148,15 @@ class VideoReader(metaclass=MetaVideoReader):
         return current_frame, self.grab()
 
     def seek(self, frame_id: int) -> None:
-        """Seek frame_id (will update the current frame).
+        """Seek to `frame_id` and update the current frame.
 
-        Valid frame ids from 0 to length - 1
+        Valid frame ids are in [0, length[.
 
-        Raise:
-            EOFError if seeking an invalid frame
+        Args:
+            frame_id (int): Target frame index.
+
+        Raises:
+            EOFError: If frame_id is not in [0, length[.
 
         """
         raise NotImplementedError
@@ -172,16 +175,17 @@ class VideoReader(metaclass=MetaVideoReader):
 
     @staticmethod
     def open(path: str | os.PathLike, **kwargs: Any) -> VideoReader:
-        """Open a video file.
+        """Open a video file, choosing the right reader from the file extension.
 
-        Use the extension to know which VideoReader to use
+        Directories are opened with `MultiFrameReader`.  For files, the extension is looked up in
+        the ``extension_to_reader`` registry; if no match is found, `OpenCVVideoReader` is used.
 
         Args:
-            path (str | os.PathLike): File to open
-            kwargs: Any additional args for the underlying video reader
+            path (str | os.PathLike): File or directory to open.
+            **kwargs: Additional kwargs forwarded to the chosen VideoReader constructor.
 
         Returns:
-            VideoReader
+            VideoReader: An open reader positioned at frame 0.
 
         """
         path = pathlib.Path(path)
@@ -340,14 +344,14 @@ class ArrayVideoReader(VideoReader):
 
 
 class PILVideoReader(VideoReader):
-    """Old PIL video reader. Works well for 2D multi frames Tiff files that are not supported by OpenCV.
+    """PIL-based video reader for 2D multi-frame TIFF files not supported by OpenCV.
 
-    IT only supports 2D videos. TiffVideoReader should have a larger support for TiffFiles
+    It only supports 2D videos. Prefer `TiffVideoReader` for broader TIFF support (3D, any channels).
 
     See `VideoReader` for inherited attributes.
 
     Attributes:
-        video (PIL.Image.Image): PIL image (animated)
+        video (PIL.Image.Image): The open PIL image (animated).
 
     """
 
@@ -429,7 +433,7 @@ class TiffVideoReader(VideoReader):
 
     out_axes = "TZYXC"  # TZYXC = TDHWC
 
-    def __init__(  # noqa: D417
+    def __init__(
         self,
         path: str | os.PathLike,
         level=0,
@@ -440,8 +444,18 @@ class TiffVideoReader(VideoReader):
         """Constructor.
 
         Args:
-            axes (str | None): Override the axes found in the tiff metadata.
-                Default: None (Parse the metadata)
+            path (str | os.PathLike): Path to the TIFF file.
+            level (int): Resolution level to read (0 = finest).
+                Default: 0.
+            axes (str | None): Override the axes found in the TIFF metadata.
+                An ordered string such as ``"TYX"`` or ``"TCZYX"``.
+                Default: None (infer from metadata).
+            ax_slice (dict[str, slice] | None): Optional per-axis slices applied when reading
+                each frame (e.g. ``{"Z": slice(0, 10)}``). Temporal slicing is not supported here;
+                use Video slicing instead.
+                Default: None (no slicing).
+            **kwargs: Additional kwargs forwarded to ``tifffile.TiffFile``.
+
         """
         super().__init__(path, **kwargs)
 
@@ -626,11 +640,13 @@ class FrameTiffLoader:
     It also supports to read the tiff at a specific resolution level.
 
     Attributes:
-        out_axes (str): Axes order of the outputs
-        level (int): Resolution level (if any)
-            Default: 0 (finest level)
-        axes (str | None): Override the axes found in the tiff metadata.
-            Default: None (Parse the metadata)
+        out_axes (str): Axes order of the outputs.
+        level (int): Resolution level to read.
+            Default: 0 (finest level).
+        axes (str | None): Override for the axes found in the TIFF metadata.
+            Default: None (infer from metadata).
+        ax_slice (dict[str, slice]): Per-axis slices applied when reading each frame.
+            Default: {} (no slicing).
 
     """
 
@@ -726,9 +742,15 @@ class FrameTiffLoader:
 
 
 def pil_loader(path: str | os.PathLike) -> np.ndarray:
-    """Load an image with PIL. Shape: (H, W, C).
+    """Load a 2D image with PIL.
 
-    It only supports 2D images
+    Args:
+        path (str | os.PathLike): Path to the image file.
+
+    Returns:
+        np.ndarray: The loaded frame.
+            Shape: (H, W, C).
+
     """
     frame: np.ndarray = np.array(Image.open(path))
 
@@ -764,6 +786,24 @@ class MultiFrameReader(VideoReader):
         frame_loader: Callable[[str | os.PathLike], np.ndarray] | None = None,
         **kwargs: Any,
     ):
+        """Constructor.
+
+        Args:
+            path (str | os.PathLike): Root folder. Ignored when `paths` is provided.
+            paths (list[str | os.PathLike] | None): Explicit list of frame file paths (absolute).
+                When provided, `path` and `extension` are ignored.
+                Default: None (discover frames inside `path`).
+            extension (str | None): File extension filter (e.g. ``".tif"``).
+                When None, the most common extension in the folder is used.
+                Default: None.
+            frame_loader (Callable | None): Function ``(path) -> np.ndarray`` that loads a single
+                frame. When None, a `FrameTiffLoader` is used for TIFF files and `pil_loader`
+                otherwise.
+                Default: None.
+            **kwargs: Additional kwargs forwarded to the frame loader constructor
+                (only used when `frame_loader` is None).
+
+        """
         super().__init__(path, **kwargs)
 
         if paths:

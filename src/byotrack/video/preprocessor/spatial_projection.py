@@ -22,13 +22,15 @@ class SpatialProjection(preprocessor.VideoPreprocessor):
     It allows to project a 3D video onto a 2D one.
 
     Attributes:
+        axes_to_int (dict[str, int]): Mapping from axis name string (``"Z"``, ``"Y"``, ``"X"``,
+            ``"D"``, ``"H"``, ``"W"``) to integer axis index (0, 1, 2).
         axis (int): Axis on which to project. Order is (Z, Y, X) ~ (D, H, W) ~ (0, 1, 2).
             Default: 0.
         method (Literal["mean", "min", "max", "select"]): Projection method.
-            "mean", "min" and "max" aggregate the axis with the appropriate function.
-            "select" simply selects one slice of the volume.
-            Default: "max".
-        selected (int): Selected slice if method is "select".
+            ``"mean"``, ``"min"`` and ``"max"`` aggregate over the axis with the appropriate function.
+            ``"select"`` selects one slice of the volume.
+            Default: ``"max"``.
+        selected (int): Slice index used when method is ``"select"``.
             Default: 0.
     """
 

@@ -109,7 +109,7 @@ class Video(Sequence[np.ndarray]):
         if self.reader.length == 0:
             raise ValueError("No frame found in the video.")
 
-        if np.prod(self._reader_frame_shape):
+        if np.prod(self._reader_frame_shape) == 0:
             raise ValueError("No pixel found in the video.")
 
     @property

@@ -32,7 +32,7 @@ class FrameSlicer(preprocessor.VideoPreprocessor):
     def initialize(self, video: Sequence[np.ndarray] | np.ndarray) -> None:
         """Initialize the preprocessor for the given video.
 
-        This will reduce the channel in the `shape` attribute.
+        This will update the `shape` attribute to reflect the output shape after slicing.
 
         Args:
             video (Sequence[np.ndarray] | np.ndarray): The video to preprocess.

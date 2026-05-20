@@ -19,8 +19,8 @@ class VideoPreprocessor(ABC):
     Then, it is applied online, i.e., for each frame of the video.
 
     Attributes:
-        shape (Tuple[int, ...]): Output shape of the frames ([D, ]H, W, C)
-        dtype (np.dtype): Output type of the frames, usually independent of the input video.
+        shape (tuple[int, ...]): Output shape of each frame ([D, ]H, W, C).
+        dtype (np.dtype): Output dtype of each frame. Usually independent of the input video.
 
     """
 
