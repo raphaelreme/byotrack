@@ -72,6 +72,7 @@ class VideoReader(metaclass=MetaVideoReader):
         * length
         * channels
         * shape
+        * dtype
         * fps if known (-1 otherwise)
 
     Attributes:
@@ -83,6 +84,7 @@ class VideoReader(metaclass=MetaVideoReader):
         shape (tuple[int, ...]): Spatial dimensions of frames (Height, Width[, Depth])
         channels (int): Number of channels
         length (int): Number of frames
+        dtype (np.dtype): Data type of frames
         frame_id (int): Current frame id
 
     """
@@ -104,6 +106,7 @@ class VideoReader(metaclass=MetaVideoReader):
         self.channels = 0
         self.length = 0
         self.frame_id = 0
+        self.dtype: np.dtype = np.dtype(np.uint8)
 
     def release(self) -> None:
         """Close the file and free memory."""
@@ -207,7 +210,10 @@ class OpenCVVideoReader(VideoReader):
         if not self.video.grab():
             raise ValueError("No frame found in the video")
 
-        self.channels = self.retrieve().shape[-1]
+        initial_frame = self.retrieve()
+
+        self.dtype = initial_frame.dtype
+        self.channels = initial_frame.shape[-1]
 
         self.fps = int(self.video.get(cv2.CAP_PROP_FPS))
         self.length = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -264,7 +270,11 @@ class PILVideoReader(VideoReader):
     def __init__(self, path: str | os.PathLike, **kwargs: Any):
         super().__init__(path, **kwargs)
         self.video = Image.open(path, **kwargs)
-        self.channels = self.retrieve().shape[-1]
+
+        initial_frame = self.retrieve()
+        self.channels = initial_frame.shape[-1]
+        self.dtype = initial_frame.dtype
+
         self.shape = self.video.size[::-1]
         self.length = self.video.n_frames  # type: ignore[attr-defined]
 
@@ -370,8 +380,9 @@ class TiffVideoReader(VideoReader):
             shape[self.in_axes[axis]] for axis in self.out_axes if axis in ("X", "Y", "Z") and axis in self.in_axes
         )
         self.length = shape[self.in_axes["T"]]
+        self.dtype = self.video.dtype
 
-        self._current = np.zeros((*shape[: self.in_axes["T"]], *shape[self.in_axes["T"] + 1 :]), dtype=self.video.dtype)
+        self._current = np.zeros((*shape[: self.in_axes["T"]], *shape[self.in_axes["T"] + 1 :]), dtype=self.dtype)
         self._load()
 
     @staticmethod
@@ -694,6 +705,7 @@ class MultiFrameReader(VideoReader):
         first_frame = self.retrieve()
         self.shape = first_frame.shape[:-1]
         self.channels = first_frame.shape[-1]
+        self.dtype = first_frame.dtype
 
     @override
     def grab(self) -> bool:
