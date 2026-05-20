@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pathlib
 import sys
+import warnings
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import cv2  # type: ignore[import-untyped]
@@ -23,9 +24,7 @@ else:
 
 # ruff: noqa: S101  # Let's keep using assert here
 
-
-# TODO: TiffReader read slice from inside a page ? (directly in going through the bytes ?)
-# Hard and probably not so useful as from what we saw, pages are usually only 2D and therefore not so large
+MAX_CHANNELS = 50
 
 
 def slice_length(slice_: slice, shape: int) -> int:
@@ -251,6 +250,93 @@ class OpenCVVideoReader(VideoReader):
 
     def _check_frame_id(self) -> None:
         assert self.frame_id == self.video.get(cv2.CAP_PROP_POS_FRAMES) - 1
+
+
+class ArrayVideoReader(VideoReader):
+    """Fake VideoReader that directly reads in the given an array-like video.
+
+    It's main goal is to provide a conversion from array-like videos (np.ndarray, zarr, ...).
+
+    The array-like video is expected to be of shape: T, [D, ]H, W, C.
+
+    Note: `path` is ignored, and the data should be provided via the `video` argument.
+
+    Attributes:
+        video (np.ndarray): Array-like video.
+            Shape: (T, [D, ]H, W, C)
+
+    """
+
+    def __init__(self, path: str | os.PathLike, video: np.ndarray, **kwargs: Any):
+        super().__init__(path, **kwargs)
+
+        if str(path) != "":
+            warnings.warn(f"ArrayVideoReader will not use the given path {path}.", stacklevel=2)
+
+        if video.ndim < 3:  # noqa: PLR2004
+            raise ValueError("The video should at least be a 3D (2D + T) array.")
+
+        if video.ndim > 5:  # noqa: PLR2004
+            raise ValueError("The video should at most be a 5D (3D + T + C) array.")
+
+        self._add_trailing_channel_axis = False
+        if video.ndim == 3:  # noqa: PLR2004
+            warnings.warn("Channel dimension not found. Assuming gray-scaled video (1 channel).", stacklevel=2)
+            self._add_trailing_channel_axis = True
+
+        if video.shape[-1] > MAX_CHANNELS and video.ndim < 5:  # noqa: PLR2004
+            warnings.warn(
+                f"Found dimension {video.shape[-1]} (> {MAX_CHANNELS}) on the last axis. "
+                "This indicates that the channel dimension is missing. Assuming gray-scaled video (1 channel). "
+                "If you do have numerous channels, please increase `MAX_CHANNELS`.",
+                stacklevel=2,
+            )
+            self._add_trailing_channel_axis = False
+
+        self.video = video
+        self.length = video.shape[0]
+        self.dtype = video.dtype
+
+        if self._add_trailing_channel_axis:
+            self.channels = 1
+            self.shape = video.shape[1:]
+        else:
+            self.channels = video.shape[-1]
+            self.shape = video.shape[1:-1]
+
+        self._current = self.video[self.frame_id]
+
+    @override
+    def release(self) -> None:
+        super().release()
+        # Let's free the memory, though it will leave the Reader in a bad state.
+        del self.video
+        del self._current
+
+    @override
+    def grab(self) -> bool:
+        if self.frame_id + 1 >= self.length:
+            return False
+
+        self.frame_id += 1
+        self._current = self.video[self.frame_id]
+        return True
+
+    @override
+    def seek(self, frame_id: int) -> None:
+        if not 0 <= frame_id < self.length:
+            raise EOFError(f"Seeking outside of video limits: {frame_id} not in [{0}, {self.length}[")
+
+        if frame_id != self.frame_id:
+            self.frame_id = frame_id
+            self._current = self.video[self.frame_id]
+
+    @override
+    def retrieve(self) -> np.ndarray:
+        if self._add_trailing_channel_axis:
+            return np.asarray(self._current, copy=True)[..., None]
+
+        return np.asarray(self._current, copy=True)
 
 
 class PILVideoReader(VideoReader):
