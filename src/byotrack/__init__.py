@@ -90,6 +90,7 @@ Please refer to the official documentation: https://byotrack.readthedocs.io/en/l
 import importlib.metadata
 
 # Import API and main features but no implementation
+from byotrack import video
 from byotrack._env import NUMBA_CACHE, ZSTD_SEG
 from byotrack.api.detections.bbox_detections import BBoxDetections
 from byotrack.api.detections.detections import (
@@ -140,4 +141,5 @@ __all__ = [
     "as_detections",
     "fast_relabel",
     "relabel_consecutive",
+    "video",
 ]

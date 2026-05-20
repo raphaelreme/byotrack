@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import warnings
 from collections.abc import Sequence
-from typing import Any, overload
+from typing import TYPE_CHECKING, Any, overload
 
 import numpy as np
 
-from .reader import VideoReader, slice_length
-from .transforms import ChannelAvg, ChannelSelect, ScaleAndNormalize
+from byotrack.video import ChannelProjection, FrameSlicer, IntensityNormalizer, SpatialProjection
+from byotrack.video.reader import ArrayVideoReader, VideoReader, slice_length
+
+if TYPE_CHECKING:
+    from types import EllipsisType
+
+    from byotrack.video import VideoPreprocessor
 
 
 @dataclasses.dataclass
@@ -41,7 +47,7 @@ class VideoTransformConfig:
 class Video(Sequence[np.ndarray]):
     """Video: Iterable, indexable and sliceable sequence of frames wrapping a VideoReader.
 
-    It wraps VideoReader in order to add video transformation (Channel Aggregation, Scaling, Normalization)
+    It wraps VideoReader in order to add video preprocessing (Channel Aggregation, Normalization, Projection, ...)
     and to add useful pythonic protocols (Sliceable, Indexable, Iterable).
 
     Frames are 2D or 3D with a channel axis. It behaves similarly as a 5D/4D numpy array of shape (T[, D], H, W, C).
@@ -54,9 +60,8 @@ class Video(Sequence[np.ndarray]):
             # Read a video (Usually 2D RGB)
             video = byotrack.Video(video_path)
 
-            # Add a transform that will aggregate channel and normalize in [0, 1] the intensities
-            transform_config = byotrack.VideoTransformConfig(aggregate=True, normalize=True, q_min=0.01, q_max=0.999)
-            video.set_transform(transform_config)
+            # Normalize the video
+            video = video.normalize()
 
             # Iterate through the video
             for frame in video:
@@ -71,18 +76,19 @@ class Video(Sequence[np.ndarray]):
 
     Attributes:
         ndim (int): Either 4 (2D) or 5 (3D). (T, H, W, C) in 2D or (T, D, H, W, C) in 3D.
-        shape (tuple[int, ...]): Shape of the video (Time, [Depth, ]Height, Width)
-        channels (int): Number of channels
-        reader (byotrack.VideoReader): Underlying video reader
+        shape (tuple[int, ...]): Shape of the video (T, [D, ]H, W, C).
+        dtype (np.dtype): Data type of the video.
+        reader (byotrack.video.VideoReader): Underlying video reader
 
     """
 
-    def __init__(self, data_source: str | os.PathLike | VideoReader, **kwargs: Any) -> None:
+    def __init__(self, data_source: str | os.PathLike | VideoReader | np.ndarray, **kwargs: Any) -> None:
         """Constructor.
 
         Args:
-            data_source (str | os.PathLike | VideoReader): Source of the data. If a path is given,
-                it will be converted in a VideoReader.
+            data_source (str | os.PathLike | byotrack.video.VideoReader | np.ndarray): Source of the data.
+                If a path is given, it will be converted in a VideoReader.
+                If an array-like is given, it will be wrapped in an ArrayVideoReader.
             **kwargs: Additional arguments given to the construction of the video reader.
 
         """
@@ -90,64 +96,124 @@ class Video(Sequence[np.ndarray]):
 
         if isinstance(data_source, (str, os.PathLike)):
             self.reader = VideoReader.open(data_source, **kwargs)
-        else:
+        elif isinstance(data_source, VideoReader):
             self.reader = data_source
+        else:
+            self.reader = ArrayVideoReader("", data_source, **kwargs)
 
-        self._slices: tuple[slice, ...] = tuple(slice(None) for _ in (self.reader.length, *self.reader.shape))
-        self._channel_aggregator: ChannelAvg | ChannelSelect | None = None
-        self._normalizer: ScaleAndNormalize | None = None
+        self._temporal_slice = slice(None)
+        self._preprocessors: list[VideoPreprocessor] = []
+
+        self._reader_frame_shape = (*self.reader.shape, self.reader.channels)
+
+        if self.reader.length == 0:
+            raise ValueError("No frame found in the video.")
+
+        if np.prod(self._reader_frame_shape):
+            raise ValueError("No pixel found in the video.")
+
+    @property
+    def dtype(self) -> np.dtype:  # noqa: D102
+        if not self._preprocessors:
+            return self.reader.dtype
+
+        return self._preprocessors[-1].dtype
 
     @property
     def shape(self) -> tuple[int, ...]:  # noqa: D102
-        return tuple(
-            slice_length(slice_, shape)
-            for slice_, shape in zip(self._slices, (self.reader.length, *self.reader.shape), strict=True)
-        )
+        if not self._preprocessors:
+            return (len(self), *self._reader_frame_shape)
+
+        return (len(self), *self._preprocessors[-1].shape)
 
     @property
     def ndim(self) -> int:  # noqa: D102
-        return 2 + len(self.reader.shape)
+        return len(self.shape)
 
-    @property
-    def channels(self) -> int:  # noqa: D102
-        return self.reader.channels if self._channel_aggregator is None else 1
+    def __len__(self) -> int:  # noqa: D105
+        return slice_length(self._temporal_slice, self.reader.length)  # length of temporal slice
 
-    def set_transform(self, transform_config: VideoTransformConfig) -> None:
-        """Set the transform (channel_selector and normalizer).
+    def add_preprocessor(self, preprocessor: VideoPreprocessor) -> Video:
+        """Add a preprocessor to the video.
+
+        Added preprocessors are applied sequentially (you may check the order in `_preprocessors`).
+
+        Note: This may change the shape or dtype of the Video.
 
         Args:
-            transform_config (byotrack.VideoTransformConfig): Configuration of the transformations
+            preprocessor (byotrack.video.VideoPreprocessor): The preprocessor to add.
+                Will be initialized with this video.
 
+        Returns:
+            byotrack.Video: self
         """
-        self._channel_aggregator = None
-        if transform_config.aggregate:
-            if transform_config.selected_channel is not None:
-                self._channel_aggregator = ChannelSelect(transform_config.selected_channel)
-            else:
-                self._channel_aggregator = ChannelAvg()
+        preprocessor.initialize(self)
 
-        self._normalizer = None
+        self._preprocessors.append(preprocessor)
+
+        return self
+
+    def normalize(
+        self, q_min: float = 0.0, q_max: float = 1.0, smooth_clip: float = 0, compute_stats_on: int = 50
+    ) -> Video:
+        """Normalize each channel of the video into [0, 1].
+
+        Copy the video and adds the `IntensityNormalizer` preprocessor with the given arguments.
+
+        Args:
+            q_min (float): Quantile of the minimum value to consider.
+                Default: 0.0 (min value)
+            q_max (float): Quantile of the maximum value to consider.
+                Default: 1.0 (max value)
+            smooth_clip (float): Smoothness of the clipping process (`a`)
+                If 0, values are clipped on the quantiles
+                Else, values above the maximum quantile are log clipped:
+                I = 1 + a log((I - 1)/a + 1) for I > 1, with `a` the `smooth_clip` factor
+                Typical values are between 0 and 1.
+                Default: 0 (hard clipping)
+            compute_stats_on (int): Max number of frames to compute stats on.
+                It prevents heavy computations that may occur on large videos.
+                Default: 50
+
+        Returns:
+            byotrack.Video: the normalized video
+        """
+        for preprocessor in self._preprocessors:
+            if isinstance(preprocessor, IntensityNormalizer):
+                warnings.warn(
+                    "The video is already normalized. Consider removing this second normalization.", stacklevel=2
+                )
+
+        return self._copy().add_preprocessor(IntensityNormalizer(q_min, q_max, smooth_clip, compute_stats_on))
+
+    def _preprocess(self, frame: np.ndarray, frame_id: int) -> np.ndarray:
+        for preprocessor in self._preprocessors:
+            frame = preprocessor.preprocess_frame(frame, frame_id)
+
+        return frame
+
+    def set_transform(self, transform_config: VideoTransformConfig) -> None:
+        """Deprecated. Will be removed in a future version."""
+        warnings.warn(
+            "`set_transform` is deprecated and will be removed in a future version. "
+            "Use `normalize`, slicing or `VideoPreprocessor` directly instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+        if transform_config.aggregate:
+            if transform_config.selected_channel is None:
+                self.add_preprocessor(ChannelProjection("mean"))
+            else:
+                self.add_preprocessor(ChannelProjection("select", transform_config.selected_channel))
+
         if transform_config.normalize:
-            frames = np.asarray(self[: transform_config.compute_stats_on])
-            self._normalizer = ScaleAndNormalize(
+            self.normalize(
                 transform_config.q_min,
                 transform_config.q_max,
                 transform_config.smooth_clip,
                 transform_config.compute_stats_on,
             )
-            self._normalizer.update_stats(frames)
-
-    def transform(self, frame: np.ndarray) -> np.ndarray:
-        """Transform a frame using channel aggregation and normalization."""
-        if self._channel_aggregator:
-            frame = self._channel_aggregator(frame)
-        if self._normalizer:
-            frame = self._normalizer(frame)
-
-        return frame
-
-    def __len__(self) -> int:  # noqa: D105
-        return slice_length(self._slices[0], self.reader.length)  # length of temporal slice
 
     @overload
     def __getitem__(self, index: int) -> np.ndarray: ...
@@ -156,23 +222,23 @@ class Video(Sequence[np.ndarray]):
     def __getitem__(self, slice_: slice) -> Video: ...
 
     @overload
-    def __getitem__(self, slices: tuple[slice, ...]) -> Video: ...
+    def __getitem__(self, slices: tuple[slice | int | EllipsisType, ...] | EllipsisType) -> Video: ...
 
     def __getitem__(self, key):  # noqa: C901, PLR0912
         """Indexing and slicing operations.
 
-        When indexed, it returns the ith frame in the slice
-        When sliced, it duplicates the video (wrapper) with the right slice
+        When indexed, it returns the ith frame in the slice.
+        When sliced, it duplicates the video (wrapper) with the right slicing.
 
         Args:
-            key (int | slice | tuple[slice, ...]): index or slice of the video
+            key (int | slice | EllipsisType | tuple[slice | int | EllipsisType, ...]): index or slice of the video
 
         Returns:
-            np.ndarray | Video: Frame at index or a shallow copy of the video with the right slice
+            np.ndarray | Video: Frame at index or a shallow copy of the video with the right slicing
 
         """
         if isinstance(key, int):
-            start, _, step = self._slices[0].indices(self.reader.length)
+            start, _, step = self._temporal_slice.indices(self.reader.length)
 
             if key < 0:
                 key += len(self)
@@ -193,32 +259,98 @@ class Video(Sequence[np.ndarray]):
                 except EOFError:
                     raise RuntimeError(f"Unable to seek frame {frame_id}") from None
 
-            return self.transform(self.reader.retrieve()[self._slices[1:]])
+            return self._preprocess(self.reader.retrieve(), frame_id)
+
+        if key is Ellipsis:  # Handle video[...] => returns a shallow copy
+            return self._copy()
 
         if isinstance(key, slice):
             key = (key,)
 
         if isinstance(key, tuple):
-            if len(key) > len(self._slices):
-                raise IndexError("Too many indices for video. Only support 3 dimensions slicing (time, height, width).")
+            if len(key) > self.ndim:
+                raise IndexError("Too many indices for video.")
 
-            slices = list(self._slices)
-            shapes = (self.reader.length, *self.reader.shape)
-            for i, slice_ in enumerate(key):
-                if not isinstance(slice_, slice):
-                    raise TypeError("Unsupported index for Video. Supports only int, slice and tuple[slice, ...]")
+            if len(key) == 0:
+                return self._copy()
 
-                slices[i] = compose_slice(self._slices[i], slice_, shapes[i])
+            # Expand Ellipsis
+            key = expand_ellipsis(key, self.ndim)
 
-            # Duplicate
-            other = Video(self.reader)
-            other._channel_aggregator = self._channel_aggregator
-            other._normalizer = self._normalizer
-            other._slices = tuple(slices)
+            temporal_slice = key[0]
+            if isinstance(temporal_slice, int):  # Handle int indexing for temporal axis
+                return self[temporal_slice][key[1:]]  # XXX: This breaks typing (this is not a video but a frame)
+
+            temporal_slice = compose_slice(self._temporal_slice, temporal_slice, self.reader.length)
+
+            # Let's check for integer in the spatial axis
+            key, projection = _handle_integer_slicing(key[1:], self.ndim)
+
+            # Duplicate the video and register the new temporal_slice, projection and slicer.
+            other = self._copy()
+            other._temporal_slice = temporal_slice  # noqa: SLF001
+            if projection[0] >= 0:
+                other.add_preprocessor(SpatialProjection(projection[0], "select", selected=projection[1]))
+
+            if len(key) > 0:
+                other.add_preprocessor(FrameSlicer(key))
 
             return other
 
         raise TypeError("Unsupported index for Video. Supports only int, slice and tuple[slice, ...]")
+
+    def _copy(self) -> Video:
+        """Create a shallow copy of the video."""
+        copy = Video(self.reader)
+        copy._temporal_slice = self._temporal_slice
+        copy._preprocessors = self._preprocessors.copy()
+
+        return copy
+
+
+def expand_ellipsis(slices: tuple[int | slice | EllipsisType, ...], ndim: int) -> tuple[int | slice, ...]:
+    """Expand ellipsis in slices."""
+    slices_: list[int | slice] = []
+    expanded = False
+
+    for slice_ in slices:
+        if slice_ is Ellipsis:
+            if expanded:
+                raise IndexError("An index can only have a single ellipsis ('...')")
+            slices_.extend(slice(None) for _ in range(ndim - len(slices) + 1))
+            expanded = True
+        else:
+            slices_.append(slice_)
+
+    return tuple(slices_)
+
+
+def _handle_integer_slicing(slices: tuple[int | slice, ...], ndim: int) -> tuple[tuple[slice, ...], tuple[int, int]]:
+    """Handle integer slicing for videos.
+
+    It will raise if not 3D, if multiple integers are found, or if integer slicing on the channel axis.
+
+    If a single integer is given, it is removed from the slice and its axis and value is returned.
+    """
+    slices_: list[slice] = []
+    has_an_integer = False
+
+    axis = -1
+    value = 0
+
+    for i, slice_ in enumerate(slices):
+        if isinstance(slice_, int):
+            if i + 1 == ndim - 1:
+                raise IndexError("Channel axis can not be reduced. Use a slice or a ChannelProjection.")
+            if ndim < 5 or has_an_integer:  # noqa: PLR2004
+                raise IndexError("Spatial projection is only available for 3D videos.")
+
+            value = slice_
+            axis = i
+        else:
+            slices_.append(slice_)
+
+    return tuple(slices_), (axis, value)
 
 
 def compose_slice(slice_1: slice, slice_2: slice, length: int) -> slice:
