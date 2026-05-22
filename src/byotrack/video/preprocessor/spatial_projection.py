@@ -50,7 +50,14 @@ class SpatialProjection(preprocessor.VideoPreprocessor):
         selected: int = 0,
     ):
         super().__init__()
-        self.axis = self.axes_to_int[axis] if isinstance(axis, str) else axis
+        self.axis = self.axes_to_int.get(axis, 100) if isinstance(axis, str) else axis
+
+        if self.axis < 0:
+            self.axis = 3 + self.axis
+
+        if self.axis not in (0, 1, 2):
+            raise ValueError("Axis should be an integer in (0, 1, 2) (or an axis name in 'ZYX' / 'DHW').")
+
         self.method = method
         self.selected = selected
 
@@ -83,7 +90,7 @@ class SpatialProjection(preprocessor.VideoPreprocessor):
         if self.method == "min":
             return frame.min(self.axis)
         if self.method == "mean":
-            return frame.mean(self.axis)
+            return frame.mean(self.axis, dtype=frame.dtype)
 
         slices = [slice(None)] * self.axis + [self.selected]
         return frame[tuple(slices)]
@@ -101,7 +108,7 @@ class SpatialProjection(preprocessor.VideoPreprocessor):
         if self.method == "min":
             return video.min(axis)
         if self.method == "mean":
-            return video.mean(axis)
+            return video.mean(axis, dtype=video.dtype)
 
         slices = [slice(None)] * (axis) + [self.selected]
         return video[tuple(slices)]

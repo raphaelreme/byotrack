@@ -14,7 +14,7 @@ from byotrack import utils
 
 if TYPE_CHECKING:
     import os
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Sequence
 
 if sys.version_info < (3, 12):
     from typing_extensions import override
@@ -240,7 +240,7 @@ class OpenCVVideoReader(VideoReader):
     def retrieve(self) -> np.ndarray:
         frame = self.video.retrieve()[1]
 
-        if len(frame.shape) == 2:  # noqa: PLR2004
+        if len(frame.shape) == 2:  # noqa: PLR2004  # pragma: no cover
             return frame[..., None]
 
         return np.flip(frame, -1)
@@ -295,7 +295,7 @@ class ArrayVideoReader(VideoReader):
                 "If you do have numerous channels, please increase `MAX_CHANNELS`.",
                 stacklevel=2,
             )
-            self._add_trailing_channel_axis = False
+            self._add_trailing_channel_axis = True
 
         self.video = video
         self.length = video.shape[0]
@@ -528,7 +528,7 @@ class TiffVideoReader(VideoReader):
                 elif "Z" not in in_axes:
                     in_axes["Z"] = in_axes.pop(axis)  # Let's assume that it means Z then
                 else:
-                    raise ValueError(f"Unable to parse the tiff axes: {axis} ({axes_squeezed}) not in {self.out_axes}.")
+                    raise ValueError(f"Unable to auto-assign axe {axis}. {axes_squeezed}) => {self.out_axes} ?")
 
         if "T" not in in_axes:
             if "Z" not in in_axes:
@@ -781,7 +781,7 @@ class MultiFrameReader(VideoReader):
     def __init__(
         self,
         path: str | os.PathLike,
-        paths: list[str | os.PathLike] | None = None,
+        paths: Sequence[str | os.PathLike] | None = None,
         extension: str | None = None,
         frame_loader: Callable[[str | os.PathLike], np.ndarray] | None = None,
         **kwargs: Any,
@@ -811,6 +811,10 @@ class MultiFrameReader(VideoReader):
             assert len({path.suffix for path in self.paths}) == 1, "Found several extensions in paths"
         else:
             files = [file for file in self.path.iterdir() if file.is_file()]
+
+            if not files:
+                raise ValueError("No frame found in the video.")
+
             if extension is None:
                 extensions: dict[str, int] = {}
                 for file in files:
@@ -819,8 +823,6 @@ class MultiFrameReader(VideoReader):
                 extension = max(extensions.items(), key=lambda k_v: k_v[1])[0]
 
             self.paths = utils.sorted_alphanumeric(file for file in files if file.suffix == extension)
-
-            assert self.paths, "No frame found in the video"
 
         if frame_loader is None:
             frame_loader = FrameTiffLoader(**kwargs) if self.paths[0].suffix in (".tif", ".tiff") else pil_loader

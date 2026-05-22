@@ -208,11 +208,13 @@ class Video(Sequence[np.ndarray]):
                 self.add_preprocessor(ChannelProjection("select", transform_config.selected_channel))
 
         if transform_config.normalize:
-            self.normalize(
-                transform_config.q_min,
-                transform_config.q_max,
-                transform_config.smooth_clip,
-                transform_config.compute_stats_on,
+            self.add_preprocessor(
+                IntensityNormalizer(
+                    transform_config.q_min,
+                    transform_config.q_max,
+                    transform_config.smooth_clip,
+                    transform_config.compute_stats_on,
+                )
             )
 
     @overload
@@ -347,6 +349,7 @@ def _handle_integer_slicing(slices: tuple[int | slice, ...], ndim: int) -> tuple
 
             value = slice_
             axis = i
+            has_an_integer = True
         else:
             slices_.append(slice_)
 

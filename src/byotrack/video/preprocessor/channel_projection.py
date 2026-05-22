@@ -65,7 +65,7 @@ class ChannelProjection(preprocessor.VideoPreprocessor):
         if self.method == "min":
             return frame.min(-1, keepdims=True)
         if self.method == "mean":
-            return frame.mean(-1, keepdims=True)
+            return frame.mean(-1, keepdims=True, dtype=frame.dtype)
 
         return frame[..., self.selected : self.selected + 1]
 
@@ -80,6 +80,6 @@ class ChannelProjection(preprocessor.VideoPreprocessor):
         if self.method == "min":
             return video.min(-1, keepdims=True)
         if self.method == "mean":
-            return video.mean(-1, keepdims=True)
+            return video.mean(-1, keepdims=True, dtype=video.dtype)
 
         return video[..., self.selected : self.selected + 1]
