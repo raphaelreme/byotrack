@@ -6,7 +6,6 @@ We provide loading and saving functions for detections and tracks.
 from __future__ import annotations
 
 import pathlib
-import sys
 import warnings
 from typing import TYPE_CHECKING
 
@@ -24,44 +23,6 @@ from byotrack.api.detections.segmentation_detections import _position_from_segme
 if TYPE_CHECKING:
     import os
     from collections.abc import Collection, Sequence
-
-
-if sys.version_info < (3, 12):
-    from typing_extensions import override
-else:
-    from typing import override
-
-
-class GroundTruthDetector(byotrack.BatchDetector):
-    """Converts a 'ground-truth' video of segmentation into byotrack Detections.
-
-    The video should not be normalized and each pixel is expected to be an integer.
-
-    Example:
-
-    .. code-block:: python
-
-        # Load the segmentation video, it can be directly loaded from any folder containing tiff images
-        video = byotrack.Video("dataset/01_ERR_SEG")  # Load segmentation for CLB
-        # video = byotrack.Video("dataset/01_GT/SEG")  # Load ground-truth segmentation
-        # video = byotrack.Video("dataset/01_RES/TRA")  # Load predicted tracks segmentation
-
-        detector = GroundTruthDetector()
-
-        detections_sequence = detector.run(video)
-
-    """
-
-    progress_bar_description = "Detections (Load from CTC format)"
-
-    @override
-    def detect(self, batch: np.ndarray) -> list[byotrack.SegmentationDetections]:
-        if batch.shape[-1] != 1:
-            raise ValueError("Multichannel segmentation are not supported")
-        if not np.issubdtype(batch.dtype, np.integer):
-            raise ValueError("GroundTruthDetector expects label (integer) encoded frames.")
-
-        return [byotrack.SegmentationDetections(torch.from_numpy(frame[..., 0].astype(np.int32))) for frame in batch]
 
 
 def _parse_meta_data(file: pathlib.Path) -> dict[int, tuple[int, int, int]]:

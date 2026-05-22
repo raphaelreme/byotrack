@@ -315,3 +315,75 @@ def test_pauseable_tqdm_negative_delta_t_warns_and_skips_adjustment():
         bar.unpause()
     assert bar.last_pause_t == 0.0  # still reset
     assert bar.start_t == original_start_t  # not adjusted
+
+
+## GroundTruthDetector integration in BatchMultiStepTracker
+
+
+def test_batch_multi_step_tracker_gt_without_segmentations_uses_normal_batch_flow():
+    video = np.zeros((3, 5, 5, 1), dtype=np.int32)
+    detector = byotrack.GroundTruthDetector(batch_size=2)
+    linker = MinimalOnlineLinker()
+    tracker = byotrack.BatchMultiStepTracker(detector, linker)
+    tracker.run(video)
+
+    assert linker.calls[0] == ("reset", 2)
+    update_calls = [c for c in linker.calls if isinstance(c, tuple) and c[0] == "update"]
+    assert len(update_calls) == 3
+    assert linker.calls[-1] == "collect"
+
+
+def test_batch_multi_step_tracker_gt_with_segmentations_dispatches_to_online_tracking():
+    video = np.zeros((3, 5, 5, 1), dtype=np.float32)
+    segmentations = np.zeros((3, 5, 5, 1), dtype=np.int32)
+    segmentations[0, 2, 2, 0] = 1  # frame 0: 1 object
+    segmentations[1, 1, 1, 0] = 2  # frame 1: 2 objects
+    segmentations[1, 3, 3, 0] = 3
+    # frame 2: 0 objects
+
+    detector = byotrack.GroundTruthDetector(segmentations)
+    linker = MinimalOnlineLinker()
+    tracker = byotrack.BatchMultiStepTracker(detector, linker)
+    tracker.run(video)
+
+    update_calls = [c for c in linker.calls if isinstance(c, tuple) and c[0] == "update"]
+    assert len(update_calls) == 3
+    # frame is not None (from video), detection counts come from segmentations
+    assert update_calls[0] == ("update", False, 1)
+    assert update_calls[1] == ("update", False, 2)
+    assert update_calls[2] == ("update", False, 0)
+
+
+def test_batch_multi_step_tracker_gt_online_tracking_applies_refiner():
+    video = np.zeros((3, 5, 5, 1), dtype=np.float32)
+    segmentations = np.zeros((3, 5, 5, 1), dtype=np.int32)
+
+    detector = byotrack.GroundTruthDetector(segmentations)
+    linker = MinimalOnlineLinker()
+    refiner = MinimalRefiner()
+    tracker = byotrack.BatchMultiStepTracker(detector, linker, refiners=[refiner])
+    tracker.run(video)
+
+    assert refiner.called
+
+
+def test_batch_multi_step_tracker_gt_online_tracking_shape_mismatch_raises():
+    video = np.zeros((3, 5, 5, 1), dtype=np.float32)
+    segmentations = np.zeros((3, 6, 5, 1), dtype=np.int32)
+
+    detector = byotrack.GroundTruthDetector(segmentations)
+    linker = MinimalOnlineLinker()
+    tracker = byotrack.BatchMultiStepTracker(detector, linker)
+
+    with pytest.raises(ValueError, match="shape"):
+        tracker.run(video)
+
+
+def test_batch_multi_step_tracker_gt_online_tracking_guard_raises_on_wrong_detector():
+    video = np.zeros((3, 5, 5, 1), dtype=np.float32)
+    detector = MinimalBatchDetector(batch_size=2)
+    linker = MinimalOnlineLinker()
+    tracker = byotrack.BatchMultiStepTracker(detector, linker)
+
+    with pytest.raises(RuntimeError):
+        tracker._online_tracking_with_ground_truth_detector(video)

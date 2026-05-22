@@ -152,6 +152,9 @@ class BatchMultiStepTracker(MultiStepTracker):
 
     @override
     def run(self, video: Sequence[np.ndarray] | np.ndarray) -> Collection[byotrack.Track]:
+        if isinstance(self.detector, byotrack.GroundTruthDetector) and self.detector.segmentations is not None:
+            return self._online_tracking_with_ground_truth_detector(video)
+
         if len(video) == 0:
             return []
 
@@ -203,6 +206,40 @@ class BatchMultiStepTracker(MultiStepTracker):
         link_bar.close()
 
         tracks = self.linker.collect()
+        for refiner in self.refiners:
+            tracks = refiner.run(video, tracks)
+
+        # Check produced tracks
+        byotrack.Track.check_tracks(tracks, warn=True)
+
+        return tracks
+
+    def _online_tracking_with_ground_truth_detector(
+        self, video: Sequence[np.ndarray] | np.ndarray
+    ) -> Collection[byotrack.Track]:
+        """Patch of `BatchMultiStepTracker.run` to manage online tracking with a GroundTruthDetector."""
+        if not isinstance(self.detector, byotrack.GroundTruthDetector) or self.detector.segmentations is None:
+            raise RuntimeError("Called without a GroundTruthDetector and its given `segmentations`.")
+
+        self.detector._check_shape(video)  # noqa: SLF001
+
+        self.linker.reset(video[0].ndim - 1)
+
+        progress_bar = tqdm.tqdm(
+            desc=f"{self.detector.progress_bar_description} & {self.linker.progress_bar_description}",
+            total=len(video),
+        )
+
+        # And run online without using batching
+        for segmentation, frame in zip(self.detector.segmentations, video, strict=True):
+            detections = self.detector.detect(segmentation[None])[0]
+            self.linker.update(frame, detections)
+            progress_bar.update()
+
+        progress_bar.close()
+
+        tracks = self.linker.collect()
+
         for refiner in self.refiners:
             tracks = refiner.run(video, tracks)
 

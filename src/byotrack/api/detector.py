@@ -5,12 +5,14 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 import numpy as np
+import torch
 import tqdm.auto as tqdm
+
+import byotrack
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    import byotrack
 
 if sys.version_info < (3, 12):
     from typing_extensions import override
@@ -89,10 +91,6 @@ class BatchDetector(Detector):
     def detect(self, batch: np.ndarray) -> Sequence[byotrack.Detections]:
         """Apply the detection on a batch of frames.
 
-        By default, the frame ids are set from 0 to n-1 with n the size of the batch.
-        The aggregattion of batches and frame ids correction is automatically handled when called
-        the `run` method.
-
         Args:
             batch (np.ndarray): Batch of video frames
                 Shape: (B, [D, ]H, W, C)
@@ -151,3 +149,84 @@ class DetectionsRefiner(ABC):
             refined_detections.append(self.apply(detections, video[i] if video is not None else None))
 
         return refined_detections
+
+
+class GroundTruthDetector(BatchDetector):
+    """Convert a video of segmentations into Detections using the BatchDetector API.
+
+    Each frame in the video is expected to be an instance segmentation mask of shape ([D, ]H, W, 1)
+    The video should not be normalized and each pixel is expected to be an integer.
+
+    Note: The segmented video can be given at construction time of the detector. In such case,
+          this video will be used over the one given in `run`. This allows to use precomputed detections
+          as well as the original video in a [Batch]MultiStepTracker pipeline.
+
+    Example:
+
+    .. code-block:: python
+
+        ### Example: Loading CTC segmentation
+        video = byotrack.Video("dataset/01_ERR_SEG")  # Load segmentation for CLB
+        # video = byotrack.Video("dataset/01_GT/SEG")  # Load ground-truth segmentation
+        # video = byotrack.Video("dataset/01_RES/TRA")  # Load predicted tracks segmentation
+
+        detector = GroundTruthDetector()
+        detections_sequence = detector.run(video)
+
+        ### Example: Loading precomputed segmentations
+        segmentations = byotrack.Video("segmentations.tiff")  # Shape (T, [D, ]H, W, 1), dtype: int
+        detections_sequence = GroundTruthDetector().run(segmentations)
+
+        ### Example: Tracking with precomputed segmentations with online loading
+        video = byotrack.Video("video.tiff").normalize()  # Shape (T, [D, ]H, W, 1), dtype: float
+        segmentations = byotrack.Video("segmentations.tiff")  # Shape (T, [D, ]H, W, 1), dtype: int
+        detector = GroundTruthDetector(segmentations)
+        linker = ...
+        tracker = BatchMultiStepTracker(detector, linker)
+
+        # This will forward the segmented frame to the Detector,
+        # but the video frame to the linker.
+        tracks = tracker.run(video)
+
+
+    """
+
+    progress_bar_description = "Ground-Truth Detector (Load from segmented video)"
+
+    def __init__(self, segmentations: Sequence[np.ndarray] | np.ndarray | None = None, batch_size=1):
+        super().__init__(batch_size)
+        self.segmentations = segmentations
+
+    @override
+    def run(self, video: Sequence[np.ndarray] | np.ndarray) -> list[byotrack.Detections]:
+        if self.segmentations is None:
+            return super().run(video)
+
+        self._check_shape(video)
+
+        return super().run(self.segmentations)
+
+    def _check_shape(self, video: Sequence[np.ndarray] | np.ndarray) -> None:
+        if self.segmentations is None:
+            return
+
+        video_shape = video.shape if hasattr(video, "shape") else (len(video), *video[0].shape)
+
+        segmentations_shape = (
+            self.segmentations.shape
+            if hasattr(self.segmentations, "shape")
+            else (len(self.segmentations), *self.segmentations[0].shape)
+        )
+
+        if video_shape[:-1] != segmentations_shape[:-1]:
+            raise ValueError("Segmented video do not match video shape.")
+
+    @override
+    def detect(self, batch: np.ndarray) -> list[byotrack.SegmentationDetections]:
+        if batch.shape[-1] != 1:
+            raise ValueError("Multichannel segmentations are not supported")
+
+        if not np.issubdtype(batch.dtype, np.integer):
+            raise ValueError("GroundTruthDetector expects label (integer) encoded frames.")
+
+        return [byotrack.SegmentationDetections(torch.from_numpy(frame[..., 0].astype(np.int32))) for frame in batch]

@@ -103,7 +103,7 @@ from byotrack.api.detections.detections import (
 )
 from byotrack.api.detections.point_detections import PointDetections
 from byotrack.api.detections.segmentation_detections import SegmentationDetections
-from byotrack.api.detector import BatchDetector, DetectionsRefiner, Detector
+from byotrack.api.detector import BatchDetector, DetectionsRefiner, Detector, GroundTruthDetector
 from byotrack.api.features_extractor import FeaturesExtractor, MultiFeaturesExtractor
 from byotrack.api.linker import Linker, OnlineLinker
 from byotrack.api.optical_flow.optical_flow import OpticalFlow
@@ -125,6 +125,7 @@ __all__ = [
     "DetectionsRefiner",
     "Detector",
     "FeaturesExtractor",
+    "GroundTruthDetector",
     "Linker",
     "MultiFeaturesExtractor",
     "MultiStepTracker",
