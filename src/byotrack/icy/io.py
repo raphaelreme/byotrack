@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 def save_detections(detections_sequence: Sequence[byotrack.Detections], path: str | os.PathLike) -> None:
     """Save a sequence of detections as valid rois for icy.
 
+    Warning: Point / Bbox based detections may have out-of-frame detections, which will not be saved.
+
     Format example (2D):
 
     .. code-block:: xml
@@ -79,31 +81,37 @@ def save_detections(detections_sequence: Sequence[byotrack.Detections], path: st
 
     Args:
         detections_sequence (Sequence[Detections]): Detections for each frame.
-            The `frame_id` attribute is not used and we rely on the position of
-            the Detections in the sequence.
         path (str | os.PathLike): Output path
 
     """
+    if not detections_sequence:
+        raise ValueError("No detections to save.")
+
     root = ET.Element("root")
     for frame_id, detections in enumerate(detections_sequence):
         shape = torch.tensor(detections.shape)
         start = detections.bbox[:, : detections.dim]
         end = start + detections.bbox[:, detections.dim :]
 
-        # Filter outside of frame detections
-        invalid = torch.logical_or(end.min(dim=-1).values <= 0, (start >= shape).any(dim=-1))
-
         # Clip on frame shape
         start = torch.maximum(torch.tensor(0), start)
         end = torch.minimum(shape, end)
 
         segmentation = detections.segmentation  # Convert once if ZSTD
+        invalid = torch.full((detections.length,), fill_value=True)
+        invalid[byotrack.labels_of(segmentation)] = False
+
+        if invalid.any():
+            warnings.warn(
+                f"Some detections (t={frame_id}) are missing from the segmentation and will be skipped.",
+                stacklevel=2,
+            )
 
         for label in range(detections.length):
-            roi = ET.SubElement(root, "roi")
-
             if invalid[label]:
                 continue
+
+            roi = ET.SubElement(root, "roi")
 
             if detections.dim == 2:  # noqa: PLR2004
                 i, j = start[label].tolist()

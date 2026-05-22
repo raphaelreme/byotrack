@@ -90,7 +90,7 @@ Please refer to the official documentation: https://byotrack.readthedocs.io/en/l
 import importlib.metadata
 
 # Import API and main features but no implementation
-from byotrack import video
+from byotrack import fiji, icy, video
 from byotrack._env import NUMBA_CACHE, ZSTD_SEG
 from byotrack.api.detections.bbox_detections import BBoxDetections
 from byotrack.api.detections.detections import (
@@ -98,6 +98,7 @@ from byotrack.api.detections.detections import (
     DetectionsLike,
     as_detections,
     fast_relabel,
+    labels_of,
     relabel_consecutive,
 )
 from byotrack.api.detections.point_detections import PointDetections
@@ -140,6 +141,9 @@ __all__ = [
     "VideoTransformConfig",
     "as_detections",
     "fast_relabel",
+    "fiji",
+    "icy",
+    "labels_of",
     "relabel_consecutive",
     "video",
 ]

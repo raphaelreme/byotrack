@@ -68,6 +68,7 @@ dev = [
     "prek",
     "pytest",
     "pytest-cov",
+    "pytest-mock",
     "ruff",
     "scipy-stubs",
     "types-networkx",

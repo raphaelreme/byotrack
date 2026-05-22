@@ -19,8 +19,8 @@ if sys.version_info < (3, 12):
 else:
     from typing import override
 
-from test_detector import MinimalBatchDetector
-from test_linker import MinimalOnlineLinker
+from tests.api.test_detector import MinimalBatchDetector
+from tests.api.test_linker import MinimalOnlineLinker
 
 
 class MinimalDetector(byotrack.Detector):

@@ -19,15 +19,17 @@ if TYPE_CHECKING:
 def save_detections(detections_sequence: Sequence[byotrack.Detections], path: str | os.PathLike) -> None:
     """Save a sequence of detections as a stack of segmentation that can be reload by the trackmate label detector.
 
+    Warning: Point / Bbox based detections may have out-of-frame detections, which will not be saved.
+
     Args:
-        detections_sequence (Sequence[Detections]): Detections for each frame. There should be one Detections object
-            for every frame of the video (even if empty it should be provided)
+        detections_sequence (Sequence[Detections]): Detections for each frame.
         path (str | os.PathLike): Output path
 
     """
-    dim = 2
-    if detections_sequence:
-        dim = detections_sequence[0].dim
+    if not detections_sequence:
+        raise ValueError("No detections to save.")
+
+    dim = detections_sequence[0].dim
 
     segmentations = np.concatenate(
         [detections.segmentation[None].numpy().astype(np.uint16) for detections in detections_sequence]

@@ -51,7 +51,7 @@ class FijiRunner:
 
         cmd = self.cmd.format(fiji=self.fiji_path.name, script=script, args=args)
 
-        if platform.system().lower() == "windows":
+        if platform.system().lower() == "windows":  # pragma: no cover
             cmd = cmd[2:]  # Strip ./ on windows
 
         print("Calling Fiji with:", cmd)  # noqa: T201
