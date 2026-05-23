@@ -46,15 +46,15 @@ def filter_objects_on_size(segmentation: np.ndarray, min_area: float, max_area: 
     area = np.zeros(segmentation.max(), np.uint)
 
     for i in range(segmentation.size):
-        instance = segmentation[i] - 1
-        if instance != -1:
-            area[instance] += 1
+        instance = segmentation[i]
+        if instance != 0:
+            area[instance - 1] += 1
 
     to_delete = (area < min_area) | (area > max_area)
 
     for i in range(segmentation.size):
-        instance = segmentation[i] - 1
-        if instance != -1 and to_delete[instance]:
+        instance = segmentation[i]
+        if instance != 0 and to_delete[instance - 1]:
             segmentation[i] = 0
 
     return to_delete

@@ -53,9 +53,9 @@ def _compute_mass(segmentation: np.ndarray) -> np.ndarray:
     segmentation = segmentation.reshape(-1)
 
     for i in range(segmentation.shape[0]):
-        instance = segmentation[i] - 1
-        if instance != -1:
-            mass[instance] += 1
+        instance = segmentation[i]
+        if instance != 0:
+            mass[instance - 1] += 1
 
     return mass
 
@@ -73,8 +73,9 @@ def _position_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     m_1 = np.zeros((n, dim), dtype=np.uint)
 
     for index in np.ndindex(*segmentation.shape):
-        instance = segmentation[index] - 1
-        if instance != -1:
+        instance = segmentation[index]
+        if instance != 0:
+            instance -= 1
             m_0[instance] += 1
             for i in range(dim):
                 m_1[instance, i] += index[i]
@@ -98,9 +99,9 @@ def _median_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
         return median
 
     for i in range(flat_segmentation.shape[0]):
-        instance = flat_segmentation[i] - 1
-        if instance != -1:
-            counts[instance] += 1
+        instance = flat_segmentation[i]
+        if instance != 0:
+            counts[instance - 1] += 1
 
     m = np.max(counts)
 
@@ -109,8 +110,9 @@ def _median_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     positions = np.empty((n, m, len(segmentation.shape)), dtype=np.uint)
 
     for index in np.ndindex(*segmentation.shape):
-        instance = segmentation[index] - 1
-        if instance != -1:
+        instance = segmentation[index]
+        if instance != 0:
+            instance -= 1
             positions[instance, counts[instance]] = index
             counts[instance] += 1
 
@@ -141,8 +143,9 @@ def _bbox_from_segmentation(segmentation: np.ndarray) -> np.ndarray:
     maxi = np.zeros((n, dim), dtype=np.int32)
 
     for index in np.ndindex(*segmentation.shape):
-        instance = segmentation[index] - 1
-        if instance != -1:
+        instance = segmentation[index]
+        if instance != 0:
+            instance -= 1
             for i in range(dim):
                 mini[instance, i] = min(mini[instance, i], index[i])
                 maxi[instance, i] = max(maxi[instance, i], index[i])
@@ -168,8 +171,8 @@ def _filter_segmentation(segmentation: np.ndarray, to_delete: np.ndarray) -> Non
     """
     segmentation = segmentation.reshape(-1)
     for i in numba.prange(segmentation.size):
-        instance = segmentation[i] - 1
-        if instance != -1 and to_delete[instance]:
+        instance = segmentation[i]
+        if instance != 0 and to_delete[instance - 1]:
             segmentation[i] = 0
 
 

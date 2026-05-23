@@ -104,8 +104,8 @@ def compute_intensity(segmentation: np.ndarray, frame: np.ndarray) -> np.ndarray
     frame = frame.reshape(-1)
 
     for i in range(segmentation.shape[0]):
-        instance = segmentation[i] - 1
-        if instance != -1:
-            intensity[instance] += frame[i]
+        instance = segmentation[i]
+        if instance != 0:
+            intensity[instance - 1] += frame[i]
 
     return intensity

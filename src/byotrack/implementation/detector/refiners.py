@@ -43,8 +43,9 @@ def _to_filter_based_on_intensity(
     max_intensity = np.zeros(segmentation.max(), dtype=intensity.dtype)
 
     for i in range(segmentation.size):
-        instance = segmentation[i] - 1
-        if instance != -1:
+        instance = segmentation[i]
+        if instance != 0:
+            instance -= 1
             sum_intensity[instance] += intensity[i]
             max_intensity[instance] = max(intensity[i], max_intensity[instance])
 
