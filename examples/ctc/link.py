@@ -197,18 +197,12 @@ def main(  # noqa: C901, PLR0913, PLR0915
     n_digit = len(next((path / f"{seq:02}").glob("t*.tif")).stem[1:])
 
     # Load the video and normalize it
-    video = byotrack.Video(path / f"{seq:02}")  # Load videos
-    video.set_transform(
-        byotrack.VideoTransformConfig(
-            aggregate=True,
-            normalize=True,
-            compute_stats_on=50 if video.ndim == 4 else 10,
-        )
-    )
+    video = byotrack.Video(path / f"{seq:02}")
+    video = video.normalize(compute_stats_on=50 if video.ndim == 4 else 10)
 
     # Load segmentations
     if not detections_sequence:
-        detections_sequence = ctc_data.GroundTruthDetector().run(byotrack.Video(path / f"{seq:02}_ERR_SEG"))
+        detections_sequence = byotrack.GroundTruthDetector().run(byotrack.Video(path / f"{seq:02}_ERR_SEG"))
 
     # Set default parameters
     if video.ndim == 4:  # 2D
@@ -306,7 +300,6 @@ def main(  # noqa: C901, PLR0913, PLR0915
         tracks,
         detections_sequence=detections_sequence,
         default_radius=spot_radius * 3,
-        shape=video.shape[1:],
         n_digit=n_digit,
         anisotropy=anisotropy,
     )
