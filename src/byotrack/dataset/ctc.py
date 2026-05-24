@@ -117,7 +117,7 @@ def load_tracks(  # noqa: C901, PLR0912, PLR0915
         frame = frame[..., 0]
 
         # Compute the mapping done by relabel consecutive
-        track_ids = labels_of(frame)
+        track_ids: list[int] = labels_of(frame).tolist()
         positions = _position_from_segmentation(relabel_consecutive(frame, inplace=True))
 
         for det_id, (track_id, position) in enumerate(zip(track_ids, positions, strict=True)):
