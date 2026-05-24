@@ -27,6 +27,6 @@ repos:
     rev: v0.15.5
     hooks:
       - id: ruff-check
-        args: [--fix, src/]
+        args: [--fix, src/, tests/]
       - id: ruff-format
-        args: [src/]
+        args: [src/, tests/]
