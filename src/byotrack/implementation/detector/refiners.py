@@ -52,7 +52,7 @@ def _to_filter_based_on_intensity(
     return (sum_intensity < mini) | (sum_intensity > maxi) | (max_intensity < min_peak)
 
 
-class FilterDetections(byotrack.DetectionsRefiner):
+class DetectionsFilter(byotrack.DetectionsRefiner):
     """Filter detections based on simple intensity and size criteria.
 
     If images have multiple channels, channels are averaged into a single per-pixel intensity.
@@ -84,7 +84,7 @@ class FilterDetections(byotrack.DetectionsRefiner):
     def apply(self, detections, frame=None):
         detections = byotrack.as_detections(detections)
 
-        to_delete = self.min_area < detections.mass < self.max_area
+        to_delete = (detections.mass < self.min_area) & (detections.mass > self.max_area)
 
         if self.min_intensity > 0.0 or self.min_peak > 0.0 or self.max_intensity < float("inf"):
             if frame is None:

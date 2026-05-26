@@ -53,7 +53,7 @@ class ChannelProjection(preprocessor.VideoPreprocessor):
         super().initialize(video)
 
         shape = self.shape[-1]
-        if not -shape < self.selected <= shape:
+        if not -shape <= self.selected < shape:
             raise IndexError(f"index {self.selected} is out of bounds for channel axis with size {shape}.")
 
         self._shape = (*self.shape[:-1], 1)  # Reduce the channel axis

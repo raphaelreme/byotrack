@@ -20,6 +20,8 @@ else:
     from typing import override
 
 
+# TODO: add_refiners + _run to overwrite ? and run runs _run + refiners.
+# then integrates with BatchDetector
 class Detector(ABC):
     """Base class for detections in videos.
 
