@@ -90,7 +90,7 @@ class SpatialProjection(preprocessor.VideoPreprocessor):
         if self.method == "min":
             return frame.min(self.axis)
         if self.method == "mean":
-            return frame.mean(self.axis, dtype=frame.dtype)
+            return frame.mean(self.axis).astype(frame.dtype)  # Note: using dtype overflows
 
         slices = [slice(None)] * self.axis + [self.selected]
         return frame[tuple(slices)]
@@ -108,7 +108,7 @@ class SpatialProjection(preprocessor.VideoPreprocessor):
         if self.method == "min":
             return video.min(axis)
         if self.method == "mean":
-            return video.mean(axis, dtype=video.dtype)
+            return video.mean(axis).astype(video.dtype)  # Note: using dtype overflows
 
         slices = [slice(None)] * (axis) + [self.selected]
         return video[tuple(slices)]

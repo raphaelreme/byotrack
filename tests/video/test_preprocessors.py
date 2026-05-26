@@ -288,6 +288,15 @@ def test_channel_projection_preprocess_video_ndarray_vs_seq(method, video_2d: np
     assert (out_array == out_list).all()
 
 
+def test_channel_projection_do_no_overflow():
+    video = np.full((3, 5, 7, 4), 200, dtype=np.uint8)
+    proj = ChannelProjection(method="mean")
+    proj.initialize(video)
+    out = proj.preprocess_frame(video[0])
+
+    assert (out == 200).all()
+
+
 ## FrameSlicer
 
 
@@ -391,7 +400,7 @@ def test_spatial_projection_on_z_mean(video_3d: np.ndarray):
 
     assert out.shape == proj.shape == video_3d.shape[2:]
     assert out.dtype == proj.dtype == video_3d.dtype  # Mean preserve dtype
-    assert (out == video_3d[0].mean(0, dtype=video_3d.dtype)).all()
+    assert (out == video_3d[0].mean(0).astype(video_3d.dtype)).all()
 
 
 def test_spatial_projection_on_z_min(video_3d: np.ndarray):
@@ -467,3 +476,12 @@ def test_spatial_projection_preprocess_video_ndarray_vs_seq(method, axis: int, v
 
     assert out_array.shape == (len(video_3d), *proj.shape)
     assert (out_array == out_list).all()
+
+
+def test_spatial_projection_do_no_overflow():
+    video = np.full((3, 5, 5, 7, 2), 200, dtype=np.uint8)
+    proj = SpatialProjection("X", method="mean")
+    proj.initialize(video)
+    out = proj.preprocess_frame(video[0])
+
+    assert (out == 200).all()
