@@ -6,11 +6,13 @@ import sys
 import warnings
 from typing import TYPE_CHECKING
 
+import scipy
 import torch
 import torch_kf
 import torch_kf.ckf
 
 import byotrack
+from byotrack.api.detections import statistics
 from byotrack.implementation.linker.frame_by_frame.nearest_neighbor import (
     AssociationMethod,
     FrameByFrameLinker,
@@ -18,6 +20,8 @@ from byotrack.implementation.linker.frame_by_frame.nearest_neighbor import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Collection, Sequence
+
     import numpy as np
 
 if sys.version_info < (3, 12):
@@ -78,43 +82,56 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
     """Parameters of KalmanLinker.
 
     Note:
-        The merging and splitting features is still experimental.
+        Most parameters can be estimated automatically from the detections using `estimate`.
 
     Attributes:
         association_threshold (float): This is the main hyperparameter, it defines the threshold on the distance used
-            not to link tracks with detections. It prevents to link with false positive detections.
-            Default: 5 pixels
-        detection_std (float | torch.Tensor): Expected measurement noise on the detection process.
-            The detection process is modeled with a Gaussian noise with this given std. (You can provide a different
-            noise for each dimension). See `torch_kf.ckf.constant_kalman_filter`.
-            Default: 3.0 pixels
-        process_std (float | torch.Tensor): Expected process noise. See `torch_kf.ckf.constant_kalman_filter`, the
-            process is modeled as constant order-th derivative motion. This quantify how much the supposedly "constant"
-            order-th derivative can change between two consecutive frames. A common rule of thumb is to use
-            3 * process_std ~= max_t(| dx^(order)(t+1) - dx^(order)(t)|). It can be provided for each dimension).
-            Default: 1.5 pixels
+            not to link tracks with detections. A low threshold will typically reduce wrong assignments and ID-switches,
+            but may increase track fragmentation. Higher values will reduce track fragmentation, but miss-detected
+            tracks may be linked to a wrong detection.
+            Depending on `cost`, it is either expressed the maximum Euclidean distance (pixels), or the maximum
+            Mahalanobis distance, or the minimum likelihood (probability).
+            Default: -1.0 (automatically estimated, see `estimate`.)
+        detection_std (float | torch.Tensor): Expected measurement noise (in pixel) on the detection process.
+            The detection process is modeled with a Gaussian noise with this given std. You may provide a different
+            noise for each dimension. See `torch_kf.ckf.constant_kalman_filter`.
+            Default: 0.0 (automatically estimated, see `estimate`.)
+        process_std (float | torch.Tensor): Expected process noise (in pixel). See `torch_kf.ckf.constant_kalman_filter`
+            The process is modeled as constant order-th derivative motion with a Gaussian noise. This quantify how much
+            the supposedly "constant" order-th derivative can change between two consecutive frames.
+            A common rule of thumb is to use 4 * process_std ~= max_t(| dx^(order)(t+1) - dx^(order)(t)|) (see
+            `estimate_process_std_from_tracks`). It can be provided for each dimension.
+            Default: 0.0 (automatically estimated, see `estimate`)
         kalman_order (int): Order of the Kalman filter to use.
             0 for brownian motions, 1 for directed brownian motion, 2 for accelerated brownian motions, etc...
             Default: 1
-        n_valid (int): Number associated detections required to validate the track after its creation.
+        n_valid (int): Number of detections required to validate the track after its creation. If a track is missed
+            during its first n_valid frames, it is dropped. This provides robustness to false positive detections.
+            With no false positives, it can be set to 1 (a detection always belongs to a track).
+            Highers values allow to remove non time-consistent false positives, but may prune real tracks that have
+            been miss-detected.
             Default: 3
-        n_gap (int): Number of consecutive frames without association before the track termination.
+        n_gap (int): Number of consecutive frames without any association (miss-detected) before the track termination.
+            This provides robustness to false negative detections. Without any false negatives, it can be set to 0.
+            Higher values allow to support larger gaps in the track, but may lead to wrong assignments.
             Default: 3
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
-            It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH, SPARSE_OPT_HARD, SPARSE_OPT_SMOOTH)
-            Default: OPT_SMOOTH
+            It can be provided as a string. Choice: GREEDY, OPT_HARD, OPT_SMOOTH, SPARSE_OPT_HARD, SPARSE_OPT_SMOOTH.
+            Default: SPARSE_OPT_SMOOTH
         anisotropy (tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
-            for each axis, depth first). This will be used to scale distances. It will only impact
-            EUCLIDEAN[_SQ] costs. For probabilistic cost, anisotropy should be already integrated
-            in the stds of the kalman filter (providing one std for each dimension).
+            for each axis, depth first). This will be used to scale distances. Note that it will only impact
+            EUCLIDEAN[_SQ] costs; for probabilistic cost, anisotropy should be already integrated
+            within the stds of the kalman filter (providing one std for each dimension).
             Default: (1., 1., 1.)
-        cost_method (CostMethod): The cost method to use. It can be provided as a string.
-            See `CostMethod`. It also indicates what is the correct unit of `association_threshold`.
-            Default: EUCLIDEAN
-        track_building (TrackBuilding): Tells the linker how to build the final tracks.
+        cost_method (CostMethod): The cost method to use. See `CostMethod`.
+            It can be provided as a string. Choice: EUCLIDEAN, EUCLIDEAN_SQ, MAHALANOBIS, MAHALANOBIS_SQ, LIKELIHOOD.
+            This also defines the unit of `association_threshold` (in pixels for Euclidean, no units for Mahalanobis,
+            and a probability for likelihood).
+            Default: LIKELIHOOD
+        track_building (TrackBuilding): How the linker will build the final tracks. See `TrackBuilding`.
             Either from detections, or from filtered/smoothed positions computed by the
-            Kalman filter. See `TrackBuilding`. It can be provided as a string.
-            Default: FILTERED
+            Kalman filter. It can be provided as a string. Choice: DETECTION, FILTERED, SMOOTHED.
+            Default: SMOOTHED
         split_factor (float): Allow splitting of tracks, using a second association step.
             The association threshold in this case is `split_factor * association_threshold`.
             Default: 0.0 (No splits)
@@ -133,27 +150,27 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
             on their first frames. But large values will lead to large uncertainty on the first prediction, making
             it hard to associate to a detection with MAHALANOBIS or LIKELIHOOD methods.
             Typical values lies between 3.0 to 10.0.
-            Default: 10.0
+            Default: 5.0
 
     """
 
     def __init__(  # noqa: PLR0913
         self,
-        association_threshold: float = 5.0,
+        association_threshold: float = -1.0,
         *,
-        detection_std: float | torch.Tensor = 3.0,
-        process_std: float | torch.Tensor = 1.5,
+        detection_std: float | torch.Tensor = 0.0,
+        process_std: float | torch.Tensor = 0.0,
         kalman_order: int = 1,
         n_valid=3,
         n_gap=3,
-        association_method: str | AssociationMethod = AssociationMethod.OPT_SMOOTH,
+        association_method: str | AssociationMethod = AssociationMethod.SPARSE_OPT_SMOOTH,
         anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
-        cost: str | Cost = Cost.EUCLIDEAN,
-        track_building: str | TrackBuilding = TrackBuilding.FILTERED,
+        cost: str | Cost = Cost.LIKELIHOOD,
+        track_building: str | TrackBuilding = TrackBuilding.SMOOTHED,
         split_factor: float = 0.0,
         merge_factor: float = 0.0,
         online_process_std: float = 0.0,
-        initial_std_factor: float = 10.0,
+        initial_std_factor: float = 5.0,
     ):
         super().__init__(
             association_threshold=association_threshold,
@@ -165,12 +182,12 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
             merge_factor=merge_factor,
         )
 
-        if isinstance(detection_std, float) and min(anisotropy) != max(anisotropy):
+        if isinstance(detection_std, float) and min(anisotropy) != max(anisotropy) and detection_std > 0:
             warnings.warn(
                 "A single `detection_std` is provided, but images are anisotrope. Consider giving std per dimension.",
                 stacklevel=2,
             )
-        if isinstance(process_std, float) and min(anisotropy) != max(anisotropy):
+        if isinstance(process_std, float) and min(anisotropy) != max(anisotropy) and process_std > 0:
             warnings.warn(
                 "A single `process_std` is provided, but images are anisotrope. Consider giving std per dimension.",
                 stacklevel=2,
@@ -187,13 +204,187 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
         )
         self.online_process_std = online_process_std
 
-    detection_std: float | torch.Tensor = 3.0
-    process_std: float | torch.Tensor = 1.5
+    detection_std: float | torch.Tensor = 0.0
+    process_std: float | torch.Tensor = 0.0
     kalman_order: int = 1
-    cost: Cost = Cost.EUCLIDEAN
-    track_building: TrackBuilding = TrackBuilding.FILTERED
+    cost: Cost = Cost.LIKELIHOOD
+    track_building: TrackBuilding = TrackBuilding.SMOOTHED
     online_process_std: float = 0.0
-    initial_std_factor: float = 10.0
+    initial_std_factor: float = 5.0
+
+    @override
+    def check(self):
+        super().check()
+        if self.kalman_order < 0:
+            raise ValueError("`kalman_order` should be greater than or equal to 0.")
+
+        if self.online_process_std < 0:
+            raise ValueError("`online_process_std` should be greater than or equal to 0.")
+
+        if self.initial_std_factor <= 0:
+            raise ValueError("`initial_std_factor` should be greater than 0.")
+
+        if torch.as_tensor(self.detection_std).min() <= 0:
+            raise ValueError("`detection_std` should be greater than 0. Consider calling `estimate`.")
+
+        if torch.as_tensor(self.process_std).min() <= 0:
+            raise ValueError("`process_std` should be greater than 0. Consider calling `estimate`.")
+
+    @override
+    def estimate(self, detections_sequence: Sequence[byotrack.Detections]) -> KalmanLinkerParameters:
+        """Estimate parameters from the given detections.
+
+        Estimation is triggered by providing negative dummy values for positive parameters. The dummy values are
+        then replaced by their estimate.
+
+        Estimators:
+        * detection_std: `average_radius` / 2 (i.e. localization is rarely predicted outside the target)
+        * process_std: `average_radius` (i.e. unmodeled motion is ~the size of targets)
+                       (Consider using `estimate_process_std_from_tracks` instead)
+        * association_threshold: `steady_state_covariance` * 3 (See `estimate_association_threshold`).
+        * anisotropy: Computed from `statistics.anisotropy`.
+        * split_factor: 1.0 if the number of detection increase by more than 30% over the full sequence.
+        * merge_factor: 1.0 if the number of detection decrease by more than 30% over the full sequence.
+
+        Args:
+            detections_sequence (Sequence[byotrack.Detections]): Detections for the current sequence.
+
+        Returns:
+            NearestNeighborParameters: self with updated parameters.
+        """
+        estimate_association_threshold = False
+        if self.association_threshold <= 0.0:  # Do not estimate threshold in super(), we will do it here anyway.
+            self.association_threshold = 1.0
+            estimate_association_threshold = True
+
+        super().estimate(detections_sequence)
+
+        if self.kalman_order < 0:
+            warnings.warn("No estimation available for parameter `kalman_order`. Defaults to 1.", stacklevel=2)
+            self.kalman_order = 1
+
+        if self.online_process_std < 0.0:
+            warnings.warn("No estimation available for parameter `online_process_std`. Defaults to 0.0.", stacklevel=2)
+            self.online_process_std = 0.0
+
+        if self.initial_std_factor <= 0.0:
+            warnings.warn("No estimation available for parameter `initial_std_factor`. Defaults to 5.0.", stacklevel=2)
+            self.initial_std_factor = 5.0
+
+        avg_radius: float | None = None
+        if torch.as_tensor(self.detection_std).min() <= 0.0:
+            avg_radius = statistics.average_radius(detections_sequence, self.anisotropy)
+            self.detection_std = torch.tensor([avg_radius / 2.0 / ani for ani in self.anisotropy], dtype=torch.float32)
+            self.detection_std = self.detection_std[-detections_sequence[0].dim :]
+
+        if torch.as_tensor(self.process_std).min() <= 0.0:
+            avg_radius = (  # Recompute only if needed
+                statistics.average_radius(detections_sequence, self.anisotropy) if avg_radius is None else avg_radius
+            )
+
+            warnings.warn(
+                "`process_std` estimation is coarse. Consider using `estimate_process_std_from_tracks`.", stacklevel=2
+            )
+
+            self.process_std = torch.tensor([avg_radius / ani for ani in self.anisotropy], dtype=torch.float32)
+            self.process_std = self.process_std[-detections_sequence[0].dim :]
+
+        if estimate_association_threshold:
+            self.estimate_association_threshold(detections_sequence[0].dim)
+
+        return self
+
+    def estimate_association_threshold(self, dim: int, mahalanobis_threshold: float = 3.0) -> None:
+        """Estimate `association_threshold` based on the steady state covariance of the filter.
+
+        Modify in place `association_threshold` so that it cuts at `mahalanobis_threshold` when the filter
+        is in its steady state (i.e. after a few non-missed assignments).
+
+        Args:
+            dim (int): Dimension of the video (2D or 3D).
+            mahalanobis_threshold (float): Threshold on the mahalanobis distance in the steady state.
+                Default: 3.0
+        """
+        if torch.as_tensor(self.detection_std).min() <= 0:
+            raise ValueError("`detection_std` should be greater than 0 to estimate `association_threshold`.")
+
+        if torch.as_tensor(self.process_std).min() <= 0:
+            raise ValueError("`process_std` should be greater than 0 to estimate `association_threshold`.")
+
+        if self.cost in (Cost.MAHALANOBIS, Cost.MAHALANOBIS_SQ):
+            self.association_threshold = mahalanobis_threshold
+
+        kalman_filter = self.build_filter(dim)
+
+        state = torch_kf.GaussianState(
+            torch.zeros(kalman_filter.measure_dim, 1),
+            kalman_filter.steady_state_covariance(predicted=True, projected=True),
+        )
+        # Cutoff is at maha times the steady_state_covariance.
+        cutoff = state.covariance[0, 0].sqrt() * mahalanobis_threshold
+
+        if self.cost in (Cost.EUCLIDEAN, Cost.EUCLIDEAN_SQ):
+            self.association_threshold = cutoff.item()
+        else:
+            measure = torch.zeros((kalman_filter.measure_dim, 1))
+            measure[0, 0] = cutoff
+            self.association_threshold = state.likelihood(measure).item()
+
+    def estimate_process_std_from_tracks(self, tracks: Collection[byotrack.Track], quantile=0.99993) -> None:
+        """Estimate `process_std` based on the given tracks.
+
+        It modifies in place `process_std` so that it roughly fits the maximum unmodeled motion.
+
+        NOTE: Without annotations, you may set the process_std according to the following rule:
+              For **kalman_order=0**, it can be set to the maximum velocity (in pixel) divided by 4, where you
+              manually estimate the velocity visually (a rough estimation is enough).
+              For **kalman_order=1**, it can be similarly be set to the maximum variation of velocity between
+              consecutive frames divided by 4, with a rough visual estimation of the velocity variation.
+
+        Args:
+            tracks (Collection[byotrack.Track]): Partial ground-truth tracks. Note for a given `kalman_order`,
+                only the given tracks with length >= kalman_order + 2 will be used.
+                If these are manually annotated tracks, consider using a RTSSmoother to reduce the annotation noise.
+            quantile (float): Quantile to extract the maximum value. Can be reduced to ignore some false positive links.
+                Default: 0.99993
+        """
+        if any(ani <= 0 for ani in self.anisotropy):
+            raise ValueError("`anisotropy` should be greater than 0 to estimate `process_std`.")
+
+        points = byotrack.Track.tensorize(tracks)
+
+        dim = points.shape[-1]
+        points *= torch.tensor(self.anisotropy)[-dim:]  # Get isotrope positions
+
+        for _ in range(self.kalman_order + 1):
+            points = points[1:] - points[:-1]  # Compute the derivative at the right order
+
+        unexpected_motion = points.norm(dim=-1)  # ~ Chi distribution
+        unexpected_motion = unexpected_motion[~unexpected_motion.isnan()]  # Remove NaNs
+
+        # Ensure quantile leaves one out
+        n_samples = len(unexpected_motion)
+        n_outliers = (1 - quantile) * n_samples
+        if n_outliers < 1:
+            # We assume that hard samples are given, if only a few annotations (So at least 90% of the distrib)
+            quantile = max(0.9, 1 - 1 / n_samples)
+
+        self.process_std = unexpected_motion.quantile(quantile).item() / scipy.stats.chi.ppf(quantile, dim)
+        self.process_std = torch.tensor([self.process_std / ani for ani in self.anisotropy], dtype=torch.float32)
+        self.process_std = self.process_std[-dim:]
+
+    def build_filter(self, dim: int) -> torch_kf.KalmanFilter:
+        """Build the Kalman filter used by the Linker.
+
+        See `torch_kf.ckf.constant_kalman_filter`.
+        """
+        return torch_kf.ckf.constant_kalman_filter(
+            self.detection_std,
+            self.process_std,
+            dim=dim,
+            order=self.kalman_order,
+            approximate=True,
+        )
 
 
 class KalmanLinker(FrameByFrameLinker):
@@ -259,13 +450,7 @@ class KalmanLinker(FrameByFrameLinker):
     def reset(self, dim=2) -> None:
         super().reset(dim)
 
-        self.kalman_filter = torch_kf.ckf.constant_kalman_filter(
-            self.specs.detection_std,
-            self.specs.process_std,
-            dim=dim,
-            order=self.specs.kalman_order,
-            approximate=True,
-        )
+        self.kalman_filter = self.specs.build_filter(dim)
         self.kalman_filter = self.kalman_filter.to(self.dtype)
         self.active_states = torch_kf.GaussianState(
             torch.empty((0, self.kalman_filter.state_dim, 1), dtype=self.dtype),

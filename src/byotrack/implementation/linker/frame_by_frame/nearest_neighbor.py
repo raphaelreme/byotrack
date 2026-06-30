@@ -29,19 +29,27 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
     """Parameters of NearestNeighborLinker.
 
     Note:
-        The merging and splitting features is still experimental.
+        Most parameters can be estimated automatically from the detections using `estimate`.
 
     Attributes:
         association_threshold (float): This is the main hyperparameter, it defines the threshold on the distance used
-            not to link tracks with detections. It prevents to link with false positive detections.
-            Default: 5 pixels
-        n_valid (int): Number associated detections required to validate the track after its creation.
+            not to link tracks with detections. A low threshold will typically reduce wrong assignments and ID-switches,
+            but may increase track fragmentation. Higher values will reduce track fragmentation, but miss-detected
+            tracks may be linked to a wrong detection.
+            Default: -1.0 (automatically estimated, see `estimate`.)
+        n_valid (int): Number of detections required to validate the track after its creation. If a track is missed
+            during its first n_valid frames, it is dropped. This provides robustness to false positive detections.
+            With no false positives, it can be set to 1 (a detection always belongs to a track).
+            Highers values allow to remove non time-consistent false positives, but may prune real tracks that have
+            been miss-detected.
             Default: 3
-        n_gap (int): Number of consecutive frames without association before the track termination.
+        n_gap (int): Number of consecutive frames without any association (miss-detected) before the track termination.
+            This provides robustness to false negative detections. Without any false negatives, it can be set to 0.
+            Higher values allow to support larger gaps in the track, but may lead to wrong assignments.
             Default: 3
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
             It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH, SPARSE_OPT_HARD, SPARSE_OPT_SMOOTH)
-            Default: OPT_SMOOTH
+            Default: SPARSE_OPT_SMOOTH
         anisotropy (tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
             for each axis, depth first). This will be used to scale distances.
             Default: (1., 1., 1.)
@@ -67,11 +75,11 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
 
     def __init__(  # noqa: PLR0913
         self,
-        association_threshold: float = 5.0,
+        association_threshold: float = -1.0,
         *,
         n_valid=3,
         n_gap=3,
-        association_method: str | AssociationMethod = AssociationMethod.OPT_SMOOTH,
+        association_method: str | AssociationMethod = AssociationMethod.SPARSE_OPT_SMOOTH,
         anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
         ema=0.0,
         fill_gap=False,
@@ -90,8 +98,44 @@ class NearestNeighborParameters(FrameByFrameLinkerParameters):
         self.ema = ema
         self.fill_gap = fill_gap
 
+        if self.ema >= 1.0:
+            raise ValueError("`ema` should be lower than 1.0.")
+
     ema: float = 0.0
     fill_gap: bool = False
+
+    @override
+    def check(self):
+        super().check()
+        if not 0 <= self.ema < 1.0:
+            raise ValueError("`ema` should in [0, 1[.")
+
+    @override
+    def estimate(self, detections_sequence) -> NearestNeighborParameters:
+        """Estimate parameters from the given detections.
+
+        Estimation is triggered by providing negative dummy values for positive parameters. The dummy values are
+        then replaced by their estimate.
+
+        Estimators:
+        * association_threshold: max(3 * `statistics.average_radius`, `statistics.average_min_dist`)
+        * anisotropy: Computed from `statistics.anisotropy`.
+        * split_factor: 1.0 if the number of detection increase by more than 30% over the full sequence.
+        * merge_factor: 1.0 if the number of detection decrease by more than 30% over the full sequence.
+
+        Args:
+            detections_sequence (Sequence[byotrack.Detections]): Detections for the current sequence.
+
+        Returns:
+            NearestNeighborParameters: self with updated parameters.
+        """
+        super().estimate(detections_sequence)
+
+        if self.ema < 0:
+            warnings.warn("No estimation available for parameter `ema`. Defaults to 0.0.", stacklevel=2)
+            self.ema = 0.0
+
+        return self
 
 
 class NearestNeighborLinker(FrameByFrameLinker):

@@ -1,15 +1,22 @@
+from __future__ import annotations
+
 import dataclasses
 import enum
 import sys
 import warnings
 from abc import abstractmethod
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pylapy
 import torch
 
 import byotrack
+from byotrack.api.detections import statistics
 from byotrack.implementation.linker.frame_by_frame.greedy_lap import greedy_assignment_solver
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 if sys.version_info < (3, 12):
     from typing_extensions import override
@@ -216,24 +223,33 @@ class OnlineFlowExtractor:
         self.src = dst
 
 
+# TODO: Add `save` & `load` for parameters?
 @dataclasses.dataclass
 class FrameByFrameLinkerParameters:
     """Parameters of the abstract FrameByFrameLinker.
 
     Note:
-        The merging and splitting features is still experimental.
+        Most parameters can be estimated automatically from the detections using `estimate`.
 
     Attributes:
         association_threshold (float): This is the main hyperparameter, it defines the threshold on the distance used
-            not to link tracks with detections. It prevents to link with false positive detections.
-            Default: 5 pixels
-        n_valid (int): Number associated detections required to validate the track after its creation.
+            not to link tracks with detections. A low threshold will typically reduce wrong assignments and ID-switches,
+            but may increase track fragmentation. Higher values will reduce track fragmentation, but miss-detected
+            tracks may be linked to a wrong detection.
+            Default: -1.0 (automatically estimated, see `estimate`.)
+        n_valid (int): Number of detections required to validate the track after its creation. If a track is missed
+            during its first n_valid frames, it is dropped. This provides robustness to false positive detections.
+            With no false positives, it can be set to 1 (a detection always belongs to a track).
+            Highers values allow to remove non time-consistent false positives, but may prune real tracks that have
+            been miss-detected.
             Default: 3
-        n_gap (int): Number of consecutive frames without association before the track termination.
+        n_gap (int): Number of consecutive frames without any association (miss-detected) before the track termination.
+            This provides robustness to false negative detections. Without any false negatives, it can be set to 0.
+            Higher values allow to support larger gaps in the track, but may lead to wrong assignments.
             Default: 3
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
             It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH, SPARSE_OPT_HARD, SPARSE_OPT_SMOOTH)
-            Default: OPT_SMOOTH
+            Default: SPARSE_OPT_SMOOTH
         anisotropy (tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
             for each axis, depth first). This will be used to scale distances.
             Default: (1., 1., 1.)
@@ -248,11 +264,11 @@ class FrameByFrameLinkerParameters:
 
     def __init__(
         self,
-        association_threshold: float = 5.0,
+        association_threshold: float = -1.0,
         *,
         n_valid=3,
         n_gap=3,
-        association_method: str | AssociationMethod = AssociationMethod.OPT_SMOOTH,
+        association_method: str | AssociationMethod = AssociationMethod.SPARSE_OPT_SMOOTH,
         anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
         split_factor: float = 0.0,
         merge_factor: float = 0.0,
@@ -269,16 +285,84 @@ class FrameByFrameLinkerParameters:
         self.split_factor = split_factor
         self.merge_factor = merge_factor
 
-        if merge_factor > 1.0 or split_factor > 1.0:
-            warnings.warn("Merge or split factors should be lower than 1", stacklevel=2)
-
-    association_threshold: float = 5.0
+    association_threshold: float = -1.0
     n_valid: int = 3
     n_gap: int = 3
-    association_method: AssociationMethod = AssociationMethod.OPT_SMOOTH
+    association_method: AssociationMethod = AssociationMethod.SPARSE_OPT_SMOOTH
     anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0)
     split_factor: float = 0.0
     merge_factor: float = 0.0
+
+    def check(self) -> None:
+        """Check the specification for invalid values."""
+        if self.n_gap < 0:
+            raise ValueError("`n_gap` should be greater than or equal to 0.")
+
+        if self.n_valid < 0:
+            raise ValueError("`n_valid` should be greater than or equal to 0.")
+
+        if any(ani <= 0 for ani in self.anisotropy):
+            raise ValueError("`anisotropy` should be greater than 0. Consider calling estimate.")
+
+        if self.split_factor < 0:
+            raise ValueError("`split_factor` should be be greater than or equal to 0. Consider calling `estimate`.")
+
+        if self.merge_factor < 0:
+            raise ValueError("`merge_factor` should be be greater than or equal to 0. Consider calling `estimate`.")
+
+        if self.association_threshold < 0:
+            raise ValueError(
+                "`association_threshold` should be greater than or equal to 0. Consider calling `estimate`."
+            )
+
+    def estimate(self, detections_sequence: Sequence[byotrack.Detections]) -> FrameByFrameLinkerParameters:
+        """Estimate parameters from the given detections.
+
+        Estimation is triggered by providing negative dummy values for positive parameters. The dummy values are
+        then replaced by their estimate.
+
+        Estimators:
+        * association_threshold: max(3 * `statistics.average_radius`, `statistics.average_min_dist`)
+        * anisotropy: Computed from `statistics.anisotropy`.
+        * split_factor: 1.0 if the number of detection increase by more than 30% over the full sequence.
+        * merge_factor: 1.0 if the number of detection decrease by more than 30% over the full sequence.
+
+        Args:
+            detections_sequence (Sequence[byotrack.Detections]): Detections for the current sequence.
+
+        Returns:
+            FrameByFrameLinkerParameters: self with updated parameters.
+        """
+        if sum(detections.length for detections in detections_sequence) == 0:
+            raise ValueError("No detections provided in `estimate`")
+
+        if self.n_gap < 0:
+            warnings.warn("No estimation available for parameter `n_gap`. Defaults to 1.", stacklevel=2)
+            self.n_gap = 1
+
+        if self.n_valid < 0:
+            warnings.warn("No estimation available for parameter `n_valid`. Defaults to 2.", stacklevel=2)
+            self.n_valid = 2
+
+        if any(ani <= 0 for ani in self.anisotropy):
+            self.anisotropy = statistics.anisotropy(detections_sequence)
+
+        target_increase = len(detections_sequence[-1]) / len(detections_sequence[0])
+        target_diff = len(detections_sequence[-1]) - len(detections_sequence[0])
+
+        if self.split_factor < 0:
+            self.split_factor = 1.0 if target_increase > 1.3 and target_diff > 1 else 0.0  # noqa: PLR2004
+
+        if self.merge_factor < 0:
+            self.merge_factor = 1.0 if 1 / target_increase > 1.3 and target_diff < -1 else 0.0  # noqa: PLR2004
+
+        if self.association_threshold < 0.0:
+            avg_radius = statistics.average_radius(detections_sequence, self.anisotropy)
+            avg_min_dist = statistics.average_min_dist(detections_sequence, self.anisotropy)
+
+            self.association_threshold = max(avg_radius * 3, avg_min_dist)
+
+        return self
 
 
 class FrameByFrameLinker(byotrack.OnlineLinker):
@@ -364,6 +448,8 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
         self._merge_links = torch.zeros((0, 2), dtype=torch.int32)
         self._unmatched_detections = torch.full((0,), fill_value=True)
         self._next_identifier = 0
+
+        self.specs.check()  # Check before running  # XXX: Could we run estimate on the first detections ?
 
     @override
     def collect(self) -> list[byotrack.Track]:

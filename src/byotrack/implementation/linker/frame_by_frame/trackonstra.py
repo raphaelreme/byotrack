@@ -127,20 +127,28 @@ class TrackastraFlex(Trackastra):
 class TrackOnStraParameters(FrameByFrameLinkerParameters):
     """Parameters of TrackOnStraLinker.
 
+    Note:
+        Most parameters can be estimated automatically from the detections using `estimate`.
+
     Attributes:
-        association_threshold (float) : Minimum probability to consider a link.
-            By default, we use the value from Trackstra.
-            Default: 0.05
-        positional_cutoff (float): Defines an Euclidean threshold on links.
-            We use the default value provided by Trackastra. Tuning it improves performance.
+        association_threshold (float) : Minimum probability to consider a link. We advise to keep the default value.
+            Default: 0.05 (default value from Trackstra)
+        positional_cutoff (float): Remove links based on an Euclidean thresholding.
+            We use the default value provided by Trackastra. Tuning it may improve performance.
             Default: 256.0
-        n_valid (int): Number associated detections required to validate the track after its creation.
+        n_valid (int): Number of detections required to validate the track after its creation. If a track is missed
+            during its first n_valid frames, it is dropped. This provides robustness to false positive detections.
+            With no false positives, it can be set to 1 (a detection always belongs to a track).
+            Highers values allow to remove non time-consistent false positives, but may prune real tracks that have
+            been miss-detected.
             Default: 2
-        n_gap (int): Number of consecutive frames without association before the track termination.
+        n_gap (int): Number of consecutive frames without any association (miss-detected) before the track termination.
+            This provides robustness to false negative detections. Without any false negatives, it can be set to 0.
+            Higher values allow to support larger gaps in the track, but may lead to wrong assignments.
             Default: 3
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
             It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH, SPARSE_OPT_HARD, SPARSE_OPT_SMOOTH)
-            Default: OPT_SMOOTH
+            Default: SPARSE_OPT_SMOOTH
         anisotropy (tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
             for each axis, depth first). This will be used to scale distances.
             Default: (1., 1., 1.)
@@ -159,7 +167,7 @@ class TrackOnStraParameters(FrameByFrameLinkerParameters):
         positional_cutoff: float = 256.0,
         n_valid=2,
         n_gap=3,
-        association_method: str | AssociationMethod = AssociationMethod.OPT_SMOOTH,
+        association_method: str | AssociationMethod = AssociationMethod.SPARSE_OPT_SMOOTH,
         anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
         split_factor: float = 0.0,
         merge_factor: float = 0.0,
@@ -176,6 +184,49 @@ class TrackOnStraParameters(FrameByFrameLinkerParameters):
         self.positional_cutoff = positional_cutoff
 
     positional_cutoff: float = 256.0
+
+    @override
+    def check(self) -> None:
+        super().check()
+        if self.positional_cutoff < 0:
+            raise ValueError("`positional_cutoff` should be greater than or equal to 0. Consider calling `estimate`.")
+
+    @override
+    def estimate(self, detections_sequence) -> TrackOnStraParameters:
+        """Estimate parameters from the given detections.
+
+        Estimation is triggered by providing negative dummy values for positive parameters. The dummy values are
+        then replaced by their estimate.
+
+        Estimators:
+        * positional_cutoff: max(3 * `statistics.average_radius`, `statistics.average_min_dist`)
+        * anisotropy: Computed from `statistics.anisotropy`.
+        * split_factor: 1.0 if the number of detection increase by more than 30% over the full sequence.
+        * merge_factor: 1.0 if the number of detection decrease by more than 30% over the full sequence.
+
+        Args:
+            detections_sequence (Sequence[byotrack.Detections]): Detections for the current sequence.
+
+        Returns:
+            TrackOnStraParameters: self with updated parameters.
+        """
+        if self.association_threshold <= 0.0:
+            warnings.warn(
+                "No estimation available for parameter `association_threshold`. Defaults to 0.05.", stacklevel=2
+            )
+            self.association_threshold = 0.05
+
+        prob_threshold = self.association_threshold
+        if self.positional_cutoff <= 0.0:
+            self.association_threshold = -1  # Let's use the estimation of association_threshold in super()
+
+        super().estimate(detections_sequence)
+
+        if self.positional_cutoff <= 0.0:
+            self.positional_cutoff = self.association_threshold
+            self.association_threshold = prob_threshold
+
+        return self
 
 
 class TrackOnStraLinker(FrameByFrameLinker):

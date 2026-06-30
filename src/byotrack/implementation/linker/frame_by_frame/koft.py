@@ -5,11 +5,14 @@ import sys
 import warnings
 from typing import TYPE_CHECKING
 
+import scipy
 import torch
 import torch_kf
 import torch_kf.ckf
+import tqdm.auto as tqdm
 
 import byotrack
+from byotrack.api.detections import statistics
 from byotrack.implementation.linker.frame_by_frame.base import AssociationMethod
 from byotrack.implementation.linker.frame_by_frame.kalman_linker import (
     Cost,
@@ -19,6 +22,8 @@ from byotrack.implementation.linker.frame_by_frame.kalman_linker import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Collection, Sequence
+
     import numpy as np
 
     from byotrack.implementation.linker.frame_by_frame.base import OnlineFlowExtractor
@@ -34,46 +39,60 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
     """Parameters of KOFTLinker.
 
     Note:
-        The merging and splitting features is still experimental.
+        Most parameters can be estimated automatically from the detections using `estimate`.
 
     Attributes:
         association_threshold (float): This is the main hyperparameter, it defines the threshold on the distance used
-            not to link tracks with detections. It prevents to link with false positive detections.
-        detection_std (float | torch.Tensor): Expected measurement noise on the detection process.
-            The detection process is modeled with a Gaussian noise with this given std. (You can provide a different
-            noise for each dimension). See `torch_kf.ckf.constant_kalman_filter`.
-            Default: 3.0 pixels
-        flow_std (float | torch.Tensor): Expected measurement noise on the optical flow process.
-            The optical flow process is modeled with a Gaussian noise with this given std. (You can provide a different
-            noise for each dimension).
-            Default: 1.0 pixels
-        process_std (float | torch.Tensor): Expected process noise. See `torch_kf.ckf.constant_kalman_filter`, the
-            process is modeled as constant order-th derivative motion. This quantify how much the supposedly "constant"
-            order-th derivative can change between two consecutive frames. A common rule of thumb is to use
-            3 * process_std ~= max_t(| dx^(order)(t+1) - dx^(order)(t)|). It can be provided for each dimension).
-            Default: 1.5 pixels
-        kalman_order (int): Order of the Kalman filter to use. 0 is for brownian motion (it predicts a 0 velocity)
-            1 for directed brownian motion, 2 for accelerated brownian motions, etc...
+            not to link tracks with detections. A low threshold will typically reduce wrong assignments and ID-switches,
+            but may increase track fragmentation. Higher values will reduce track fragmentation, but miss-detected
+            tracks may be linked to a wrong detection.
+            Depending on `cost`, it is either expressed the maximum Euclidean distance (pixels), or the maximum
+            Mahalanobis distance, or the minimum likelihood (probability).
+            Default: -1.0 (automatically estimated, see `estimate`.)
+        detection_std (float | torch.Tensor): Expected measurement noise (in pixel) on the detection process.
+            The detection process is modeled with a Gaussian noise with this given std. You may provide a different
+            noise for each dimension. See `torch_kf.ckf.constant_kalman_filter`.
+            Default: 0.0 (automatically estimated, see `estimate`.)
+        flow_std (float | torch.Tensor): Expected measurement noise (in pixel) on the optical flow process.
+            The optical flow process is modeled with a Gaussian noise with this given std. You may provide a different
+            noise for each dimension.
+            Default: 0.0 (coarse automatic estimation, see `estimate`)
+        process_std (float | torch.Tensor): Expected process noise (in pixel). See `torch_kf.ckf.constant_kalman_filter`
+            The process is modeled as constant order-th derivative motion with a Gaussian noise. This quantify how much
+            the supposedly "constant" order-th derivative can change between two consecutive frames.
+            A common rule of thumb is to use 4 * process_std ~= max_t(| dx^(order)(t+1) - dx^(order)(t)|) (see
+            `estimate_process_std_from_tracks`). It can be provided for each dimension.
+            Default: 0.0 (coarse automatic estimation, see `estimate`)
+        kalman_order (int): Order of the Kalman filter to use.
+            0 for brownian motions, 1 for directed brownian motion, 2 for accelerated brownian motions, etc...
             Default: 1
-        n_valid (int): Number associated detections required to validate the track after its creation.
+        n_valid (int): Number of detections required to validate the track after its creation. If a track is missed
+            during its first n_valid frames, it is dropped. This provides robustness to false positive detections.
+            With no false positives, it can be set to 1 (a detection always belongs to a track).
+            Highers values allow to remove non time-consistent false positives, but may prune real tracks that have
+            been miss-detected.
             Default: 3
-        n_gap (int): Number of consecutive frames without association before the track termination.
+        n_gap (int): Number of consecutive frames without any association (miss-detected) before the track termination.
+            This provides robustness to false negative detections. Without any false negatives, it can be set to 0.
+            Higher values allow to support larger gaps in the track, but may lead to wrong assignments.
             Default: 3
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
-            It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH, SPARSE_OPT_HARD, SPARSE_OPT_SMOOTH)
-            Default: OPT_SMOOTH
+            It can be provided as a string. Choice: GREEDY, OPT_HARD, OPT_SMOOTH, SPARSE_OPT_HARD, SPARSE_OPT_SMOOTH.
+            Default: SPARSE_OPT_SMOOTH
         anisotropy (tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
-            for each axis, depth first). This will be used to scale distances. It will only impact
-            EUCLIDEAN[_SQ] costs. For probabilistic cost, anisotropy should be already integrated
-            in the stds of the kalman filter (providing one std for each dimension).
+            for each axis, depth first). This will be used to scale distances. Note that it will only impact
+            EUCLIDEAN[_SQ] costs; for probabilistic cost, anisotropy should be already integrated
+            within the stds of the kalman filter (providing one std for each dimension).
             Default: (1., 1., 1.)
-        cost_method (CostMethod): The cost method to use. It can be provided as a string.
-            See `CostMethod`. It also indicates what is the correct unit of `association_threshold`.
-            Default: EUCLIDEAN
-        track_building (TrackBuilding): Tells the linker how to build the final tracks.
+        cost_method (CostMethod): The cost method to use. See `CostMethod`.
+            It can be provided as a string. Choice: EUCLIDEAN, EUCLIDEAN_SQ, MAHALANOBIS, MAHALANOBIS_SQ, LIKELIHOOD.
+            This also defines the unit of `association_threshold` (in pixels for Euclidean, no units for Mahalanobis,
+            and a probability for likelihood).
+            Default: LIKELIHOOD
+        track_building (TrackBuilding): How the linker will build the final tracks. See `TrackBuilding`.
             Either from detections, or from filtered/smoothed positions computed by the
-            Kalman filter. See `TrackBuilding`. It can be provided as a string.
-            Default: FILTERED
+            Kalman filter. It can be provided as a string. Choice: DETECTION, FILTERED, SMOOTHED.
+            Default: SMOOTHED
         split_factor (float): Allow splitting of tracks, using a second association step.
             The association threshold in this case is `split_factor * association_threshold`.
             Default: 0.0 (No splits)
@@ -97,30 +116,30 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
             Having a small factor will prevent handling correctly starting tracks with large initial velocity
             on their first frames.
             Typical values lies between 3.0 to 100.0.
-            Default: 10.0
+            Default: 5.0
 
     """
 
     def __init__(  # noqa: PLR0913
         self,
-        association_threshold: float,
+        association_threshold: float = -1.0,
         *,
-        detection_std: float | torch.Tensor = 3.0,
-        flow_std: float | torch.Tensor = 1.0,
-        process_std: float | torch.Tensor = 1.5,
+        detection_std: float | torch.Tensor = 0.0,
+        flow_std: float | torch.Tensor = 0.0,
+        process_std: float | torch.Tensor = 0.0,
         kalman_order: int = 1,
         n_valid=3,
         n_gap=3,
-        association_method: str | AssociationMethod = AssociationMethod.OPT_SMOOTH,
+        association_method: str | AssociationMethod = AssociationMethod.SPARSE_OPT_SMOOTH,
         anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
-        cost: str | Cost = Cost.EUCLIDEAN,
-        track_building: str | TrackBuilding = TrackBuilding.FILTERED,
+        cost: str | Cost = Cost.LIKELIHOOD,
+        track_building: str | TrackBuilding = TrackBuilding.SMOOTHED,
         split_factor: float = 0.0,
         merge_factor: float = 0.0,
         extract_flows_on_detections=False,
         always_measure_velocity=True,
         online_process_std=0.0,
-        initial_std_factor=10.0,
+        initial_std_factor=5.0,
     ):
         super().__init__(
             association_threshold=association_threshold,
@@ -149,9 +168,130 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
         self.extract_flows_on_detections = extract_flows_on_detections
         self.always_measure_velocity = always_measure_velocity
 
-    flow_std: float | torch.Tensor = 1.0
+    flow_std: float | torch.Tensor = 0.0
     extract_flows_on_detections: bool = False
     always_measure_velocity: bool = True
+
+    @override
+    def check(self):
+        super().check()
+
+        if torch.as_tensor(self.flow_std).min() <= 0:
+            raise ValueError("`flow_std` should be greater than 0. Consider calling `estimate_flow_std_from_tracks`.")
+
+    @override
+    def estimate(self, detections_sequence: Sequence[byotrack.Detections]) -> KOFTLinkerParameters:
+        """Estimate parameters from the given detections.
+
+        Estimation is triggered by providing negative dummy values for positive parameters. The dummy values are
+        then replaced by their estimate.
+
+        Estimators:
+        * detection_std: `average_radius` / 2 (i.e. localization is rarely predicted outside the target)
+        * process_std: `average_radius` (i.e. unmodeled motion is ~the size of targets)
+                       (Consider using `estimate_process_std_from_tracks`)
+        * flow_std: `average_radius` (i.e. the flow can be wrong up to twice the target size)
+                       (Consider using `estimate_flow_std_from_tracks`)
+        * association_threshold: `steady_state_covariance` * 3 (See `estimate_association_threshold`).
+        * anisotropy: Computed from `statistics.anisotropy`.
+        * split_factor: 1.0 if the number of detection increase by more than 30% over the full sequence.
+        * merge_factor: 1.0 if the number of detection decrease by more than 30% over the full sequence.
+
+        Args:
+            detections_sequence (Sequence[byotrack.Detections]): Detections for the current sequence.
+
+        Returns:
+            KOFTLinkerParameters: self with updated parameters.
+        """
+        if torch.as_tensor(self.flow_std).min() <= 0:
+            warnings.warn(
+                "`flow_std` estimation is coarse. Consider using `estimate_flow_std_from_tracks`.", stacklevel=2
+            )
+            avg_radius = statistics.average_radius(detections_sequence)
+            self.flow_std = avg_radius
+
+        super().estimate(detections_sequence)
+
+        return self
+
+    def estimate_flow_std_from_tracks(
+        self,
+        video: Sequence[np.ndarray] | np.ndarray,
+        optflow: byotrack.OpticalFlow,
+        tracks: Collection[byotrack.Track],
+        quantile: float = 0.99993,
+    ) -> None:
+        """Estimate `flow_std` based on the errors made by the flow versus ground-truth tracks.
+
+        Modify in place `flow_std`. It sets the flow_std so that it fits with the maximum flow errors on the
+        annotations.
+
+        NOTE: Without annotations, you may set the flow_std according to the following method:
+              Manually check how the flow moves over your targets (see `InteractiveFlowVisualizer`) and
+              estimate a coarse maximum error (in pixel) between two consevutive frames. Then flow_std can be set
+              as this maximum error divided by 4.
+
+        Args:
+            video (Sequence[np.ndarray] | np.ndarray): Sequence of T frames (array) on which to measure the flow_std.
+                Each array is expected to have a shape ([D, ]H, W, C).
+            optflow (byotrack.OptFlow): Optical flow algorithm that will be used in KOFT. The flow_std will be measured
+                for this optical flow.
+            tracks (Collection[byotrack.Track]): Partial ground-truth tracks. If these are manually annotated tracks,
+                consider using a RTSSmoother to reduce the annotation noise.
+            quantile (float): Quantile to extract the maximum value. Can be reduced to ignore some false positive links.
+                Default: 0.99993
+        """
+        start = min(track.start for track in tracks)
+        end = min(max(track.start + len(track) for track in tracks), len(video))
+        points = byotrack.Track.tensorize(tracks, frame_range=(start, end))
+        predicted = torch.full_like(points, torch.nan)
+        valid = ~torch.isnan(points).any(dim=-1)
+
+        src = optflow.preprocess(video[start])
+        for frame_id in tqdm.trange(1, end - start):
+            dst = optflow.preprocess(video[start + frame_id])
+            flow_map = optflow.compute(src, dst)
+
+            predicted[frame_id, valid[frame_id - 1]] = torch.from_numpy(
+                optflow.transform(flow_map, points[frame_id - 1, valid[frame_id - 1]].numpy())
+            )
+
+            src = dst
+
+        errors = (predicted[1:] - points[1:]).norm(dim=-1)  # ~ Chi distribution
+        errors = errors[~torch.isnan(errors)]  # Remove NaNs
+
+        # Ensure quantile leaves one out
+        n_samples = len(errors)
+        n_outliers = (1 - quantile) * n_samples
+        if n_outliers < 1:
+            quantile = max(0.5, 1 - 1 / n_samples)
+
+        self.flow_std = errors.quantile(quantile).item() / scipy.stats.chi.ppf(quantile, points.shape[-1])
+
+        # How should anisotropy be handled ? Errors are probably not scaled with anisotropy ?
+        # We could check errors per axis but probably not very robust
+
+    @override
+    def build_filter(self, dim: int) -> torch_kf.KalmanFilter:
+        kalman_filter = torch_kf.ckf.constant_kalman_filter(
+            self.detection_std,
+            self.process_std,
+            dim=dim,
+            order=self.kalman_order + (self.kalman_order == 0),
+            approximate=True,  # Approximate so that a flow precisely means the velocity modeled here
+        )
+        if self.kalman_order == 0:
+            # In order 0, we still model velocity, but we always predict it at 0
+            kalman_filter.process_matrix[dim:, dim:] = 0
+
+        # Doubles the measurement space to measure velocity
+        kalman_filter.measurement_matrix = torch.eye(dim * 2, kalman_filter.state_dim)
+        kalman_filter.measurement_noise = torch.eye(dim * 2)
+        kalman_filter.measurement_noise[:dim, :dim] *= self.detection_std**2
+        kalman_filter.measurement_noise[dim:, dim:] *= self.flow_std**2
+
+        return kalman_filter
 
 
 class KOFTLinker(KalmanLinker):
@@ -198,22 +338,7 @@ class KOFTLinker(KalmanLinker):
         super().reset(dim)
 
         # Reset the KF initialized by super
-        self.kalman_filter = torch_kf.ckf.constant_kalman_filter(
-            self.specs.detection_std,
-            self.specs.process_std,
-            dim=dim,
-            order=self.specs.kalman_order + (self.specs.kalman_order == 0),
-            approximate=True,  # Approximate so that a flow precisely means the velocity modeled here
-        )
-        if self.specs.kalman_order == 0:
-            # In order 0, we still model velocity, but we always predict it at 0
-            self.kalman_filter.process_matrix[dim:, dim:] = 0
-
-        # Doubles the measurement space to measure velocity
-        self.kalman_filter.measurement_matrix = torch.eye(dim * 2, self.kalman_filter.state_dim)
-        self.kalman_filter.measurement_noise = torch.eye(dim * 2)
-        self.kalman_filter.measurement_noise[:dim, :dim] *= self.specs.detection_std**2
-        self.kalman_filter.measurement_noise[dim:, dim:] *= self.specs.flow_std**2
+        self.kalman_filter = self.specs.build_filter(dim)
         self.kalman_filter = self.kalman_filter.to(self.dtype)
 
         self.active_states = torch_kf.GaussianState(
