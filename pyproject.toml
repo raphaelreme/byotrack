@@ -51,6 +51,7 @@ dependencies = [
 
 [project.optional-dependencies]
 full = [
+    "napari[pyqt6]",
     "matplotlib",
     "stardist; python_full_version < '3.14'",
     "tensorflow; python_full_version < '3.14'",
