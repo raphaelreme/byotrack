@@ -93,7 +93,7 @@ def tracks_to_napari_tracks(tracks: Collection[byotrack.Track]) -> tuple[np.ndar
         seen += len(track)
 
     # Remove NaNs points if any
-    track_points = track_points[~np.isnan(track_points).any(axis=-1)]
+    track_points = track_points[~np.isnan(track_points).any(axis=-1)]  # type: ignore[assignment]
 
     # Extract the "graph" attribute of Napari Tracks layer
     parents: dict[int, list[int]] = {track.identifier: [] for track in tracks}
@@ -209,7 +209,7 @@ class _LazyVideoArray:
     def __getitem__(self, key: int | slice | tuple[int, slice]) -> _LazyVideoArray | np.ndarray:
         # NOTE: In practice, napari is always slicing and never indexing except for the channel axis
         if isinstance(key, tuple):
-            key = byotrack.video.video.expand_ellipsis(key, self.ndim)
+            key = byotrack.video.video.expand_ellipsis(key, self.ndim)  # type: ignore[assignment]
 
             if len(key) > self.ndim:
                 raise IndexError("Too many indices for video.")

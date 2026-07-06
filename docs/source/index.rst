@@ -25,13 +25,13 @@ as **evaluation and visualization** of tracking results.
    Some components assume that individual frames fit in memory, which may limit scalability to very large 3D volumes.
    If you encounter limitations with your use case, feel free to open an issue or contribute a pull request.
 
+.. warning::
+  **v2.0.0 introduces breaking changes** to the `Detections` and `Video` APIs.
+  If you are upgrading from v1.x, please read the Changelog for details and migration guidance.
+
 🏆 **ByoTrack (PAST-FR)** won the `Cell Linking Benchmark <https://celltrackingchallenge.net/latest-clb-results/>`_ of
 the *Cell Tracking Challenge* with its **SKT/KOFT** implementation
 (see our `paper <https://ieeexplore.ieee.org/abstract/document/10635656/>`_ for details).
-
-.. warning::
-
-   This project and documentation is under active development.
 
 
 Cite Us
@@ -99,7 +99,6 @@ Contents
    api/linker
    api/refiner
    api/optical_flow
-   api/parameters
 
 
 .. toctree::
@@ -135,6 +134,13 @@ Contents
    :caption: Fiji support
 
    fiji
+
+.. toctree::
+   :glob:
+   :caption: Napari support
+
+   napari
+
 
 .. toctree::
    :glob:

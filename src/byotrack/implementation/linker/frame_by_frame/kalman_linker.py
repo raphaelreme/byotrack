@@ -91,17 +91,17 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
             tracks may be linked to a wrong detection.
             Depending on `cost`, it is either expressed the maximum Euclidean distance (pixels), or the maximum
             Mahalanobis distance, or the minimum likelihood (probability).
-            Default: -1.0 (automatically estimated, see `estimate`.)
+            Default: -1.0 (to be estimated, see `estimate`.)
         detection_std (float | torch.Tensor): Expected measurement noise (in pixel) on the detection process.
             The detection process is modeled with a Gaussian noise with this given std. You may provide a different
             noise for each dimension. See `torch_kf.ckf.constant_kalman_filter`.
-            Default: 0.0 (automatically estimated, see `estimate`.)
+            Default: 0.0 (to be estimated, see `estimate`.)
         process_std (float | torch.Tensor): Expected process noise (in pixel). See `torch_kf.ckf.constant_kalman_filter`
             The process is modeled as constant order-th derivative motion with a Gaussian noise. This quantify how much
             the supposedly "constant" order-th derivative can change between two consecutive frames.
             A common rule of thumb is to use 4 * process_std ~= max_t(| dx^(order)(t+1) - dx^(order)(t)|) (see
             `estimate_process_std_from_tracks`). It can be provided for each dimension.
-            Default: 0.0 (automatically estimated, see `estimate`)
+            Default: 0.0 (to be estimated, see `estimate`)
         kalman_order (int): Order of the Kalman filter to use.
             0 for brownian motions, 1 for directed brownian motion, 2 for accelerated brownian motions, etc...
             Default: 1
@@ -238,9 +238,10 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
         then replaced by their estimate.
 
         Estimators:
+
         * detection_std: `average_radius` / 2 (i.e. localization is rarely predicted outside the target)
-        * process_std: `average_radius` (i.e. unmodeled motion is ~the size of targets)
-                       (Consider using `estimate_process_std_from_tracks` instead)
+        * process_std: `average_radius` (i.e. unmodeled motion is ~the size of targets)\
+            (Consider using `estimate_process_std_from_tracks` instead)
         * association_threshold: `steady_state_covariance` * 3 (See `estimate_association_threshold`).
         * anisotropy: Computed from `statistics.anisotropy`.
         * split_factor: 1.0 if the number of detection increase by more than 30% over the full sequence.
@@ -283,7 +284,9 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
             )
 
             warnings.warn(
-                "`process_std` estimation is coarse. Consider using `estimate_process_std_from_tracks`.", stacklevel=2
+                "`process_std` estimation is coarse. Consider setting it manually "
+                "or from a few labeled tracks with `estimate_process_std_from_tracks`.",
+                stacklevel=2,
             )
 
             self.process_std = torch.tensor([avg_radius / ani for ani in self.anisotropy], dtype=torch.float32)

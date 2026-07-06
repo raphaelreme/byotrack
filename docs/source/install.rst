@@ -48,6 +48,8 @@ For these components, you need to install their specific dependencies. Here is t
 * TrackMateLinker
     * Fiji: `Download Fiji <https://imagej.net/downloads>`_
 * TrackOnStraLinker
-    * TrackAstra: `Install trackastra <https://github.com/weigertlab/trackastra#installation>`_
-
-For visualization with `byotrack.visualize` module, you need to `install matplotlib <https://matplotlib.org/stable/install/index.html>`_
+    * TrackAstra: `Install TrackAstra <https://github.com/weigertlab/trackastra#installation>`_
+* byotrack.napari
+    * Napari: `Install Napari <https://napari.org/stable/getting_started/installation.html>`_
+* byotrack.visualize
+    * Matplotlib: `Install Matplotlib <https://matplotlib.org/stable/install/index.html>`_

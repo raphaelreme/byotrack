@@ -1,4 +1,4 @@
 Detector
 ========
 
-.. automodule:: byotrack.api.detector.detector
+.. automodule:: byotrack.api.detector

@@ -1,10 +1,13 @@
 ByoTrack ViZ
 ============
 
-We add some visualization tools. They rely on matplotlib and opencv-python.
+.. note::
+    Starting v2.0.0, ByoTrack supports Napari-based interactive visualization (see :doc:`napari`),
+    with a full support for 2D and 3D video, detections, tracks and optical flow.
+    Napari visualizations are more user-friendly and therefore recommended over the ones detailed here.
 
-Some of these tools support 3D data, but we still advise to export your results to other dedicated software for 3D visualization.
 
-.. note:: We developed these tools under linux using opencv + QT backend. It seems that the zoom/drag/quit operations are not automatically supported on other platforms. We will soon develop new visualization under napari.
+ByoTrack comes with its own visualizations relying on Matplotlib and Open-CV. These tools were developed and tested on Linux with a QT backend and may not export properly. We recommend using our Napari-based visualization, in particular for the InteractiveVisualizer.
+
 
 .. automodule:: byotrack.visualize

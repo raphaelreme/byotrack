@@ -199,6 +199,7 @@ class TrackOnStraParameters(FrameByFrameLinkerParameters):
         then replaced by their estimate.
 
         Estimators:
+
         * positional_cutoff: max(3 * `statistics.average_radius`, `statistics.average_min_dist`)
         * anisotropy: Computed from `statistics.anisotropy`.
         * split_factor: 1.0 if the number of detection increase by more than 30% over the full sequence.

@@ -378,7 +378,7 @@ wheels = [
 
 [[package]]
 name = "byotrack"
-version = "1.4.3"
+version = "2.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "backports-zstd", marker = "python_full_version < '3.14'" },

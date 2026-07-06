@@ -236,7 +236,7 @@ class FrameByFrameLinkerParameters:
             not to link tracks with detections. A low threshold will typically reduce wrong assignments and ID-switches,
             but may increase track fragmentation. Higher values will reduce track fragmentation, but miss-detected
             tracks may be linked to a wrong detection.
-            Default: -1.0 (automatically estimated, see `estimate`.)
+            Default: -1.0 (to be estimated, see `estimate`.)
         n_valid (int): Number of detections required to validate the track after its creation. If a track is missed
             during its first n_valid frames, it is dropped. This provides robustness to false positive detections.
             With no false positives, it can be set to 1 (a detection always belongs to a track).
@@ -322,6 +322,7 @@ class FrameByFrameLinkerParameters:
         then replaced by their estimate.
 
         Estimators:
+
         * association_threshold: max(3 * `statistics.average_radius`, `statistics.average_min_dist`)
         * anisotropy: Computed from `statistics.anisotropy`.
         * split_factor: 1.0 if the number of detection increase by more than 30% over the full sequence.
@@ -337,12 +338,12 @@ class FrameByFrameLinkerParameters:
             raise ValueError("No detections provided in `estimate`")
 
         if self.n_gap < 0:
-            warnings.warn("No estimation available for parameter `n_gap`. Defaults to 1.", stacklevel=2)
-            self.n_gap = 1
+            warnings.warn("No estimation available for parameter `n_gap`. Defaults to 3.", stacklevel=2)
+            self.n_gap = 3
 
         if self.n_valid < 0:
-            warnings.warn("No estimation available for parameter `n_valid`. Defaults to 2.", stacklevel=2)
-            self.n_valid = 2
+            warnings.warn("No estimation available for parameter `n_valid`. Defaults to 3.", stacklevel=2)
+            self.n_valid = 3
 
         if any(ani <= 0 for ani in self.anisotropy):
             self.anisotropy = statistics.anisotropy(detections_sequence)

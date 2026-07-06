@@ -9,3 +9,4 @@ Refiners
    dist_stitcher
    emc2
    interpolater
+   smoother
