@@ -48,7 +48,7 @@ class OpticalFlow(ABC):
         # You can warp mov into ref with warp
         mov_warp = optflow.warp(flow_map, video[1])
 
-        # Or use the flow to move points, for instance positions of detected particles
+        # Or use the flow to move points, for instance positions of detected targets
         detections = detector.detect(video[0][None])[0]  # Detect with a BatchDetector on frame 0
         future_positions = optflow.transform(detections.position.numpy())  # Expected positions on frame 1
 

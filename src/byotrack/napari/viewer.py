@@ -37,10 +37,9 @@ def _find_dim(
         video (Sequence[np.ndarray] | np.ndarray): Optional sequence of T frames (array).
             Each array is expected to have a shape ([D, ]H, W, C)
             Default: () (No video)
-        detections_sequence (Sequence[byotrack.Detections]): Optional sequence of detections
-            (one per frame).
+        detections_sequence (Sequence[byotrack.Detections]): Optional sequence of detections (one per frame).
             Default: () (No detections)
-        tracks (Collection[byotrack.Track]): Optional tracks of particles.
+        tracks (Collection[byotrack.Track]): Optional tracks.
             Default: () (No tracks)
 
     Returns:

@@ -54,16 +54,16 @@ class EMHTParameters:
             Default: 0.1
         expected_track_length (int): Expected length of tracks. If negative, it defaults to the sequence size
             Default: -1
-        expected_initial_particles (int): Estimation of the number of particles in the first frames. If negative, it
+        expected_initial_targets (int): Estimation of the number of targets in the first frames. If negative, it
             defaults to the average number of detections by frame in the sequence
             Default: -1
-        expected_new_particles (int): Estimation of the number of new particle by frame
+        expected_new_targets (int): Estimation of the number of new targets per frame
             Default: 0
         existence_prob (float): Minimum probability to confirm a track existence
             Default: 0.5
         termination_prob (float): Minimum probability before terminating a track
             Default: 1e-4
-        motion (Motion): Motion of the particles (Brownian vs Directed vs Multi). If MULTI, motion 1 is
+        motion (Motion): Motion of the targets (Brownian vs Directed vs Multi). If MULTI, motion 1 is
             brownian and motion 2 is directed.
             Default: Motion.BROWNIAN
         use_most_likely_model (bool): Use the most likely model to predict rather than a weighted predictions
@@ -86,10 +86,10 @@ class EMHTParameters:
     detections_fpr: float = 0.1
     detections_fnr: float = 0.1
 
-    # Particles life
+    # Target life-cycle
     expected_track_length: int = -1  # -1 => Default to size of the sequence
-    expected_initial_particles: int = -1  # -1 => Default to average num of detections
-    expected_new_particles: int = 10
+    expected_initial_targets: int = -1  # -1 => Default to average num of detections
+    expected_new_targets: int = 10
     existence_prob: float = 0.5
     termination_prob: float = 1e-4
 
@@ -136,7 +136,7 @@ class EMHTParameters:
 
         """
         num_frames = len(detections_sequence)
-        mean_particles = sum(detections.length for detections in detections_sequence) / len(detections_sequence)
+        mean_targets = sum(detections.length for detections in detections_sequence) / len(detections_sequence)
 
         root = ET.Element("root")
         config = ET.SubElement(root, "MHTconfiguration")
@@ -146,7 +146,7 @@ class EMHTParameters:
             {
                 "detection_rate": str(1 - self.detections_fnr),
                 "detectionSource": "noSource",
-                "numberFalseDetection": str(int(mean_particles * self.detections_fpr)),
+                "numberFalseDetection": str(int(mean_targets * self.detections_fpr)),
             },
         )
 
@@ -184,9 +184,9 @@ class EMHTParameters:
             {
                 "gateFactor": str(self.gate_factor),
                 "mhtDepth": str(self.tree_depth),
-                "numberNewObjects": str(self.expected_new_particles),
+                "numberNewObjects": str(self.expected_new_targets),
                 "numberObjectsFirstFrame": str(
-                    mean_particles if self.expected_initial_particles < 0 else self.expected_initial_particles
+                    mean_targets if self.expected_initial_targets < 0 else self.expected_initial_targets
                 ),
             },
         )
@@ -200,8 +200,8 @@ class IcyEMHTLinker(byotrack.Linker):
     It is a wrapper around Icy's tracking code. It supports 2D and 3D data.
 
     About EMHT:
-    It is a probabilistic tracking that uses statistical motion model on particles. It uses multiple
-    kalman filters for each particle allowing a particle to have several mode of motions. It also keeps
+    It is a probabilistic tracking that uses statistical motion model on targets. It uses multiple
+    kalman filters for each target allowing a target to have several mode of motions. It also keeps
     multiple hypothesis of tracking at each frame so that a final detections linking decision is made
     after seeing several frames in the past and future of these detections.
 

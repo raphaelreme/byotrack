@@ -30,9 +30,9 @@ class Refiner(ABC):
             video (Sequence[np.ndarray] | np.ndarray | None): Optional sequence of T frames (array).
                 Each array is expected to have a shape ([D, ]H, W, C). Some refiners may
                 not require any video. In that case, you may provide explicitly None.
-            tracks (Collection[byotrack.Track]): Tracks of particles
+            tracks (Collection[byotrack.Track]): Tracks of targets
 
         Returns:
-            Collection[byotrack.Track]: Refined tracks of particles
+            Collection[byotrack.Track]: Refined tracks of targets
 
         """

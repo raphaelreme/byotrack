@@ -34,12 +34,12 @@ class AssociationMethod(enum.Enum):
     * OPT_HARD | SPARSE_OPT_HARD
         Solve the linear association problem (see `pylapy`).
         Hard threshold the association matrix with the cost limit eta.
-        Use the sparse version to increase speed with numerous particles.
+        Use the sparse version to increase speed with numerous targets.
     * OPT_SMOOTH | SPARSE_OPT_SMOOTH
         Solve a cost_limit extended association problem (see `pylapy`)
         It relaxes the linear association problem, allowing to not link a node
         for the cost limit eta.
-        Use the sparse version to increase speed with numerous particles.
+        Use the sparse version to increase speed with numerous targets.
     """
 
     GREEDY = "greedy"

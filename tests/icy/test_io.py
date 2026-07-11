@@ -95,7 +95,7 @@ def _write_icy_xml(path, track_specs):
     root = ET.Element("root")
     track_group = ET.SubElement(root, "trackgroup", {"description": "test"})
     for tid, detections in track_specs:
-        track_el = ET.SubElement(track_group, "track", {"id": str(tid)})
+        track_el = ET.SubElement(track_group, "track", {"id": str(tid)} if tid is not None else {})
         for t, x, y, z in detections:
             ET.SubElement(
                 track_el,
@@ -142,6 +142,14 @@ def test_load_tracks_negative_id_abs(tmp_path: pathlib.Path):
 
     tracks = load_tracks(path)
     assert tracks[0].identifier == 42
+
+
+def test_load_tracks_without_id_assigns(tmp_path: pathlib.Path):
+    path = tmp_path / "tracks.xml"
+    _write_icy_xml(path, [(None, [(0, 10.0, 20.0, -1.0)])])
+
+    tracks = load_tracks(path)
+    assert tracks[0].identifier >= 0
 
 
 def test_load_tracks_no_trackgroup_raises(tmp_path: pathlib.Path):

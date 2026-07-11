@@ -309,7 +309,7 @@ def save_tracks(  # noqa: C901, PLR0912, PLR0913, PLR0915
         default_radius (float): Radius of drawn disk when no segmentation is available.
             Default: 5.0 (pixels)
         last (int): Overwrite last frame to consider
-            Default: 0 (Will compute it from the last tracked particles)
+            Default: 0 (Will compute it from the last tracked target)
         shape (tuple[int, ...] | None): Optional shape. Required when no detections_sequence is provided
             Default: None
         n_digit (int): Number of digit used to encode time in file names.

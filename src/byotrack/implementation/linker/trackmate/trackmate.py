@@ -118,7 +118,7 @@ class TrackMateLinker(byotrack.Linker):
     It is a global distance minimization tracking. It supports multiple algorithms. We have wrapped the more advanced
     ones (SparseLapTracker and AdvancedKalmanTracker that both follows [7]). It solves frame-to-frame GDM between
     detections. And then solve a GDM between tracklets to correct them (stitch, merge, split).
-    The AdvancedKalmanTracker additionally uses kalman filters to estimate velocities of particles.
+    The AdvancedKalmanTracker additionally uses kalman filters to estimate velocities of targets.
 
     Here we rely on the handmade ImageJ script "_trackmate.py" that expects detections as instance segmentation
     and the hyperparameters of the linking process.

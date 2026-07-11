@@ -198,7 +198,7 @@ def tps_directed_propagate(
             It improves outliers resiliences and helps reducing numerical errors.
             Default: 10.0
         track_mask (torch.Tensor | None): Filter out some tracks to build control points
-            Allow to drop uncertain tracks or to simulate propagation with less particles
+            Allow to drop uncertain tracks or to simulate propagation with less targets
             Shape: (N, ), dtype: bool
         kwargs (Any): Unused, added for api purposes.
 

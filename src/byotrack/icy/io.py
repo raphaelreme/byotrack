@@ -200,7 +200,7 @@ def load_tracks(path: str | os.PathLike) -> list[byotrack.Track]:
 
     for track in track_group:
         identifier = None
-        if track.attrib.get("id"):  # XXX: Find why ids have this format
+        if track.attrib.get("id") is not None:  # XXX: Find why ids have this format
             identifier = abs(int(track.attrib["id"]))
 
         points = []

@@ -86,7 +86,7 @@ class Tracker(ABC):
                 Each array is expected to have a shape ([D, ]H, W, C)
 
         Returns:
-            Collection[byotrack.Track]: Tracks of particles
+            Collection[byotrack.Track]: Tracks of targets
 
         """
 

@@ -93,7 +93,7 @@ class EMC2Stitcher(dist_stitcher.DistStitcher):
         Compute the minimum distance between each track propagation (only in the temporal gap between them).
 
         Args:
-            video (Sequence[np.ndarray] | np.ndarray): Video of the tracked particles
+            video (Sequence[np.ndarray] | np.ndarray): Video of the tracked targets
             tracks (Collection[Track]): Input tracks
 
         Returns:

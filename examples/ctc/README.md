@@ -77,7 +77,7 @@ it loads the segmentations (from {data_path}/{dataset}/{seq_id}_ERR_SEG) of the 
 
 We propose to use our Bayesian linking algorithms [KOFT
 and SKT](https://ieeexplore.ieee.org/abstract/document/10635656/) that are implemented in ByoTrack. They both rely on
-Kalman filters to model particle motion, and solve the tracks-to-detection
+Kalman filters to model target motion, and solve the tracks-to-detection
 association frame by frame with Jonker-Volgenant algorithm to find a solution
 to the Linear Association Problem (LAP). Whereas classical
 Bayesian approaches (like SKT) measure only the position

@@ -45,41 +45,42 @@ Getting started:
 
 ```python
 import byotrack
+import byotrack.napari.viewer  # Requires Napari
 
 # Load some specific implementations
 from byotrack.implementation.detector.wavelet import WaveletDetector
-from byotrack.implementation.linker.icy_emht import IcyEMHTLinker
-from byotrack.implementation.refiner.cleaner import Cleaner
-from byotrack.implementation.refiner.stitching import EMC2Stitcher
+from byotrack.implementation.linker.frame_by_frame.kalman_linker import KalmanLinkerParameters, KalmanLinker
+from byotrack.implementation.refiner.interpolater import ForwardBackwardInterpolater
 
-# Read a video from a path, normalize and aggregate channels
-video = byotrack.Video(video_path)
-transform_config = byotrack.VideoTransformConfig(aggregate=True, normalize=True, q_min=0.01, q_max=0.999)
-video.set_transform(transform_config)
+# Read a video from a path, normalize and select channel
+video = byotrack.Video(video_path)  # File/folder on disk or directly from array in RAM
+video = video.normalize(q_min=0.01, q_max=0.999)[..., :1]  # First channel. Ignore other channels if any.
 
-# Create a multi step tracker
-## First the detector
+byotrack.napari.visualize(video)
+
+# First, let's detect targets with the Wavelet Spot Detector
 ## Smaller scale <=> search for smaller spots
 ## The noise threshold is linear with k. If you increase it, you will retrieve less spots.
-detector = WaveletDetector(scale=1, k=3.0, min_area=5)
+detector = WaveletDetector(scale=1, k=3.0, min_area=5.0)
+detections_sequence = detector.run(video)
 
-## Second the linker
-## Hyperparameters are automatically chosen by Icy
-linker = IcyEMHTLinker(icy_path)
+byotrack.napari.visualize(video, detections_sequence)
 
-## Finally refiners
-## If needed you can add Cleaning and Stitching operations
-refiners = []
-if True:
-    refiners.append(Cleaner(5, 3.5))  # Split tracks on position jumps and drop small ones
-    refiners.append(EMC2Stitcher())  # Merge tracks if they track the same particle
+# Then, let's use a KalmanLinker with default parameters estimated from the detections
+specs = KalmanLinkerParameters(  # Check the documentation for more parameters
+    track_building="detection",  # Position from detections (non-smoothed)
+).estimate(detections_sequence)
+linker = kalman_linker.KalmanLinker(specs)
+tracks = linker.run(video, detections_sequence)
 
-tracker = byotrack.MultiStepTracker(detector, linker, refiners)
+# Last, you may filter short tracks and interpolate over missed detections if any
+tracks = [track for track in tracks if len(track) > 50]  # Keep only tracks than last 50 frames
+tracks = ForwardBackwardInterpolater().run(video, tracks)  # Interpolate over missed detections
 
-# Run the tracker
-tracks = tracker.run(video)
+# Final visualization
+byotrack.napari.viewer.visualize(video, detections_sequence, tracks)
 
-# Save tracks
+# Export tracks
 byotrack.Track.save(tracks, output_path)
 ```
 
