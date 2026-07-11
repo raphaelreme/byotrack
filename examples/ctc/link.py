@@ -296,8 +296,8 @@ def main(  # noqa: C901, PLR0913, PLR0915
 
     # Save tracks
     ctc_data.save_tracks(
-        path / f"{seq:02}_RES",
         tracks,
+        path / f"{seq:02}_RES",
         detections_sequence=detections_sequence,
         default_radius=spot_radius * 3,
         n_digit=n_digit,

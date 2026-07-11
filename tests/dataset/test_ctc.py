@@ -14,6 +14,7 @@ from byotrack.dataset.ctc import (
     _build_radii,
     _parse_meta_data,
     _save_metadata,
+    load_detections,
     load_tracks,
     save_detections,
     save_tracks,
@@ -35,6 +36,24 @@ def _write_tiff_2d(path: pathlib.Path, label: int, frame_id: int, n_digit: int =
     seg_imagej = seg[None, None, None, ..., None]  # TZCYXS
     name = f"mask{frame_id:0{n_digit}}.tif"
     tifffile.imwrite(path / name, seg_imagej, imagej=True, compression="zlib")
+
+
+@pytest.fixture
+def detections_2d() -> list[byotrack.Detections]:
+    seg = torch.zeros(*SHAPE_2D, dtype=torch.int32)
+    seg[3:6, 3:6] = 1
+    seg[10:13, 10:13] = 2
+    det = byotrack.SegmentationDetections(seg)
+    return [det] * T
+
+
+@pytest.fixture
+def detections_3d() -> list[byotrack.Detections]:
+    seg = torch.zeros(*SHAPE_3D, dtype=torch.int32)
+    seg[1:4, 3:6, 3:6] = 1
+    seg[1:4, 10:13, 10:13] = 2
+    det = byotrack.SegmentationDetections(seg)
+    return [det] * T
 
 
 def _make_tracks_2d() -> list[byotrack.Track]:
@@ -64,6 +83,14 @@ def _write_tiff_multichannel(path: pathlib.Path, frame_id: int, n_digit: int = 4
     tifffile.imwrite(path / name, seg, compression="zlib")
 
 
+def _write_seg_tiff(path: pathlib.Path, name: str, label: int) -> None:
+    """Write a minimal 20x20 tiff with one labeled region under an arbitrary file name."""
+    seg = np.zeros(SHAPE_2D, dtype=np.uint16)
+    seg[3:6, 3:6] = label
+    seg_imagej = seg[None, None, None, ..., None]  # TZCYXS
+    tifffile.imwrite(path / name, seg_imagej, imagej=True, compression="zlib")
+
+
 # --- _parse_meta_data ---
 
 
@@ -90,13 +117,50 @@ def test_parse_meta_data_identifier_offset(tmp_path: pathlib.Path) -> None:
     assert 3 not in meta
 
 
+# --- load_detections ---
+
+
+def test_load_detections_standard_naming(tmp_path: pathlib.Path) -> None:
+    for i in range(T):
+        _write_tiff_2d(tmp_path, label=1, frame_id=i)  # mask0000.tif, mask0001.tif, ...
+
+    detections = load_detections(tmp_path)
+
+    assert len(detections) == T
+    for detections_frame in detections:
+        assert detections_frame.shape == SHAPE_2D
+        assert (detections_frame.segmentation[3:6, 3:6] == 1).all()
+
+
+def test_load_detections_non_standard_naming(tmp_path: pathlib.Path) -> None:
+    for i in range(T):
+        _write_seg_tiff(tmp_path, f"frame{i}.tiff", label=i + 1)
+
+    detections = load_detections(tmp_path)
+
+    assert len(detections) == T
+    for i, detections_frame in enumerate(detections):
+        assert (detections_frame.segmentation[3:6, 3:6] == 1).all()
+        assert detections_frame.labels.tolist() == [i]  # Offset of 1 with the raw label i + 1
+
+
+def test_load_detections_roundtrip(tmp_path: pathlib.Path, detections_2d) -> None:
+    save_detections(detections_2d, tmp_path, as_res=True)
+
+    loaded = load_detections(tmp_path)
+
+    assert len(loaded) == T
+    for orig, got in zip(detections_2d, loaded, strict=True):
+        assert torch.equal(got.segmentation, orig.segmentation)
+
+
 # --- load_tracks ---
 
 
 def test_load_tracks_res_mode(tmp_path: pathlib.Path) -> None:
     tracks = _make_tracks_2d()
     path = tmp_path / "res"
-    save_tracks(path, tracks, shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
+    save_tracks(tracks, path, shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
     loaded = load_tracks(path)
     assert len(loaded) == 2
     identifiers = {t.identifier for t in loaded}
@@ -106,7 +170,7 @@ def test_load_tracks_res_mode(tmp_path: pathlib.Path) -> None:
 def test_load_tracks_man_track_mode(tmp_path: pathlib.Path) -> None:
     tracks = _make_tracks_2d()
     path = tmp_path / "man"
-    save_tracks(path, tracks, shape=SHAPE_2D, as_res=False, as_seg=False, default_radius=RADIUS)
+    save_tracks(tracks, path, shape=SHAPE_2D, as_res=False, as_seg=False, default_radius=RADIUS)
     loaded = load_tracks(path)
     assert len(loaded) == 2
     identifiers = {t.identifier for t in loaded}
@@ -117,7 +181,7 @@ def test_load_tracks_man_seg_mode(tmp_path: pathlib.Path) -> None:
     tracks = _make_tracks_2d()
     # Directory name must contain "seg" to trigger the man_seg naming branch
     path = tmp_path / "man_seg"
-    save_tracks(path, tracks, shape=SHAPE_2D, as_res=False, as_seg=True, default_radius=RADIUS)
+    save_tracks(tracks, path, shape=SHAPE_2D, as_res=False, as_seg=True, default_radius=RADIUS)
     loaded = load_tracks(path)
     assert len(loaded) == 2
     identifiers = {t.identifier for t in loaded}
@@ -196,7 +260,7 @@ def test_load_tracks_with_parent(tmp_path: pathlib.Path) -> None:
         byotrack.Track(2, torch.full((2, 2), 5.0), identifier=3, parent_id=1),
     ]
     path = tmp_path / "res"
-    save_tracks(path, tracks, shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
+    save_tracks(tracks, path, shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
     loaded = sorted(load_tracks(path), key=lambda t: t.identifier)
 
     assert loaded[0].identifier == 1
@@ -214,26 +278,8 @@ def test_load_tracks_with_parent(tmp_path: pathlib.Path) -> None:
 # --- save_detections ---
 
 
-@pytest.fixture
-def detections_2d() -> list[byotrack.Detections]:
-    seg = torch.zeros(*SHAPE_2D, dtype=torch.int32)
-    seg[3:6, 3:6] = 1
-    seg[10:13, 10:13] = 2
-    det = byotrack.SegmentationDetections(seg)
-    return [det] * T
-
-
-@pytest.fixture
-def detections_3d() -> list[byotrack.Detections]:
-    seg = torch.zeros(*SHAPE_3D, dtype=torch.int32)
-    seg[1:4, 3:6, 3:6] = 1
-    seg[1:4, 10:13, 10:13] = 2
-    det = byotrack.SegmentationDetections(seg)
-    return [det] * T
-
-
 def test_save_detections_as_res_naming(tmp_path: pathlib.Path, detections_2d) -> None:
-    save_detections(tmp_path, detections_2d, as_res=True)
+    save_detections(detections_2d, tmp_path, as_res=True)
 
     for i in range(T):
         assert (tmp_path / f"mask{i:04d}.tif").exists()
@@ -241,7 +287,7 @@ def test_save_detections_as_res_naming(tmp_path: pathlib.Path, detections_2d) ->
 
 
 def test_save_detections_as_man_track_naming(tmp_path: pathlib.Path, detections_2d) -> None:
-    save_detections(tmp_path, detections_2d, as_res=False, as_seg=False)
+    save_detections(detections_2d, tmp_path, as_res=False, as_seg=False)
 
     for i in range(T):
         assert (tmp_path / f"man_track{i:04d}.tif").exists()
@@ -249,14 +295,14 @@ def test_save_detections_as_man_track_naming(tmp_path: pathlib.Path, detections_
 
 
 def test_save_detections_as_seg_naming(tmp_path: pathlib.Path, detections_2d) -> None:
-    save_detections(tmp_path, detections_2d, as_res=False, as_seg=True)
+    save_detections(detections_2d, tmp_path, as_res=False, as_seg=True)
 
     for i in range(T):
         assert (tmp_path / f"man_seg{i:04d}.tif").exists()
 
 
 def test_save_detections_n_digit(tmp_path: pathlib.Path, detections_2d) -> None:
-    save_detections(tmp_path, [detections_2d[0]], as_res=True, n_digit=3)
+    save_detections([detections_2d[0]], tmp_path, as_res=True, n_digit=3)
 
     assert (tmp_path / "mask000.tif").exists()
     assert not (tmp_path / "mask0000.tif").exists()
@@ -264,7 +310,7 @@ def test_save_detections_n_digit(tmp_path: pathlib.Path, detections_2d) -> None:
 
 def test_save_detections_creates_directory(tmp_path: pathlib.Path, detections_2d) -> None:
     nested = tmp_path / "a" / "b" / "c"
-    save_detections(nested, [detections_2d[0]])
+    save_detections([detections_2d[0]], nested)
     assert (nested / "mask0000.tif").exists()
 
 
@@ -272,7 +318,7 @@ def test_save_detections_2d_roundtrip(tmp_path: pathlib.Path) -> None:
     seg = torch.zeros(*SHAPE_2D, dtype=torch.int32)
     seg[3:6, 3:6] = 1
     det = byotrack.SegmentationDetections(seg)
-    save_detections(tmp_path, [det], as_res=True)
+    save_detections([det], tmp_path, as_res=True)
 
     loaded = tifffile.imread(tmp_path / "mask0000.tif")
     assert loaded.shape == SHAPE_2D
@@ -284,7 +330,7 @@ def test_save_detections_3d_roundtrip(tmp_path: pathlib.Path) -> None:
     seg = torch.zeros(*SHAPE_3D, dtype=torch.int32)
     seg[1:4, 3:6, 3:6] = 1
     det = byotrack.SegmentationDetections(seg)
-    save_detections(tmp_path, [det], as_res=True)
+    save_detections([det], tmp_path, as_res=True)
 
     loaded = tifffile.imread(tmp_path / "mask0000.tif")
     assert loaded.shape == SHAPE_3D
@@ -298,7 +344,7 @@ def test_save_detections_3d_roundtrip(tmp_path: pathlib.Path) -> None:
 def test_save_metadata_content(tmp_path: pathlib.Path) -> None:
     track = byotrack.Track(0, torch.ones(3, 2), identifier=1)
     txt = tmp_path / "res_track.txt"
-    _save_metadata(txt, [track])
+    _save_metadata([track], txt)
     # identifier + 1 = 2, start = 0, end = 2, parent_id + 1 = 0
     assert txt.read_text(encoding="utf-8").strip() == "2 0 2 0"
 
@@ -306,7 +352,7 @@ def test_save_metadata_content(tmp_path: pathlib.Path) -> None:
 def test_save_metadata_with_parent(tmp_path: pathlib.Path) -> None:
     track = byotrack.Track(0, torch.ones(3, 2), identifier=2, parent_id=1)
     txt = tmp_path / "res_track.txt"
-    _save_metadata(txt, [track])
+    _save_metadata([track], txt)
     parts = txt.read_text(encoding="utf-8").strip().split()
     # Last column = parent_id + 1 = 2
     assert parts[-1] == "2"
@@ -316,7 +362,7 @@ def test_save_metadata_merge_warns(tmp_path: pathlib.Path) -> None:
     track = byotrack.Track(0, torch.ones(3, 2), identifier=1, merge_id=5)
     txt = tmp_path / "res_track.txt"
     with pytest.warns(UserWarning, match="merge events"):
-        _save_metadata(txt, [track])
+        _save_metadata([track], txt)
     # Metadata line is still written despite the warning
     assert txt.exists()
 
@@ -353,7 +399,7 @@ def test_build_radii_3d_anisotropic() -> None:
 
 def test_save_tracks_as_res_creates_files(tmp_path: pathlib.Path) -> None:
     tracks = _make_tracks_2d()
-    save_tracks(tmp_path, tracks, shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
+    save_tracks(tracks, tmp_path, shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
     assert (tmp_path / "res_track.txt").exists()
     for i in range(T):
         assert (tmp_path / f"mask{i:04d}.tif").exists()
@@ -361,7 +407,7 @@ def test_save_tracks_as_res_creates_files(tmp_path: pathlib.Path) -> None:
 
 def test_save_tracks_as_man_track_creates_files(tmp_path: pathlib.Path) -> None:
     tracks = _make_tracks_2d()
-    save_tracks(tmp_path, tracks, shape=SHAPE_2D, as_res=False, as_seg=False, default_radius=RADIUS)
+    save_tracks(tracks, tmp_path, shape=SHAPE_2D, as_res=False, as_seg=False, default_radius=RADIUS)
     assert (tmp_path / "man_track.txt").exists()
     for i in range(T):
         assert (tmp_path / f"man_track{i:04d}.tif").exists()
@@ -369,7 +415,7 @@ def test_save_tracks_as_man_track_creates_files(tmp_path: pathlib.Path) -> None:
 
 def test_save_tracks_as_seg_creates_files(tmp_path: pathlib.Path) -> None:
     tracks = _make_tracks_2d()
-    save_tracks(tmp_path, tracks, shape=SHAPE_2D, as_res=False, as_seg=True, default_radius=RADIUS)
+    save_tracks(tracks, tmp_path, shape=SHAPE_2D, as_res=False, as_seg=True, default_radius=RADIUS)
     assert (tmp_path / "man_track.txt").exists()
     for i in range(T):
         assert (tmp_path / f"man_seg{i:04d}.tif").exists()
@@ -378,18 +424,18 @@ def test_save_tracks_as_seg_creates_files(tmp_path: pathlib.Path) -> None:
 def test_save_tracks_no_shape_raises(tmp_path: pathlib.Path) -> None:
     tracks = _make_tracks_2d()
     with pytest.raises(ValueError, match="shape"):
-        save_tracks(tmp_path, tracks)
+        save_tracks(tracks, tmp_path)
 
 
 def test_save_tracks_shape_mismatch_raises(tmp_path: pathlib.Path, detections_2d) -> None:
     tracks = _make_tracks_2d()
     with pytest.raises(ValueError, match="not compatible"):
-        save_tracks(tmp_path, tracks, detections_2d, shape=(30, 30))
+        save_tracks(tracks, tmp_path, detections_sequence=detections_2d, shape=(30, 30))
 
 
 def test_save_tracks_last_overwrite(tmp_path: pathlib.Path) -> None:
     tracks = _make_tracks_2d()
-    save_tracks(tmp_path, tracks, shape=SHAPE_2D, as_res=True, last=7, default_radius=RADIUS)
+    save_tracks(tracks, tmp_path, shape=SHAPE_2D, as_res=True, last=7, default_radius=RADIUS)
     for i in range(8):
         assert (tmp_path / f"mask{i:04d}.tif").exists()
     assert not (tmp_path / "mask0008.tif").exists()
@@ -403,14 +449,14 @@ def test_save_tracks_missing_position_in_segment_warns(tmp_path: pathlib.Path) -
     points[2] = float("nan")  # NaN inside segment [0, T)
     track = byotrack.Track(0, points, identifier=1)
     with pytest.warns(UserWarning, match="missing position inside a track segment"):
-        save_tracks(tmp_path, [track], shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
+        save_tracks([track], tmp_path, shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
 
 
 def test_save_tracks_disk_outside_image_warns(tmp_path: pathlib.Path) -> None:
     points = torch.full((T, 2), 50.0)  # Outside 20x20 image
     track = byotrack.Track(0, points, identifier=1)
     with pytest.warns(UserWarning, match="outside of image or occluded"):
-        save_tracks(tmp_path, [track], shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
+        save_tracks([track], tmp_path, shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
 
 
 def test_save_tracks_occluded_track_warns(tmp_path: pathlib.Path) -> None:
@@ -428,9 +474,9 @@ def test_save_tracks_occluded_track_warns(tmp_path: pathlib.Path) -> None:
 
     with pytest.warns(UserWarning, match="fully occluded"):
         save_tracks(
-            tmp_path,
             [track_linked, track_disk],
-            detections_seq,
+            tmp_path,
+            detections_sequence=detections_seq,
             as_res=True,
             default_radius=8.0,
             overwrite_detections=True,
@@ -449,7 +495,7 @@ def test_save_tracks_with_detections_uses_segmentation(tmp_path: pathlib.Path) -
     det_ids = torch.zeros(T, dtype=torch.int32)
     track = byotrack.Track(0, torch.full((T, 2), 4.0), identifier=1, detection_ids=det_ids)
 
-    save_tracks(tmp_path, [track], detections_seq, as_res=True)
+    save_tracks([track], tmp_path, detections_sequence=detections_seq, as_res=True)
 
     raw = tifffile.imread(tmp_path / "mask0000.tif").squeeze()
     # Track 1 => label 2 in file (identifier + 1)
@@ -469,7 +515,9 @@ def test_save_tracks_unlinked_track_draws_disk(tmp_path: pathlib.Path) -> None:
     # Track 2 not linked (detection_ids all -1) => disk drawn at position (14, 14)
     track_disk = byotrack.Track(0, torch.full((T, 2), 14.0), identifier=2)
 
-    save_tracks(tmp_path, [track_linked, track_disk], detections_seq, as_res=True, default_radius=RADIUS)
+    save_tracks(
+        [track_linked, track_disk], tmp_path, detections_sequence=detections_seq, as_res=True, default_radius=RADIUS
+    )
 
     raw = tifffile.imread(tmp_path / "mask0000.tif").squeeze()
     # Label 3 = track_disk.identifier + 1 = 3 should appear around (14, 14)
@@ -486,7 +534,7 @@ def _sorted_tracks(tracks: list[byotrack.Track]) -> list[byotrack.Track]:
 def test_round_trip_2d_res(tmp_path: pathlib.Path) -> None:
     tracks = _make_tracks_2d()
     path = tmp_path / "res"
-    save_tracks(path, tracks, shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
+    save_tracks(tracks, path, shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
     loaded = _sorted_tracks(load_tracks(path))
 
     assert len(loaded) == 2
@@ -500,7 +548,7 @@ def test_round_trip_2d_res(tmp_path: pathlib.Path) -> None:
 def test_round_trip_2d_man_track(tmp_path: pathlib.Path) -> None:
     tracks = _make_tracks_2d()
     path = tmp_path / "man"
-    save_tracks(path, tracks, shape=SHAPE_2D, as_res=False, as_seg=False, default_radius=RADIUS)
+    save_tracks(tracks, path, shape=SHAPE_2D, as_res=False, as_seg=False, default_radius=RADIUS)
     loaded = _sorted_tracks(load_tracks(path))
 
     assert len(loaded) == 2
@@ -512,7 +560,7 @@ def test_round_trip_2d_man_track(tmp_path: pathlib.Path) -> None:
 def test_round_trip_2d_man_seg(tmp_path: pathlib.Path) -> None:
     tracks = _make_tracks_2d()
     path = tmp_path / "man_seg"
-    save_tracks(path, tracks, shape=SHAPE_2D, as_res=False, as_seg=True, default_radius=RADIUS)
+    save_tracks(tracks, path, shape=SHAPE_2D, as_res=False, as_seg=True, default_radius=RADIUS)
     loaded = _sorted_tracks(load_tracks(path))
 
     assert len(loaded) == 2
@@ -524,7 +572,7 @@ def test_round_trip_2d_man_seg(tmp_path: pathlib.Path) -> None:
 def test_round_trip_3d_res(tmp_path: pathlib.Path) -> None:
     tracks = _make_tracks_3d()
     path = tmp_path / "res"
-    save_tracks(path, tracks, shape=SHAPE_3D, as_res=True, default_radius=RADIUS)
+    save_tracks(tracks, path, shape=SHAPE_3D, as_res=True, default_radius=RADIUS)
     loaded = _sorted_tracks(load_tracks(path))
 
     assert len(loaded) == 2
@@ -548,7 +596,7 @@ def test_round_trip_with_detections(tmp_path: pathlib.Path) -> None:
     ]
 
     path = tmp_path / "res"
-    save_tracks(path, tracks, detections_seq, as_res=True)
+    save_tracks(tracks, path, detections_sequence=detections_seq, as_res=True)
     loaded = _sorted_tracks(load_tracks(path))
 
     assert len(loaded) == 2

@@ -205,7 +205,13 @@ class CTCMetrics(CTCSoftwareRunner):
             output_path = pathlib.Path(output_dir)
             ground_truth_path = output_path / "01_GT" / ("SEG" if metric == "SEG" else "TRA")
             ctc.save_tracks(
-                output_path / "01_RES", tracks, detections_sequence, as_res=True, shape=shape, n_digit=4, **kwargs
+                tracks,
+                output_path / "01_RES",
+                detections_sequence=detections_sequence,
+                as_res=True,
+                shape=shape,
+                n_digit=4,
+                **kwargs,
             )
             if isinstance(ground_truth_tracks, (str, os.PathLike)):
                 if ground_truth_detections_sequence:
@@ -216,9 +222,9 @@ class CTCMetrics(CTCSoftwareRunner):
                 self.copy_ground_truth(ground_truth_tracks, ground_truth_path, as_seg=metric == "SEG")
             else:
                 ctc.save_tracks(
-                    ground_truth_path,
                     ground_truth_tracks,
-                    ground_truth_detections_sequence,
+                    ground_truth_path,
+                    detections_sequence=ground_truth_detections_sequence,
                     as_res=False,
                     as_seg=metric == "SEG",
                     shape=shape,
@@ -267,12 +273,12 @@ class CTCMetrics(CTCSoftwareRunner):
         with tempfile.TemporaryDirectory(prefix="ByoTrack-CTC-Metrics") as output_dir:
             output_path = pathlib.Path(output_dir)
             ground_truth_path = output_path / "01_GT" / ("SEG" if metric == "SEG" else "TRA")
-            ctc.save_detections(output_path / "01_RES", detections_sequence)
+            ctc.save_detections(detections_sequence, output_path / "01_RES")
             if isinstance(ground_truth_detections_sequence, (str, os.PathLike)):
                 self.copy_ground_truth(ground_truth_detections_sequence, ground_truth_path, as_seg=metric == "SEG")
             else:
                 ctc.save_detections(
-                    ground_truth_path, ground_truth_detections_sequence, as_res=False, as_seg=metric == "SEG"
+                    ground_truth_detections_sequence, ground_truth_path, as_res=False, as_seg=metric == "SEG"
                 )
 
             return self.run(metric, output_path, 1)
@@ -483,7 +489,13 @@ class BioMetrics:
             output_path = pathlib.Path(output_dir)
             ground_truth_path = output_path / "01_GT" / "TRA"
             ctc.save_tracks(
-                output_path / "01_RES", tracks, detections_sequence, as_res=True, shape=shape, n_digit=4, **kwargs
+                tracks,
+                output_path / "01_RES",
+                detections_sequence=detections_sequence,
+                as_res=True,
+                shape=shape,
+                n_digit=4,
+                **kwargs,
             )
             if isinstance(ground_truth_tracks, (str, os.PathLike)):
                 if ground_truth_detections_sequence:
@@ -494,9 +506,9 @@ class BioMetrics:
                 CTCMetrics.copy_ground_truth(ground_truth_tracks, ground_truth_path)
             else:
                 ctc.save_tracks(
-                    ground_truth_path,
                     ground_truth_tracks,
-                    ground_truth_detections_sequence,
+                    ground_truth_path,
+                    detections_sequence=ground_truth_detections_sequence,
                     as_res=False,
                     shape=shape,
                     **kwargs,

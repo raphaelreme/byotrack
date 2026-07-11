@@ -36,10 +36,31 @@ def _parse_meta_data(file: pathlib.Path) -> dict[int, tuple[int, int, int]]:
     return meta
 
 
+def load_detections(path: str | os.PathLike) -> list[byotrack.Detections]:
+    """Load detections stored in the CTC format [10].
+
+    The CTC format for detections consists of one tiff file for each frame
+    which contains the instance segmentation on the frame.
+
+    See the official documentation of the CTC format at
+    https://public.celltrackingchallenge.net/documents/Naming%20and%20file%20content%20conventions.pdf
+
+    This will simply run the byotrack.GroundTruthDetector on the given folder to load the detection
+    in memory.
+
+    Args:
+        path (str | os.PathLike): Path to the detections data
+
+    Returns:
+        list[byotrack.Segmentation]: Loaded detections
+    """
+    return byotrack.GroundTruthDetector().run(byotrack.Video(path))
+
+
 def load_tracks(  # noqa: C901, PLR0912, PLR0915
     path: str | os.PathLike,
 ) -> list[byotrack.Track]:
-    """Load saved tracks at the CTC format [10].
+    """Load tracks stored in the CTC format [10].
 
     The CTC format for tracks consists of one tiff file for each frame which contains the segmentation
     of active tracks on the frame and a text file containing track ids, start and end frames and parent track.
@@ -48,10 +69,8 @@ def load_tracks(  # noqa: C901, PLR0912, PLR0915
     and recovers all the known positions (plus the associated detections_ids) of the tracks. Then it parses
     the metadata in the txt file (either "man_track.txt" or "res_track.txt") and validate the tracks creation.
 
-    See the official documentation of CTC at
+    See the official documentation of the CTC format at
     https://public.celltrackingchallenge.net/documents/Naming%20and%20file%20content%20conventions.pdf
-
-    Tracks with parent are not supported yet.
 
     Example:
 
@@ -63,10 +82,10 @@ def load_tracks(  # noqa: C901, PLR0912, PLR0915
 
         # Load the video and normalize it
         video = byotrack.Video("dataset/01")  # Load videos
-        video.set_transform(byotrack.VideoTransformConfig(aggregate=True, normalize=True))
+        video = video.normalize()
 
         # Optionally, load ground-truth segmentations (may take a lot of RAM)
-        detections_sequence = ctc.GroundTruthDetector().run(byotrack.Video("dataset/01_GT/TRA"))
+        detections_sequence = ctc.load_detections("dataset/01_GT/TRA")
 
         # Load ground-truth tracks
         tracks = ctc.load_tracks("dataset/01_GT/TRA")
@@ -79,7 +98,7 @@ def load_tracks(  # noqa: C901, PLR0912, PLR0915
         path (str | os.PathLike): Path to the tracks data
 
     Returns:
-        list[byotrack.Track]: Saved tracks
+        list[byotrack.Track]: Loaded tracks
 
     """
     path = pathlib.Path(path)
@@ -166,8 +185,8 @@ def load_tracks(  # noqa: C901, PLR0912, PLR0915
 
 
 def save_detections(
-    path: str | os.PathLike,
     detections_sequence: Sequence[byotrack.Detections],
+    path: str | os.PathLike,
     *,
     as_res=True,
     as_seg=False,
@@ -177,7 +196,7 @@ def save_detections(
 
     It will save one tiff image for each frame containing the segmentation of objects.
 
-    See the official documentation of CTC at
+    See the official documentation of the CTC format at
     https://public.celltrackingchallenge.net/documents/Naming%20and%20file%20content%20conventions.pdf
 
     Args:
@@ -214,7 +233,7 @@ def save_detections(
         tifffile.imwrite(path / name, segmentation, imagej=True, compression="zlib")
 
 
-def _save_metadata(path: pathlib.Path, tracks: Collection[byotrack.Track]) -> None:
+def _save_metadata(tracks: Collection[byotrack.Track], path: pathlib.Path) -> None:
     """Saves tracks metadata in the given file."""
     lines = []
     for track in tracks:
@@ -245,10 +264,10 @@ def _build_radii(n: int, dim: int, radius: float, anisotropy: float) -> np.ndarr
 
 
 def save_tracks(  # noqa: C901, PLR0912, PLR0913, PLR0915
-    path: str | os.PathLike,
     tracks: Collection[byotrack.Track],
-    detections_sequence: Sequence[byotrack.Detections] = (),
+    path: str | os.PathLike,
     *,
+    detections_sequence: Sequence[byotrack.Detections] = (),
     as_res=True,
     as_seg=False,
     default_radius=3.0,
@@ -272,7 +291,7 @@ def save_tracks(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     For smarter behaviors, one can directly modify the segmentation before saving.
 
-    See the official documentation of CTC at
+    See the official documentation of the CTC format at
     https://public.celltrackingchallenge.net/documents/Naming%20and%20file%20content%20conventions.pdf
 
     Args:
@@ -306,9 +325,9 @@ def save_tracks(  # noqa: C901, PLR0912, PLR0913, PLR0915
     path.mkdir(parents=True, exist_ok=True)
 
     if as_res:
-        _save_metadata(path / "res_track.txt", tracks)
+        _save_metadata(tracks, path / "res_track.txt")
     else:
-        _save_metadata(path / "man_track.txt", tracks)
+        _save_metadata(tracks, path / "man_track.txt")
 
     if not last:
         last = max(track.start + len(track) - 1 for track in tracks)
