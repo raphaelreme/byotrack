@@ -303,7 +303,7 @@ def precompute_optical_flow(
                 T - 1 consecutive frame pairs.
 
     """
-    if len(video) < 1:
+    if byotrack.video.video_length(video) < 1:
         return [], []
 
     forward_flows: list[np.ndarray] = []

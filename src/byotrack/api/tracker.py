@@ -155,15 +155,17 @@ class BatchMultiStepTracker(MultiStepTracker):
         if isinstance(self.detector, byotrack.GroundTruthDetector) and self.detector.segmentations is not None:
             return self._online_tracking_with_ground_truth_detector(video)
 
-        if len(video) == 0:
+        if byotrack.video.video_length(video) == 0:
             return []
 
-        self.linker.reset(video[0].ndim - 1)
+        self.linker.reset(len(byotrack.video.video_shape(video)) - 2)
 
         detections_sequence: Sequence[byotrack.Detections] = []
 
-        detect_bar = PauseableTQDM(desc=self.detector.progress_bar_description, total=len(video))
-        link_bar = PauseableTQDM(desc=self.linker.progress_bar_description, total=len(video))
+        detect_bar = PauseableTQDM(
+            desc=self.detector.progress_bar_description, total=byotrack.video.video_length(video)
+        )
+        link_bar = PauseableTQDM(desc=self.linker.progress_bar_description, total=byotrack.video.video_length(video))
         link_bar.pause()  # Starting with detections
 
         first = video[0]
@@ -223,11 +225,11 @@ class BatchMultiStepTracker(MultiStepTracker):
 
         self.detector._check_shape(video)  # noqa: SLF001
 
-        self.linker.reset(video[0].ndim - 1)
+        self.linker.reset(len(byotrack.video.video_shape(video)) - 2)
 
         progress_bar = tqdm.tqdm(
             desc=f"{self.detector.progress_bar_description} & {self.linker.progress_bar_description}",
-            total=len(video),
+            total=byotrack.video.video_length(video),
         )
 
         # And run online without using batching

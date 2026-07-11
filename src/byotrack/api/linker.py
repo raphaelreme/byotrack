@@ -99,8 +99,8 @@ class OnlineLinker(Linker):
         video: Sequence[np.ndarray] | np.ndarray | None,
         detections_sequence: Sequence[byotrack.DetectionsLike],
     ) -> Collection[byotrack.Track]:
-        if video is not None and len(video) != len(detections_sequence):
-            if len(video) < len(detections_sequence):
+        if video is not None and byotrack.video.video_length(video) != len(detections_sequence):
+            if byotrack.video.video_length(video) < len(detections_sequence):
                 warnings.warn(
                     f"""Found less frames ({len(video)}) than Detections ({len(detections_sequence)}).
 
@@ -111,7 +111,7 @@ class OnlineLinker(Linker):
                 )
                 detections_sequence = detections_sequence[: len(video)]
 
-            if len(video) > len(detections_sequence):
+            if byotrack.video.video_length(video) > len(detections_sequence):
                 warnings.warn(
                     f"""Found more frames ({len(video)}) than Detections ({len(detections_sequence)}).
 

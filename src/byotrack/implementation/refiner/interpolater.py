@@ -61,12 +61,14 @@ class ForwardBackwardInterpolater(byotrack.Refiner):
         if video is None:
             raise ValueError("video is required for ForwardBackwardInterpolater.")
 
-        tracks_matrix = byotrack.Track.tensorize(tracks, frame_range=(0, len(video)) if self.full else None)
-        start, end = (0, len(video))
+        start, end = (0, byotrack.video.video_length(video))
         if not self.full:
             start = min(track.start for track in tracks)
             end = max(track.start + len(track) for track in tracks)
             video = video[start:end]  # Clip video temporally so that it matches with the tracks_matrix
+
+        tracks_matrix = byotrack.Track.tensorize(tracks, frame_range=(start, end))
+
         propagation_matrix = propagation.forward_backward_propagation(tracks_matrix, video, self.method, **self.kwargs)
 
         new_tracks = []

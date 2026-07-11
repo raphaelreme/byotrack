@@ -375,3 +375,33 @@ def compose_slice(slice_1: slice, slice_2: slice, length: int) -> slice:
         return slice(start, None, step)
 
     return slice(start, stop, step)
+
+
+def video_length(video: Sequence[np.ndarray] | np.ndarray) -> int:
+    """Utilities to extract a video length through duck-typing."""
+    if hasattr(video, "shape"):
+        return video.shape[0]
+
+    return len(video)
+
+
+def video_shape(video: Sequence[np.ndarray] | np.ndarray) -> tuple[int, ...]:
+    """Utilities to extract a video shape through duck-typing."""
+    if hasattr(video, "shape"):
+        return video.shape
+
+    if len(video) == 0:
+        raise ValueError("video is empty: cannot infer its shape.")
+
+    return (len(video), *video[0].shape)
+
+
+def video_dtype(video: Sequence[np.ndarray] | np.ndarray) -> np.dtype:
+    """Utilities to extract a video dtype through duck-typing."""
+    if hasattr(video, "dtype"):
+        return video.dtype
+
+    if len(video) == 0:
+        raise ValueError("video is empty: cannot infer its dtype.")
+
+    return video[0].dtype

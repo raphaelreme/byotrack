@@ -245,7 +245,7 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
                 Default: 0.99993
         """
         start = min(track.start for track in tracks)
-        end = min(max(track.start + len(track) for track in tracks), len(video))
+        end = min(max(track.start + len(track) for track in tracks), byotrack.video.video_length(video))
         points = byotrack.Track.tensorize(tracks, frame_range=(start, end))
         predicted = torch.full_like(points, torch.nan)
         valid = ~torch.isnan(points).any(dim=-1)

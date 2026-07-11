@@ -63,11 +63,11 @@ class BatchDetector(Detector):
 
     @override
     def run(self, video: Sequence[np.ndarray] | np.ndarray) -> list[byotrack.Detections]:
-        if len(video) == 0:
+        if byotrack.video.video_length(video) == 0:
             return []
 
         detections_sequence: list[byotrack.Detections] = []
-        progress_bar = tqdm.tqdm(desc=self.progress_bar_description, total=len(video))
+        progress_bar = tqdm.tqdm(desc=self.progress_bar_description, total=byotrack.video.video_length(video))
 
         first = video[0]
         batch = np.zeros((self.batch_size, *first.shape), dtype=first.dtype)
@@ -190,6 +190,10 @@ class GroundTruthDetector(BatchDetector):
         # but the video frame to the linker.
         tracks = tracker.run(video)
 
+    Attributes:
+        segmentations (Sequence[np.ndarray] | np.ndarray | None): Optional segmentations that will overwrite the
+            video given at run time.
+            Shape: (T, [D, ]H, W, 1), dtype: int
 
     """
 
@@ -209,16 +213,12 @@ class GroundTruthDetector(BatchDetector):
         return super().run(self.segmentations)
 
     def _check_shape(self, video: Sequence[np.ndarray] | np.ndarray) -> None:
+        """Ensure that the video shape matches with the overwrriting segmentation shape."""
         if self.segmentations is None:
             return
 
-        video_shape = video.shape if hasattr(video, "shape") else (len(video), *video[0].shape)
-
-        segmentations_shape = (
-            self.segmentations.shape
-            if hasattr(self.segmentations, "shape")
-            else (len(self.segmentations), *self.segmentations[0].shape)
-        )
+        video_shape = byotrack.video.video_shape(video)
+        segmentations_shape = byotrack.video.video_shape(self.segmentations)
 
         if video_shape[:-1] != segmentations_shape[:-1]:
             raise ValueError("Segmented video do not match video shape.")

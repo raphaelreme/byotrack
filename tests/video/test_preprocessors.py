@@ -58,8 +58,8 @@ def test_preprocessor_initialize_list_of_frames(video_2d: np.ndarray):
 
 def test_preprocessor_initialize_empty_video_raises():
     proc = IdentityPreprocessor()
-    with pytest.raises(ValueError, match="No frame"):
-        proc.initialize(np.zeros((0, 10, 10, 1), dtype=np.uint8))
+    with pytest.raises(ValueError, match="empty"):
+        proc.initialize([])
 
 
 def test_preprocessor_initialize_zero_pixel_frame_raises():

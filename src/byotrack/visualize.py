@@ -425,8 +425,8 @@ class InteractiveVisualizer:
         the maximum values (+ some margin) in tracks positions.
         """
         dim = 0
-        if len(self.video) != 0:
-            frame_shape = self.video[0].shape[:-1]
+        if byotrack.video.video_length(self.video):
+            frame_shape = byotrack.video.video_shape(self.video)[1:-1]
             dim = len(frame_shape)
 
         if self.detections_sequence:
@@ -462,8 +462,8 @@ class InteractiveVisualizer:
         return frame_shape
 
     def _get_n_frames(self) -> int:
-        if len(self.video) != 0:
-            return len(self.video)
+        if byotrack.video.video_length(self.video):
+            return byotrack.video.video_length(self.video)
 
         n_frames = 1
         if self.tracks:
@@ -536,11 +536,11 @@ class InteractiveFlowVisualizer:
         # Cache
         self._flow_maps: dict[tuple[int, int], np.ndarray] = {}
 
-        self.frame_shape = video[0].shape[:-1]
+        self.frame_shape = byotrack.video.video_shape(video)[1:-1]
         if len(self.frame_shape) != 2:  # noqa: PLR2004
             raise ValueError("This visualization only supports 2D videos")
 
-        self.n_frames = len(video)
+        self.n_frames = byotrack.video.video_length(video)
         self.colors = _colors
         self.scale = 1
         self._grid = (

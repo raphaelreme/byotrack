@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+import byotrack
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -51,21 +53,11 @@ class VideoPreprocessor(ABC):
                 Sequence of T frames (array). Each array is expected to have a shape ([D, ]H, W, C).
 
         """
-        if len(video) == 0:
-            raise ValueError("No frame found in the video.")
-
-        if hasattr(video, "shape"):
-            self._shape = video.shape[1:]
-        else:
-            self._shape = video[0].shape
+        self._shape = byotrack.video.video_shape(video)[1:]
+        self._dtype = byotrack.video.video_dtype(video)
 
         if np.prod(self._shape) == 0:
             raise ValueError("No pixel found in the video.")
-
-        if hasattr(video, "dtype"):
-            self._dtype = video.dtype
-        else:
-            self._dtype = video[0].dtype
 
     @abstractmethod
     def preprocess_frame(self, frame: np.ndarray, frame_id=0) -> np.ndarray:

@@ -51,8 +51,8 @@ def _find_dim(
 
     """
     dim = 0
-    if len(video) != 0:
-        dim = len(video[0].shape) - 1  # Exclude channels
+    if byotrack.video.video_length(video):
+        dim = len(byotrack.video.video_shape(video)) - 2  # Exclude time & channels
 
     if detections_sequence:
         dim_ = detections_sequence[0].dim
@@ -271,15 +271,17 @@ def add_optical_flow(  # noqa: C901, PLR0913
             Default: () (Flows are computed from `video`)
 
     """
-    if len(forward_flows) < len(video) - 1 or len(backward_flows) < len(video) - 1:
+    shape = byotrack.video.video_shape(video)
+
+    if len(forward_flows) < shape[0] - 1 or len(backward_flows) < shape[0] - 1:
         forward_flows, backward_flows = precompute_optical_flow(video, optflow)
 
-    dim = video[0].ndim - 1  # Exclude channels
+    dim = len(shape) - 2  # Exclude time & channels
     axis_labels: tuple[str, ...] = ("Time", "Depth", "Height", "Width") if dim == 3 else ("Time", "Height", "Width")  # noqa: PLR2004
     scale = (1.0, *anisotropy[-dim:])
 
     # Initialize the grid points and edges
-    grid = _initialize_grid(video[0].shape[:-1], grid_step, scale[1:])
+    grid = _initialize_grid(shape[1:-1], grid_step, scale[1:])
     grid[..., 0] = viewer.dims.current_step[0]
     paths = _find_paths_in_grid(grid.shape[:-1])
     grid = grid.reshape(-1, grid.shape[-1])
@@ -405,7 +407,7 @@ def visualize(  # noqa: PLR0913
 
     viewer = napari.Viewer(title="ByoTrack x Napari", axis_labels=axis_labels, ndisplay=dim)
 
-    if len(video):
+    if byotrack.video.video_length(video):
         add_video(viewer, video, anisotropy=anisotropy, rgb=rgb, lazy=lazy)
 
     if detections_sequence:
@@ -473,7 +475,7 @@ def visualize_flow_deformation(  # noqa: PLR0913
         napari.Viewer: The created Napari viewer.
 
     """
-    dim = len(video[0].shape) - 1  # Exclude channels
+    dim = len(byotrack.video.video_shape(video)) - 2  # Exclude time & channels
     axis_labels: tuple[str, ...] = ("Time", "Depth", "Height", "Width") if dim == 3 else ("Time", "Height", "Width")  # noqa: PLR2004
 
     viewer = napari.Viewer(title="ByoTrack x Napari", axis_labels=axis_labels, ndisplay=dim)

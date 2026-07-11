@@ -8,7 +8,14 @@ import pytest
 
 import byotrack
 from byotrack.video.reader import ArrayVideoReader, VideoReader
-from byotrack.video.video import _handle_integer_slicing, compose_slice, expand_ellipsis
+from byotrack.video.video import (
+    _handle_integer_slicing,
+    compose_slice,
+    expand_ellipsis,
+    video_dtype,
+    video_length,
+    video_shape,
+)
 
 if sys.version_info < (3, 12):
     from typing_extensions import override
@@ -647,3 +654,47 @@ def test_compose_slice_full_then_partial():
     composed = compose_slice(s1, s2, 10)
     result = list(range(*composed.indices(10)))
     assert result == list(range(2, 8))
+
+
+## video_length / video_shape / video_dtype
+
+
+def test_video_utils_on_ndarray(video_3d: np.ndarray):
+    assert video_length(video_3d) == video_3d.shape[0]
+    assert video_shape(video_3d) == video_3d.shape
+    assert video_dtype(video_3d) == video_3d.dtype
+
+    # Test also length 0
+    assert video_length(video_3d[:0]) == 0
+    assert video_shape(video_3d[:0])[1:] == video_3d.shape[1:]
+    assert video_dtype(video_3d[:0]) == video_3d.dtype
+
+
+def test_video_utils_on_list_of_ndarray(video_2d: np.ndarray):
+    frames = list(video_2d)
+
+    assert video_length(frames) == video_2d.shape[0]
+    assert video_shape(frames) == video_2d.shape
+    assert video_dtype(frames) == video_2d.dtype
+
+    # Test also length 0
+    assert video_length(frames[:0]) == 0
+
+    with pytest.raises(ValueError, match="empty"):
+        video_shape(frames[:0])
+
+    with pytest.raises(ValueError, match="empty"):
+        video_dtype(frames[:0])
+
+
+def test_video_utils_on_byotrack_video(video_3d: np.ndarray):
+    video = byotrack.Video(video_3d)
+
+    assert video_length(video) == video_3d.shape[0]
+    assert video_shape(video) == video_3d.shape
+    assert video_dtype(video) == video_3d.dtype
+
+    # Test also length 0
+    assert video_length(video[:0]) == 0
+    assert video_shape(video[:0])[1:] == video_3d.shape[1:]
+    assert video_dtype(video[:0]) == video_3d.dtype

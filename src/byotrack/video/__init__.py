@@ -10,7 +10,7 @@ from byotrack.video.preprocessor.preprocessor import VideoPreprocessor
 from byotrack.video.preprocessor.slicer import FrameSlicer
 from byotrack.video.preprocessor.spatial_projection import SpatialProjection
 from byotrack.video.reader import ArrayVideoReader, OpenCVVideoReader, TiffVideoReader, VideoReader
-from byotrack.video.video import Video, VideoTransformConfig
+from byotrack.video.video import Video, VideoTransformConfig, video_dtype, video_length, video_shape
 
 __all__ = [
     "ArrayVideoReader",
@@ -24,4 +24,7 @@ __all__ = [
     "VideoPreprocessor",
     "VideoReader",
     "VideoTransformConfig",
+    "video_dtype",
+    "video_length",
+    "video_shape",
 ]
