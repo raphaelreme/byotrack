@@ -69,17 +69,27 @@ def test_from_tracks_independent_tracks_no_cross_edges():
     assert len(components) == 2
 
 
-# Behavior has been changed.
-# def test_from_tracks_nan_position_skipped_and_bridge():
-#     points = torch.tensor([[1.0, 2.0], [float("nan"), float("nan")], [5.0, 6.0]])
-#     track = byotrack.Track(0, points)
-#     graph = byotrack.TrackingGraph.from_tracks([track])
+def test_from_tracks_keep_nans():
+    points = torch.tensor([[1.0, 2.0], [float("nan"), float("nan")], [5.0, 6.0]])
+    track = byotrack.Track(0, points)
+    graph = byotrack.TrackingGraph.from_tracks([track])
 
-#     assert len(graph.nodes) == 2
-#     assert len(graph.edges) == 1
-#     assert (0, 1) in graph.edges
-#     assert graph.nodes[0]["t"] == 0
-#     assert graph.nodes[1]["t"] == 2
+    assert len(graph.nodes) == 3
+    assert len(graph.edges) == 2
+    assert graph.nodes[1]["t"] == 1
+    assert torch.isnan(torch.tensor(graph.nodes[1]["x"]))
+
+
+def test_from_tracks_drop_nan_skips_and_bridges():
+    points = torch.tensor([[1.0, 2.0], [float("nan"), float("nan")], [5.0, 6.0]])
+    track = byotrack.Track(0, points)
+    graph = byotrack.TrackingGraph.from_tracks([track], drop_nan=True)
+
+    assert len(graph.nodes) == 2
+    assert len(graph.edges) == 1
+    assert (0, 1) in graph.edges
+    assert graph.nodes[0]["t"] == 0
+    assert graph.nodes[1]["t"] == 2
 
 
 def test_from_tracks_split_edge_marked() -> None:
@@ -434,6 +444,24 @@ def test_to_tracks_nan_border_reconstructed():
     assert r.start == track.start
     assert len(r) == len(track)
     assert torch.allclose(r.points, track.points, equal_nan=True)
+
+
+def test_from_tracks_drop_nan_round_trip_only_removes_outer_nan():
+    inner_nan = torch.tensor([[0.0, 0.0], [torch.nan, torch.nan], [2.0, 2.0]])
+    outer_nan = torch.tensor([[0.0, 0.0], [2.0, 3.0], [torch.nan, torch.nan]])
+    tracks = [byotrack.Track(0, inner_nan, 0), byotrack.Track(0, outer_nan, 1)]
+
+    keep_graph = byotrack.TrackingGraph.from_tracks(tracks, drop_nan=False)
+    drop_graph = byotrack.TrackingGraph.from_tracks(tracks, drop_nan=True)
+
+    assert len(keep_graph.nodes) == 6
+    assert len(drop_graph.nodes) == 4
+
+    keep_tracks = keep_graph.to_tracks()
+    drop_tracks = drop_graph.to_tracks()
+
+    assert len(tracks[0]) == len(keep_tracks[0]) == len(drop_tracks[0])
+    assert len(tracks[1]) == len(keep_tracks[1]) == len(drop_tracks[1]) + 1
 
 
 ## to_tracks with more general graphs than from_tracks

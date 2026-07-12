@@ -49,6 +49,8 @@ For these components, you need to install their specific dependencies. Here is t
     * Fiji: `Download Fiji <https://imagej.net/downloads>`_
 * TrackOnStraLinker
     * TrackAstra: `Install TrackAstra <https://github.com/weigertlab/trackastra#installation>`_
+* byotrack.geff
+    * GEFF: `Install GEFF <https://liveimagetrackingtools.org/geff/latest/>`_
 * byotrack.napari
     * Napari: `Install Napari <https://napari.org/stable/getting_started/installation.html>`_
 * byotrack.visualize

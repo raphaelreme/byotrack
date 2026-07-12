@@ -288,7 +288,7 @@ class ArrayVideoReader(VideoReader):
             warnings.warn("Channel dimension not found. Assuming gray-scaled video (1 channel).", stacklevel=2)
             self._add_trailing_channel_axis = True
 
-        if video.shape[-1] > MAX_CHANNELS and video.ndim < 5:  # noqa: PLR2004
+        elif video.shape[-1] > MAX_CHANNELS and video.ndim < 5:  # noqa: PLR2004
             warnings.warn(
                 f"Found dimension {video.shape[-1]} (> {MAX_CHANNELS}) on the last axis. "
                 "This indicates that the channel dimension is missing. Assuming gray-scaled video (1 channel). "

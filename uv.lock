@@ -407,8 +407,10 @@ dependencies = [
 
 [package.optional-dependencies]
 full = [
+    { name = "geff" },
     { name = "matplotlib" },
     { name = "napari", extra = ["pyqt6"] },
+    { name = "napari-geff" },
     { name = "stardist", version = "0.9.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' and platform_machine != 'arm64' and sys_platform == 'darwin'" },
     { name = "stardist", version = "0.9.2", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.14' and platform_machine == 'arm64') or (python_full_version < '3.14' and sys_platform != 'darwin')" },
     { name = "tensorflow", version = "2.20.0", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.14' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.11' and sys_platform == 'emscripten') or (python_full_version < '3.11' and sys_platform == 'win32') or (python_full_version < '3.14' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32')" },
@@ -448,8 +450,10 @@ doc = [
 [package.metadata]
 requires-dist = [
     { name = "backports-zstd", marker = "python_full_version < '3.14'" },
+    { name = "geff", marker = "extra == 'full'" },
     { name = "matplotlib", marker = "extra == 'full'" },
     { name = "napari", extras = ["pyqt6"], marker = "extra == 'full'" },
+    { name = "napari-geff", marker = "extra == 'full'" },
     { name = "networkx" },
     { name = "numba" },
     { name = "numpy" },
@@ -3271,6 +3275,26 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5a/03/6e1fcd9aa9ac4746ce2b44050ea8f7192d883f4d3da4e7ff08589ac3ad3b/napari_console-0.1.4.tar.gz", hash = "sha256:e185e4d36d8171ae23ca383dc69c38df76592a984d6c99ad08372d188a1fbb9b", size = 20152, upload-time = "2025-10-15T14:24:18.456Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/01/72/2067f28fd0ae87978f3b61e8ec30c1d085bbed03f64eb58e43949d526b3a/napari_console-0.1.4-py3-none-any.whl", hash = "sha256:565df1fa15db579552af9e9d9d3883067c00191be282ad47d80f9b0d50b4e5ad", size = 9786, upload-time = "2025-10-15T14:24:17.677Z" },
+]
+
+[[package]]
+name = "napari-geff"
+version = "0.0.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "geff" },
+    { name = "magicgui" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pandas", version = "3.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "qtpy" },
+    { name = "scikit-image", version = "0.25.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "scikit-image", version = "0.26.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/da/9e/acd6d2f8956587f0cac59d987b7ca1726797584750e748d0659277ec801b/napari_geff-0.0.4.tar.gz", hash = "sha256:2bdd5fc84d9679007a397418a2df15e355eebbae09a419fe8a067f8cbcd638df", size = 1231511, upload-time = "2026-03-24T04:06:07.88Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/29/4b/e2ddd2ac70de9bbbfaa0f292db00bc67cff0dedec21adce0eb8e8845bae5/napari_geff-0.0.4-py3-none-any.whl", hash = "sha256:16ae7b5c06a7b5977902a9c99abc6424bec4e2501066b126cc433edc62302402", size = 1228927, upload-time = "2026-03-24T04:06:06.257Z" },
 ]
 
 [[package]]

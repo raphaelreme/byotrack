@@ -40,7 +40,7 @@ class TrackingGraph(nx.DiGraph):
         super().__init__()
 
     @staticmethod
-    def from_tracks(tracks: Collection[byotrack.Track]) -> TrackingGraph:  # noqa: C901, PLR0912
+    def from_tracks(tracks: Collection[byotrack.Track], *, drop_nan=False) -> TrackingGraph:  # noqa: C901, PLR0912
         """Build a graph from `byotrack.Track` objects.
 
         Each track becomes a linear chain (one node per defined point). Split/merge
@@ -49,6 +49,11 @@ class TrackingGraph(nx.DiGraph):
 
         Args:
             tracks (Collection[Track]): Tracks to convert.
+            drop_nan (bool): if True, points with undefined (NaN) positions are dropped instead of
+                being kept as (NaN-valued) nodes. This is useful for software that do not support NaN node
+                positions. Note that `TrackingGraph.to_tracks` fills any gaps between non-NaN nodes any way.
+                Only outer NaNs will be missing from a round trip (``from_track`` -> ``to_tracks``).
+                Default: False (NaNs are kept).
 
         Returns:
             TrackingGraph: The constructed graph.
@@ -72,9 +77,8 @@ class TrackingGraph(nx.DiGraph):
             has_z = dim == 3  # noqa: PLR2004
             for i in range(len(track)):
                 coords = track.points[i]
-                # Let's keep NaN nodes
-                # >> if torch.isnan(coords).any():
-                # >>     continue
+                if drop_nan and torch.isnan(coords).any():
+                    continue
 
                 node_attrs: dict[str, float | int] = {
                     "t": track.start + i,
