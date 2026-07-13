@@ -148,8 +148,8 @@ def save_tracks_to_geff(
     video: Sequence[np.ndarray] | np.ndarray = (),
     detections_sequence: Sequence[byotrack.DetectionsLike] = (),
     anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
-    drop_nan: bool = False,
-    split_channels: bool = False,
+    drop_nan: bool = True,
+    split_channels: bool = True,
 ) -> None:
     """Save tracks (and optionally the source video/detections) into a geff store.
 
@@ -161,6 +161,11 @@ def save_tracks_to_geff(
     Note that the geff graph is written first (creating/clearing the zarr group at ``path``, as
     ``geff.write`` is called with ``overwrite=True``), and only then are the video/segmentation
     siblings written into that now-existing directory.
+
+    Note:
+        By default, this function produce a napari-geff compatible file, using ``drop_nan=True`` and
+        ``split_channels=True``. The stored tracks and video may not be fully recovered by ByoTrack.
+        If you are using this method as a storage for ByoTrack, consider changing these parameters to False.
 
     Args:
         tracks (Collection[Track]): Tracks to save.
@@ -178,11 +183,11 @@ def save_tracks_to_geff(
             undefined (NaN) positions are dropped instead of being kept as (NaN-valued) nodes.
             This is useful for readers that do not support NaN node positions. Note that
             `TrackingGraph.to_tracks` fills any gaps between non-NaN nodes. (Outer NaNs will be missing)
-            Default: False.
+            Default: True.
         split_channels (bool): Split the video into one single-channel zarr array per channel
             (``video-0``, ``video-1``, ...), without channel axis (see `save_video_to_zarr`).
             This is useful for napari-geff which currently seems limited to single-channel video.
-            Default: False.
+            Default: True. (`read_video_from_geff` will only read the first channel)
 
     """
     first_track = next(iter(tracks), None)

@@ -190,9 +190,11 @@ def test_tracks_anisotropy_sets_axis_scale(tmp_path: pathlib.Path, tracks_2d: li
     assert axes["x"].scale == pytest.approx(1.25)
 
 
-def test_tracks_with_video_writes_video(tmp_path: pathlib.Path, tracks_2d: list[byotrack.Track], video_2d: np.ndarray):
+def test_tracks_with_video_writes_video_without_split(
+    tmp_path: pathlib.Path, tracks_2d: list[byotrack.Track], video_2d: np.ndarray
+):
     path = tmp_path / "tracks.geff"
-    save_tracks_to_geff(tracks_2d, path, video=video_2d)
+    save_tracks_to_geff(tracks_2d, path, video=video_2d, split_channels=False)
 
     metadata = geff.GeffReader(path).metadata
 
@@ -278,7 +280,7 @@ def test_load_detections_from_zarr_round_trip(tmp_path: pathlib.Path, seg_2d_det
 
 def test_load_video_from_geff_round_trip(tmp_path: pathlib.Path, tracks_2d: list[byotrack.Track], video_2d: np.ndarray):
     path = tmp_path / "tracks.geff"
-    save_tracks_to_geff(tracks_2d, path, video=video_2d)
+    save_tracks_to_geff(tracks_2d, path, video=video_2d, split_channels=False)
 
     video = load_video_from_geff(path)
 
