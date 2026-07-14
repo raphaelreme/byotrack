@@ -282,8 +282,6 @@ def save_tracks(  # noqa: C901, PLR0912, PLR0913, PLR0915
     It will save one tiff image for each frame containing the segmentation of objects and a metadata txt file
     describing the tracks identifiers, start/end frames and parents.
 
-    Parent information is not supported yet.
-
     When no detections_sequence is given, tracks segmentations are simply drawn as disk with `default_radius`
     at the track localization.
     When detections_sequence is given, then for tracks without detections associated, a disk is drawn
@@ -308,7 +306,7 @@ def save_tracks(  # noqa: C901, PLR0912, PLR0913, PLR0915
             Default: False
         default_radius (float): Radius of drawn disk when no segmentation is available.
             Default: 5.0 (pixels)
-        last (int): Overwrite last frame to consider
+        last (int): Overwrite last frame to consider (included).
             Default: 0 (Will compute it from the last tracked target)
         shape (tuple[int, ...] | None): Optional shape. Required when no detections_sequence is provided
             Default: None

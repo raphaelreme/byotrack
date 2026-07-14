@@ -9,6 +9,7 @@ import numpy as np
 
 import byotrack
 from byotrack.napari.utils import (
+    _detections_to_labels,
     _find_paths_in_grid,
     _initialize_grid,
     _LazySegmentationArray,
@@ -130,6 +131,7 @@ def add_detections(
     anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
     detections_mode: Literal["segmentation", "points"] = "segmentation",
     detection_size=10.0,
+    color_from_labels: bool = True,
     lazy: bool = False,
 ) -> None:
     """Add detections to a Napari viewer.
@@ -146,6 +148,9 @@ def add_detections(
             Default: "segmentation"
         detection_size (float): Size of the points, when `detections_mode` is "points".
             Default: 10.0
+        color_from_labels (bool): Use `labels` from `Detections` to assign a color to each segmentation.
+            If False, it will use the detection identifier (0 to N-1).
+            Default: True
         lazy (bool): If True in "segmentation" mode, detections are read from `detections_sequence` on demand
             (one frame at a time) instead of loading the whole segmentation into memory upfront.
             Please be aware, that for advanced napari usage (e.g. label edition, swapped temporal axis), this may fail.
@@ -159,19 +164,20 @@ def add_detections(
 
     if detections_mode == "segmentation":
         segmentation = (
-            _LazySegmentationArray(detections_sequence_)
+            _LazySegmentationArray(detections_sequence_, color_from_labels=color_from_labels)
             if lazy
-            else detections_to_napari_segmentation(detections_sequence_)
+            else detections_to_napari_segmentation(detections_sequence_, color_from_labels=color_from_labels)
         )
         viewer.add_layer(napari.layers.Labels(segmentation, name="Segmentations", axis_labels=axis_labels, scale=scale))
     else:
         points = detections_to_napari_points(detections_sequence_)
+        labels = _detections_to_labels(detections_sequence_, color_from_labels=color_from_labels)
         viewer.add_layer(
             napari.layers.Points(
                 points,
                 name="Detections",
                 size=detection_size,
-                face_color=napari.utils.colormaps.label_colormap().map(np.arange(1, len(points) + 1)),
+                face_color=napari.utils.colormaps.label_colormap().map(labels),
                 axis_labels=axis_labels,
                 scale=scale,
                 opacity=0.70,
@@ -361,6 +367,7 @@ def visualize(  # noqa: PLR0913
     lazy: bool = False,
     detections_mode: Literal["segmentation", "points"] = "segmentation",
     detection_size=10.0,
+    color_from_labels: bool = True,
     track_width=5.0,
     run=True,
 ) -> napari.Viewer:
@@ -392,6 +399,9 @@ def visualize(  # noqa: PLR0913
             Default: "segmentation"
         detection_size (float): Size of the points, when `detections_mode` is "points".
             Default: 10.0
+        color_from_labels (bool): Use `labels` from `Detections` to assign a color to each segmentation.
+            If False, it will use the detection identifier (0 to N-1).
+            Default: True
         track_width (float): Size of the tracked points and width of the track trails.
             Default: 5.0
         run (bool): If True, blocks and starts the Napari Qt event loop (``napari.run()``).
@@ -416,6 +426,7 @@ def visualize(  # noqa: PLR0913
             anisotropy=anisotropy,
             detections_mode=detections_mode,
             detection_size=detection_size,
+            color_from_labels=color_from_labels,
             lazy=lazy,
         )
 

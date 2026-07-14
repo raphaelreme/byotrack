@@ -13,12 +13,18 @@ if TYPE_CHECKING:
     from collections.abc import Collection, Sequence
 
 
-def detections_to_napari_segmentation(detections_sequence: Sequence[byotrack.Detections]) -> np.ndarray:
+def detections_to_napari_segmentation(
+    detections_sequence: Sequence[byotrack.Detections], *, color_from_labels: bool = True
+) -> np.ndarray:
     """Convert detections data to a segmentation array compatible with Napari labels layer.
 
     Args:
         detections_sequence (Sequence[byotrack.Detections]): Sequence of T detections (one per frame).
             All detections are expected to share the same spatial shape.
+        color_from_labels (bool): Use `labeled_segmentation` mask instead of `segmentation` mask.
+            `segmentation` are always consecutive from 1 to N, whereas labeled_segmentation may encode
+             semantic (for instance tracking labels).
+             Default: True
 
     Returns:
         np.ndarray: Instance segmentation video built by stacking each frame segmentation.
@@ -28,7 +34,10 @@ def detections_to_napari_segmentation(detections_sequence: Sequence[byotrack.Det
     segmentation = np.zeros((len(detections_sequence), *detections_sequence[0].shape), dtype=np.uint16)
 
     for frame_id, detections in enumerate(detections_sequence):
-        segmentation[frame_id] = detections.segmentation.numpy().astype(np.uint16)
+        if color_from_labels:
+            segmentation[frame_id] = detections.labeled_segmentation.numpy().astype(np.uint16)
+        else:
+            segmentation[frame_id] = detections.segmentation.numpy().astype(np.uint16)
 
     return segmentation
 
@@ -56,6 +65,34 @@ def detections_to_napari_points(detections_sequence: Sequence[byotrack.Detection
         seen += len(detections)
 
     return points
+
+
+def _detections_to_labels(
+    detections_sequence: Sequence[byotrack.Detections], *, color_from_labels: bool = True
+) -> np.ndarray:
+    """Convert detections to labels compatible with Napari `label_colormap`.
+
+    Args:
+        detections_sequence (Sequence[byotrack.Detections]): Sequence of T detections (one per frame).
+        color_from_labels (bool): Use the `labels` from the `Detections`.
+            If False, it will use the detection identifier, i.e. ``np.arange(detections.length)``.
+            Default: True
+
+    Returns:
+        np.ndarray: Label for each detection.
+
+    """
+    labels = np.zeros((sum(len(detections) for detections in detections_sequence),), dtype=np.uint16)
+
+    seen = 0
+    for detections in detections_sequence:
+        if color_from_labels:
+            labels[seen : seen + len(detections)] = detections.labels.numpy().astype(np.uint16) + 1
+        else:
+            labels[seen : seen + len(detections)] = np.arange(1, detections.length + 1, dtype=np.uint16)
+        seen += len(detections)
+
+    return labels
 
 
 # TODO: Detection to bbox? => Shape layer is not very intuitive for 3D bbox...
@@ -244,11 +281,15 @@ class _LazySegmentationArray:
 
     Attributes:
         detections_sequence (Sequence[byotrack.Detections]): Wrapped detections.
+        color_from_labels (bool): Use `labels` from `Detections` to assign a color to each segmentation.
+            If False, it will use the detection identifier (0 to N-1).
+            Default: True
 
     """
 
-    def __init__(self, detections_sequence: Sequence[byotrack.Detections]) -> None:
+    def __init__(self, detections_sequence: Sequence[byotrack.Detections], *, color_from_labels: bool = True) -> None:
         self.detections_sequence = detections_sequence
+        self.color_from_labels = color_from_labels
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -275,12 +316,16 @@ class _LazySegmentationArray:
         spatial_key = key[1:]
 
         if isinstance(time_key, int):
+            if self.color_from_labels:
+                return self.detections_sequence[time_key].labeled_segmentation.numpy().astype(np.uint16)[spatial_key]
             return self.detections_sequence[time_key].segmentation.numpy().astype(np.uint16)[spatial_key]
 
-        return detections_to_napari_segmentation(self.detections_sequence[time_key])[(slice(None), *spatial_key)]
+        return detections_to_napari_segmentation(
+            self.detections_sequence[time_key], color_from_labels=self.color_from_labels
+        )[(slice(None), *spatial_key)]
 
     def __array__(self, dtype: np.dtype | None = None) -> np.ndarray:
-        return detections_to_napari_segmentation(self.detections_sequence)
+        return detections_to_napari_segmentation(self.detections_sequence, color_from_labels=self.color_from_labels)
 
 
 def precompute_optical_flow(

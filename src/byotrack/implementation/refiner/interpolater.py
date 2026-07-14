@@ -68,7 +68,6 @@ class ForwardBackwardInterpolater(byotrack.Refiner):
             video = video[start:end]  # Clip video temporally so that it matches with the tracks_matrix
 
         tracks_matrix = byotrack.Track.tensorize(tracks, frame_range=(start, end))
-
         propagation_matrix = propagation.forward_backward_propagation(tracks_matrix, video, self.method, **self.kwargs)
 
         new_tracks = []
