@@ -82,6 +82,9 @@ class VideoPreprocessor(ABC):
         Warning: Consider using the online version, which is integrated into the Video class.
                  This will requires much more memory than its online counterpart.
 
+        Warning: Some preprocessors (IntensityNormalizer, Registrator) will modify inplace
+                 the input.
+
         Args:
             video (Sequence[np.ndarray] | np.ndarray): The video to preprocess.
                 Sequence of T frames (array). Each array is expected to have a shape ([D, ]H, W, C).

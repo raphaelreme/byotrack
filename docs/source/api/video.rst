@@ -26,3 +26,5 @@ Video Preprocessors
 .. automodule:: byotrack.video.preprocessor.spatial_projection
 
 .. automodule:: byotrack.video.preprocessor.slicer
+
+.. automodule:: byotrack.video.preprocessor.registrator

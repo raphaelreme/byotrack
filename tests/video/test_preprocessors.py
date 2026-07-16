@@ -4,10 +4,12 @@ import sys
 
 import numpy as np
 import pytest
+import scipy.ndimage as ndi
 
 from byotrack.video.preprocessor.channel_projection import ChannelProjection
 from byotrack.video.preprocessor.normalizer import IntensityNormalizer
 from byotrack.video.preprocessor.preprocessor import VideoPreprocessor
+from byotrack.video.preprocessor.registrator import Registrator
 from byotrack.video.preprocessor.slicer import FrameSlicer
 from byotrack.video.preprocessor.spatial_projection import SpatialProjection
 
@@ -485,3 +487,87 @@ def test_spatial_projection_do_no_overflow():
     out = proj.preprocess_frame(video[0])
 
     assert (out == 200).all()
+
+
+## Registrator
+
+
+def test_registrator_default_reference_frame_is_first_frame(video_2d: np.ndarray):
+    reg = Registrator()
+    reg.initialize(video_2d)
+
+    assert (reg.reference_frame == video_2d[0]).all()
+    assert reg.shape == video_2d.shape[1:]
+    assert reg.dtype == video_2d.dtype
+
+
+def test_registrator_explicit_reference_frame_is_kept(video_2d: np.ndarray):
+    reference = video_2d[1].copy()
+    reg = Registrator(reference_frame=reference)
+    reg.initialize(video_2d)
+
+    assert reg.reference_frame is reference
+
+
+def test_registrator_invalid_reference_channel_raises(video_2d: np.ndarray):
+    reg = Registrator(reference_channel=10)
+    with pytest.raises(IndexError, match="out of bounds"):
+        reg.initialize(video_2d)
+
+
+def test_registrator_preprocess_before_init_raises(video_2d: np.ndarray):
+    reg = Registrator()
+    with pytest.raises(ValueError, match="not initialized"):
+        reg.preprocess_frame(video_2d[0])
+
+
+def test_registrator_preprocess_video_shape_and_dtype_2d(video_2d: np.ndarray):
+    reg = Registrator()
+    out = reg.preprocess_video(video_2d)
+
+    assert out.shape == video_2d.shape
+    assert out.dtype == video_2d.dtype
+
+
+def test_registrator_preprocess_video_shape_and_dtype_3d(video_3d: np.ndarray):
+    reg = Registrator()
+    out = reg.preprocess_video(video_3d)
+
+    assert out.shape == video_3d.shape
+    assert out.dtype == video_3d.dtype
+
+
+def test_registrator_recovers_known_integer_shift():
+    # Build a small blurred target, and a second frame shifted by a known translation
+    target = np.zeros((40, 45), dtype=np.float32)
+    target[15:25, 18:30] = 1.0
+    target = ndi.gaussian_filter(target, 1.5)
+
+    shifted = ndi.shift(target, (3, -5), order=1, mode="nearest")
+    video = np.stack([target, shifted], axis=0)[..., None]  # (T, H, W, C=1)
+
+    reg = Registrator(interpolation_order=0, upsample_factor=1)
+    reg.initialize(video)
+    out = reg.preprocess_frame(video[1].copy(), 1)
+
+    # Nearest interpolation (order=0) recovers the reference exactly here
+    assert np.array_equal(out, video[0])
+
+
+def test_registrator_applies_same_shift_to_all_channels():
+    target = np.zeros((30, 30), dtype=np.float32)
+    target[10:15, 12:20] = 1.0
+    target = ndi.gaussian_filter(target, 1.0)
+
+    shifted = ndi.shift(target, (2, -3), order=1, mode="nearest")
+
+    reference_frame = np.stack([target, target * 2], axis=-1)
+    moving_frame = np.stack([shifted, shifted * 2], axis=-1)
+    video = np.stack([reference_frame, moving_frame], axis=0)
+
+    reg = Registrator(reference_channel=0)
+    reg.initialize(video)
+    out = reg.preprocess_frame(moving_frame.copy(), 1)
+
+    assert np.allclose(out[..., 0], reference_frame[..., 0])
+    assert np.allclose(out[..., 1], reference_frame[..., 1])
