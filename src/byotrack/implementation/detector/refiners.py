@@ -84,7 +84,7 @@ class DetectionsFilter(byotrack.DetectionsRefiner):
     def apply(self, detections, frame=None):
         detections = byotrack.as_detections(detections)
 
-        to_delete = (detections.mass < self.min_area) & (detections.mass > self.max_area)
+        to_delete = (detections.mass < self.min_area) | (detections.mass > self.max_area)
 
         if self.min_intensity > 0.0 or self.min_peak > 0.0 or self.max_intensity < float("inf"):
             if frame is None:
