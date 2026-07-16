@@ -7,6 +7,7 @@ Also provide default transforms to scale video intensities and select a given ch
 from byotrack.video.preprocessor.channel_projection import ChannelProjection
 from byotrack.video.preprocessor.normalizer import IntensityNormalizer
 from byotrack.video.preprocessor.preprocessor import VideoPreprocessor
+from byotrack.video.preprocessor.registrator import Registrator
 from byotrack.video.preprocessor.slicer import FrameSlicer
 from byotrack.video.preprocessor.spatial_projection import SpatialProjection
 from byotrack.video.reader import ArrayVideoReader, OpenCVVideoReader, TiffVideoReader, VideoReader
@@ -18,6 +19,7 @@ __all__ = [
     "FrameSlicer",
     "IntensityNormalizer",
     "OpenCVVideoReader",
+    "Registrator",
     "SpatialProjection",
     "TiffVideoReader",
     "Video",

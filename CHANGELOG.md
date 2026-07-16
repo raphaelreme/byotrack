@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.2] - 2026-07-17
+
+### Breaking Changes
+
+- **`ctc.save_tracks`**: `anisotropy` is now a `tuple[float, float, float]`
+  (`ani_z, ani_y, ani_x`) instead of a single float (the relative
+  depth-to-xy pixel size). It now relies on the new
+  `update_detections_from_tracks` to draw disks/relabel detections.
+- **`byotrack.geff.save_tracks_to_geff`**: `drop_nan` and `split_channels`
+  now default to `True` instead of `False`, producing napari-geff
+  compatible files by default. Pass `drop_nan=False, split_channels=False`
+  to keep the previous ByoTrack round-trip behavior.
+
+### Added
+
+- `byotrack.update_detections_from_tracks`: relabels detections with their
+  matched track identifiers, optionally drops unmatched detections (false
+  positives) and draws disks for tracks with a known position but no
+  matching detection (false negatives).
+- `Registrator` video preprocessor: online translation registration of a
+  video against a reference frame using phase cross-correlation
+  (`skimage.registration.phase_cross_correlation` + `scipy.ndimage.shift`).
+- `color_from_labels` option in `byotrack.napari` (`add_detections`,
+  `detections_to_napari_segmentation`) to color segmentation layers using
+  the `Detections.labels` attribute (e.g. track identifiers) instead of
+  per-frame detection identifiers.
+
+### Fixed
+
+- `DetectionsFilter` was combining `min_area`/`max_area` constraints with
+  `&` instead of `|`, so detections were never actually filtered out.
+
 ## [2.0.1] - 2026-07-13
 
 ### Breaking Changes
