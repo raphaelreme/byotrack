@@ -111,7 +111,7 @@ from byotrack.api.optical_flow.optical_flow import OpticalFlow
 from byotrack.api.refiner import Refiner
 from byotrack.api.tracker import BatchMultiStepTracker, MultiStepTracker, Tracker
 from byotrack.api.tracking_graph import TrackingGraph
-from byotrack.api.tracks import Track
+from byotrack.api.tracks import Track, update_detections_from_tracks
 from byotrack.video import Video, VideoTransformConfig
 
 __version__ = importlib.metadata.version("byotrack")
@@ -147,5 +147,6 @@ __all__ = [
     "icy",
     "labels_of",
     "relabel_consecutive",
+    "update_detections_from_tracks",
     "video",
 ]

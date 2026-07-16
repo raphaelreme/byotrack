@@ -214,6 +214,62 @@ def test_bbox_detections_filter_all_false_empty(bbox_3d: torch.Tensor) -> None:
     assert filtered.length == 0
 
 
+## add_disks
+
+
+def test_bbox_detections_add_disks_basic(bbox_2d: torch.Tensor) -> None:
+    det = byotrack.BBoxDetections(bbox_2d)
+    new_positions = torch.tensor([[20.0, 20.0]])
+
+    updated = det.add_disks(new_positions, labels=torch.tensor([7]), confidence=torch.tensor([0.5]))
+
+    assert updated.length == det.length + 1
+    assert updated.labels.tolist()[-1] == 7
+    assert updated.confidence.tolist()[-1] == 0.5
+    assert torch.allclose(updated.position[-1], new_positions[0])
+
+
+def test_bbox_detections_add_disks_basic_3d(bbox_3d: torch.Tensor) -> None:
+    det = byotrack.BBoxDetections(bbox_3d)
+    new_positions = torch.tensor([[20.0, 20.0, 10.0], [5.0, 5.0, 20.0]])
+
+    updated = det.add_disks(new_positions, labels=torch.tensor([3, 4]))
+
+    assert updated.length == det.length + 2
+    assert updated.labels.tolist()[-2:] == [3, 4]
+    assert torch.allclose(updated.position[-2:], new_positions)
+
+
+def test_bbox_detections_add_disks_default_labels_and_confidence(bbox_2d: torch.Tensor) -> None:
+    det = byotrack.BBoxDetections(bbox_2d)
+    updated = det.add_disks(torch.tensor([[20.0, 20.0]]), 2.0)
+
+    assert updated.labels.tolist()[-1] == det.length
+    assert updated.confidence.tolist()[-1] == 1.0
+
+    det = byotrack.BBoxDetections(bbox_2d, labels=torch.tensor([2, 7]))
+    updated = det.add_disks(torch.tensor([[20.0, 20.0]]), 2.0)
+
+    assert updated.labels.tolist()[-1] == 8
+
+
+def test_bbox_detections_add_disks_sizes_are_positive(bbox_2d: torch.Tensor) -> None:
+    det = byotrack.BBoxDetections(bbox_2d)
+    # Even a zero radius must yield a strictly positive box size (BBoxDetections forbids zero-size boxes)
+    updated = det.add_disks(torch.tensor([[20.0, 20.0]]), 0.0)
+
+    assert (updated.bbox[:, det.dim :] > 0).all()
+
+
+def test_bbox_detections_add_disks_original_unaffected(bbox_2d: torch.Tensor) -> None:
+    det = byotrack.BBoxDetections(bbox_2d)
+    original_length = det.length
+
+    det.add_disks(torch.tensor([[20.0, 20.0]]), 2.0)
+
+    assert det.length == original_length
+
+
 ## Save & Load
 
 

@@ -414,6 +414,10 @@ def test_detections_confidence_wrong_format_raises(pos_2d: torch.Tensor) -> None
     with pytest.raises(ValueError, match="confidence length"):
         byotrack.PointDetections(pos_2d, confidence=conf)
 
+    conf = torch.ones(len(pos_2d)) * -1  # Negative values
+    with pytest.raises(ValueError, match="non-negative"):
+        byotrack.PointDetections(pos_2d, confidence=conf)
+
 
 def test_detections_labels_wrong_format_raises(pos_2d: torch.Tensor) -> None:
     labels = torch.zeros(1, len(pos_2d), dtype=torch.int32)  # Should be 1D
@@ -422,6 +426,10 @@ def test_detections_labels_wrong_format_raises(pos_2d: torch.Tensor) -> None:
 
     labels = torch.ones(len(pos_2d) - 1, dtype=torch.int32)  # Mismatch on length
     with pytest.raises(ValueError, match="labels length"):
+        byotrack.PointDetections(pos_2d, labels=labels)
+
+    labels = torch.ones(len(pos_2d)) * -1  # Negative values
+    with pytest.raises(ValueError, match="non-negative"):
         byotrack.PointDetections(pos_2d, labels=labels)
 
 
@@ -479,3 +487,51 @@ def test_detections_no_cache_for_metadata(pos_2d: torch.Tensor) -> None:
 
     # As we don't have labels, labeled_seg is simply the cached segmentation
     assert det.labeled_segmentation is labeled_seg
+
+
+## relabel
+
+
+def test_relabel_changes_labels(pos_2d: torch.Tensor) -> None:
+    det = byotrack.PointDetections(pos_2d)
+    new_labels = torch.tensor([5, 9], dtype=torch.int32)
+
+    relabeled = det.relabel(new_labels)
+
+    assert torch.equal(relabeled.labels, new_labels)
+    assert torch.allclose(relabeled.position, det.position)  # Other data untouched
+
+
+def test_relabel_original_unaffected(pos_2d: torch.Tensor) -> None:
+    labels = torch.tensor([0, 1], dtype=torch.int32)
+    det = byotrack.PointDetections(pos_2d, labels=labels)
+
+    relabeled = det.relabel(torch.tensor([5, 9], dtype=torch.int32))
+
+    assert relabeled is not det
+    assert torch.equal(det.labels, labels)  # Original untouched
+
+
+def test_relabel_metadata_isolated_between_clone_and_original(pos_2d: torch.Tensor) -> None:
+    det = byotrack.PointDetections(pos_2d)
+    relabeled = det.relabel(torch.tensor([5, 9], dtype=torch.int32))
+
+    relabeled.metadata["features"] = torch.ones(2)
+
+    assert "features" not in det.metadata
+
+
+def test_relabel_cache_isolated_between_clone_and_original(pos_2d: torch.Tensor) -> None:
+    det = byotrack.PointDetections(pos_2d, cache=True)
+    det.segmentation  # noqa: B018  # Populate cache on the original
+
+    relabeled = det.relabel(torch.tensor([5, 9], dtype=torch.int32))
+
+    assert relabeled._cache is not det._cache
+    assert "segmentation" in relabeled._cache  # Copied over, not lost
+
+
+def test_relabel_wrong_length_raises(pos_2d: torch.Tensor) -> None:
+    det = byotrack.PointDetections(pos_2d)
+    with pytest.raises(ValueError, match="labels length"):
+        det.relabel(torch.zeros(len(pos_2d) + 1, dtype=torch.int32))

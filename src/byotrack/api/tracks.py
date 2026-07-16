@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import torch
+import tqdm.auto as tqdm
 
 from byotrack.api.detections.segmentation_detections import _position_from_segmentation
 
@@ -454,3 +455,155 @@ def update_detection_ids(
 
         for i, track in enumerate(tracks_array[valid_tracks.numpy()][match.numpy()]):
             track.detection_ids[frame_id - track.start] = argmin[i]
+
+
+def _resolve_disk_radii(
+    radius: float | torch.Tensor,
+    n_tracks: int,
+    n_frames: int,
+    dim: int,
+    anisotropy: tuple[float, float, float],
+) -> torch.Tensor:
+    """Expand a radius spec to (T, N, dim), applying anisotropy per axis.
+
+    Args:
+        radius (float | torch.Tensor): Either a scalar, or a tensor directly broadcastable to (T, N, dim)
+            using standard (right-aligned) torch broadcasting rules. In particular, a per-track-only
+            radius must be shaped (N, 1), not (N,) (which would broadcast against `dim` instead of `N`),
+            and a per-track-and-frame radius must be shaped (T, N, 1), not (T, N), for the same reason.
+            Should be expressed in non-scaled coordinates.
+        n_tracks (int): Number of tracks (N).
+        n_frames (int): Number of frames (T).
+        dim (int): Spatial dimension (2 or 3).
+        anisotropy (tuple[float, float, float]): Anisotropy factors (ani_z, ani_y, ani_x) used to
+            convert an isotropic radius into per-axis pixel-space radii (See `statistics.anisotropy`).
+
+    Returns:
+        torch.Tensor: Per-frame, per-track and per-axis radius.
+            Shape: (T, N, dim), dtype: float32
+    """
+    if isinstance(radius, (int, float)):
+        radius = torch.full((1, 1, 1), radius, dtype=torch.float32)
+
+    return radius.to(torch.float32).expand(n_frames, n_tracks, dim) / torch.tensor(anisotropy)[-dim:]
+
+
+def update_detections_from_tracks(  # noqa: C901
+    detections_sequence: Sequence[byotrack.Detections],
+    tracks: Collection[Track],
+    *,
+    radius: float | torch.Tensor = 2.0,
+    anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    drop_false_positives: bool = True,
+    draw_false_negatives: bool = True,
+    overwrite: bool = False,
+) -> list[byotrack.Detections]:
+    """Update a sequence of Detections using tracking results.
+
+    For each frame, detections matched to a track (`detection_ids` should already be populated)
+    are relabeled with their track `identifier`. Unmatched detections (false positives) can
+    optionally be dropped, and tracks with a known position but no matching detection (false
+    negatives) can optionally be materialized as a disk-shaped detection (See `Detections.add_disks`).
+
+    The returned sequence always has the same length as `detections_sequence` (this function never extends it,
+    even if tracks span further in time -- pad `detections_sequence` first if that behavior is wanted).
+
+    Args:
+        detections_sequence (Sequence[byotrack.Detections]): Detections for each frame to update.
+        tracks (Collection[Track]): Tracks to use. `detection_ids` should already be set.
+        radius (float | torch.Tensor): Radius of the disks drawn for false negatives. Either a scalar, or
+            a tensor directly broadcastable to (T, N, dim) using standard (right-aligned) torch broadcasting
+            rules (See `_resolve_disk_radii`). In particular, a per-track-only radius must be shaped (N, 1),
+            not (N,), and a per-track-and-frame radius must be shaped (T, N, 1), not (T, N).
+            Should be expressed in non-scaled coordinates.
+            Default: 2.0
+        anisotropy (tuple[float, float, float]): Anisotropy factors (ani_z, ani_y, ani_x) used to convert
+            `radius` into per-axis pixel-space radii.
+            Default: (1.0, 1.0, 1.0) (no scaling)
+        drop_false_positives (bool): Drop detections that are not matched to any track.
+            Be aware that if you do not remove false positives, then, the track identifiers
+            should not overlap with the remaining false positives detections.
+            Default: True
+        draw_false_negatives (bool): Draw a disk for tracks with a known position but no matching detection.
+            Default: True
+        overwrite (bool): Allow disks (false negatives) to overwrite pre-existing detection pixels
+            (Only relevant for `SegmentationDetections`, see `Detections.add_disks`).
+            Default: False
+
+    Returns:
+        list[byotrack.Detections]: The updated detections, one per frame of `detections_sequence`.
+    """
+    if not tracks:
+        return list(detections_sequence)
+
+    if not detections_sequence:
+        return []
+
+    radii: torch.Tensor | None = None
+    if draw_false_negatives:
+        radii = _resolve_disk_radii(
+            radius, len(tracks), len(detections_sequence), detections_sequence[0].dim, anisotropy
+        )
+
+    updated: list[byotrack.Detections] = []
+
+    for frame_id, detections in enumerate(tqdm.tqdm(detections_sequence, desc="Update detections")):
+        new_labels = detections.labels.clone()
+        is_labeled = torch.zeros(detections.length, dtype=torch.bool)
+
+        missed_positions = []
+        missed_labels = []
+        missed_track_indices = []
+
+        for track_index, track in enumerate(tracks):
+            if not track.start <= frame_id < track.start + len(track):
+                continue
+
+            det_id = int(track.detection_ids[frame_id - track.start])
+            if det_id != -1:
+                new_labels[det_id] = track.identifier
+                is_labeled[det_id] = True
+            elif draw_false_negatives:
+                position = track[frame_id]
+                if not torch.isnan(position).any():
+                    missed_positions.append(position)
+                    missed_labels.append(track.identifier)
+                    missed_track_indices.append(track_index)
+                else:
+                    warnings.warn(
+                        f"Track {track.identifier} has an undefined position at frame {frame_id} (inside its "
+                        "own segment) and no matching detection: it will be skipped in the output, which may "
+                        "cause issues with some evaluation software (traccuracy, CTC, ...). Consider filling "
+                        "holes with Interpolaters.",
+                        stacklevel=2,
+                    )
+
+        kept = is_labeled if drop_false_positives else torch.ones(detections.length, dtype=torch.bool)
+
+        # Relabel the detections with their associated track.identifier
+        # Then filter false positive detections
+        new_detections = detections.relabel(new_labels).filter(kept)
+
+        # Finally, draw disks for missed detections
+        if missed_positions and radii is not None:
+            new_detections = new_detections.add_disks(
+                torch.stack(missed_positions),
+                radii[frame_id, missed_track_indices],
+                labels=torch.tensor(missed_labels, dtype=torch.int32),
+                overwrite=overwrite,
+            )
+
+            # A disk may not appear in the result (out of frame, or occluded with overwrite=False),
+            # or, with overwrite=True, may have clobbered an already-matched detection.
+            expected = set(new_labels[kept].tolist()) | set(missed_labels)
+            absent = expected - set(new_detections.labels.tolist())
+            if absent:
+                warnings.warn(
+                    f"Some tracks could not be represented in detections at frame {frame_id}: {absent}.\n"
+                    "This may cause errors with some evaluation software (traccuracy, CTC, ...).",
+                    stacklevel=2,
+                )
+
+        updated.append(new_detections)
+
+    return updated

@@ -325,6 +325,98 @@ def test_seg_detections_filter_without_labels(seg_2d: torch.Tensor) -> None:
     assert (filtered.segmentation[seg_2d == 2] == 0).all()
 
 
+## add_disks
+
+
+def test_seg_detections_add_disks_basic(seg_2d: torch.Tensor) -> None:
+    det = byotrack.SegmentationDetections(seg_2d)
+    new_positions = torch.tensor([[27.0, 5.0]])  # Empty area of the 30x30 grid
+
+    updated = det.add_disks(new_positions, 2.0, labels=torch.tensor([7]), confidence=torch.tensor([0.5]))
+
+    assert updated.length == det.length + 1
+    assert updated.labels.tolist()[-1] == 7
+    assert updated.confidence.tolist()[-1] == 0.5
+    assert updated.segmentation[27, 5] == 4
+    assert updated.labeled_segmentation[27, 5] == 8
+
+
+def test_seg_detections_add_disks_basic_3d(seg_3d: torch.Tensor) -> None:
+    det = byotrack.SegmentationDetections(seg_3d)
+    new_positions = torch.tensor([[1.0, 12.0, 12.0], [1.0, 12.0, 6.0]])  # Empty area of the 20x20x20 grid
+
+    updated = det.add_disks(new_positions, labels=torch.tensor([7, 8]))
+
+    assert updated.length == det.length + 2
+    assert updated.labels.tolist()[-2:] == [7, 8]
+    assert updated.confidence.tolist()[-2:] == [1.0, 1.0]
+    assert updated.segmentation[1, 12, 12] == 3
+    assert updated.segmentation[1, 12, 6] == 4
+
+
+def test_seg_detections_add_disks_default_labels(seg_2d: torch.Tensor) -> None:
+    det = byotrack.SegmentationDetections(seg_2d)
+    updated = det.add_disks(torch.tensor([[27.0, 5.0]]), 2.0)
+
+    assert updated.labels.tolist()[-1] == det.length
+
+    labels = torch.tensor([-1, 8, 4, 6]) + 1
+    det = byotrack.SegmentationDetections(labels[seg_2d])
+    updated = det.add_disks(torch.tensor([[27.0, 5.0]]), 2.0)
+
+    # Labels are sorted (by SegmentationDetections init), plus a new label=9 is added)
+    assert (updated.labels == torch.tensor([4, 6, 8, 9])).all()
+
+
+def test_seg_detections_add_disks_does_not_overwrite_by_default(seg_2d: torch.Tensor) -> None:
+    det = byotrack.SegmentationDetections(seg_2d)
+    # Small disk fully inside the first blob (rows/cols 2:6) -> every candidate pixel is pre-occupied
+    updated = det.add_disks(torch.tensor([[4.0, 4.0]]), 1.0, labels=torch.tensor([99], dtype=torch.int32))
+
+    assert (updated.labeled_segmentation[2:6, 2:6] == 1).all()  # Original blob is preserved
+    assert 99 not in updated.labels.tolist()  # Disk fully occluded -> dropped
+    assert updated.length == det.length
+
+
+def test_seg_detections_add_disks_overwrite_true(seg_2d: torch.Tensor) -> None:
+    det = byotrack.SegmentationDetections(seg_2d)
+    updated = det.add_disks(
+        torch.tensor([[4.0, 4.0]]), 1.0, labels=torch.tensor([99], dtype=torch.int32), overwrite=True
+    )
+
+    # Partial overwrite
+    assert 99 in updated.labels.tolist()
+    assert 0 in updated.labels.tolist()
+    assert (updated.labeled_segmentation[2:6, 2:6] == 100).any()
+    assert (updated.labeled_segmentation[2:6, 2:6] == 1).any()
+
+    det = byotrack.SegmentationDetections(seg_2d)
+    updated = det.add_disks(
+        torch.tensor([[4.0, 4.0]]), 4.0, labels=torch.tensor([99], dtype=torch.int32), overwrite=True
+    )
+    assert (updated.labeled_segmentation[2:6, 2:6] == 100).all()  # Original blob is removed
+    assert 0 not in updated.labels.tolist()  # Previous label fully occluded -> dropped
+    assert updated.length == det.length
+
+
+def test_seg_detections_add_disks_out_of_bounds_dropped(seg_2d: torch.Tensor) -> None:
+    det = byotrack.SegmentationDetections(seg_2d)
+    updated = det.add_disks(torch.tensor([[1000.0, 1000.0]]), 2.0, labels=torch.tensor([99], dtype=torch.int32))
+
+    assert updated.length == det.length  # Disk fully outside the frame -> dropped
+    assert 99 not in updated.labels.tolist()
+
+
+def test_seg_detections_add_disks_original_unaffected(seg_2d: torch.Tensor) -> None:
+    det = byotrack.SegmentationDetections(seg_2d)
+    original_length = det.length
+
+    det.add_disks(torch.tensor([[27.0, 5.0]]), 2.0)
+
+    assert det.length == original_length
+    assert det.segmentation[27, 5] == 0
+
+
 ## Save & Load
 
 

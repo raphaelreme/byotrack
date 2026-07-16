@@ -24,6 +24,19 @@ def _check_position(position: torch.Tensor) -> None:
         raise ValueError("Position tensor should have 2 or 3 values: ([k, ]i, j)")
 
 
+def _expand_radius(radius: float | torch.Tensor, length: int, dim: int) -> torch.Tensor:
+    """Expand a radius spec (scalar or tensor expandable to (length, dim)) to (length, dim)."""
+    if isinstance(radius, (int, float)):
+        radius = torch.full((length, dim), radius, dtype=torch.float32)
+    else:
+        radius = torch.expand_copy(radius.to(torch.float32), (length, dim))
+
+    if radius.numel() and radius.min() < 0:
+        raise ValueError("Radius should be non-negative.")
+
+    return radius
+
+
 class PointDetections(Detections):
     """Detections represented as center positions with an optional spot radius.
 
@@ -82,13 +95,7 @@ class PointDetections(Detections):
 
         super().__init__(confidence=confidence, labels=labels, cache=cache, compress=compress)
 
-        if isinstance(radius, (int, float)):
-            self._radius = torch.full((self.length, self.dim), float(radius), dtype=torch.float32)
-        else:
-            self._radius = torch.expand_copy(radius.to(torch.float32), (self.length, self.dim))
-
-        if self._radius.numel() and self._radius.min() < 0:
-            raise ValueError("Radius should be non-negative.")
+        self._radius = _expand_radius(radius, self.length, self.dim)
 
         # Shape: infer from data if not given
         if shape is not None:
@@ -158,6 +165,37 @@ class PointDetections(Detections):
             radius=self._radius[kept],
             confidence=self._confidence[kept] if self._confidence is not None else None,
             labels=self._labels[kept] if self._labels is not None else None,
+            shape=self.shape,
+            cache=self._use_cache,
+            compress=self._compress,
+        )
+
+    @override
+    def add_disks(
+        self,
+        positions: torch.Tensor,
+        radius: float | torch.Tensor = 2.0,
+        *,
+        labels: torch.Tensor | None = None,
+        confidence: torch.Tensor | None = None,
+        overwrite: bool = False,
+    ) -> PointDetections:
+        length = positions.shape[0]
+        radius = _expand_radius(radius, length, self.dim)
+
+        if labels is None:
+            start_label = self.labels.max().item() + 1 if self.length else 0
+            labels = torch.arange(start_label, start_label + length, dtype=torch.int32)
+        else:
+            labels = labels.to(torch.int32)
+
+        confidence = confidence.to(torch.float32) if confidence is not None else torch.ones(length, dtype=torch.float32)
+
+        return PointDetections(
+            torch.cat([self._position, positions.to(torch.float32)]),
+            radius=torch.cat([self._radius, radius]),
+            confidence=torch.cat([self.confidence, confidence]),
+            labels=torch.cat([self.labels, labels]),
             shape=self.shape,
             cache=self._use_cache,
             compress=self._compress,

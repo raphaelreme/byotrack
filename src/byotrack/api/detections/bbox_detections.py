@@ -11,6 +11,7 @@ import torch
 
 import byotrack
 from byotrack.api.detections.detections import Detections, cached
+from byotrack.api.detections.point_detections import _expand_radius
 
 if sys.version_info < (3, 12):
     from typing_extensions import override
@@ -165,6 +166,41 @@ class BBoxDetections(Detections):
             self._bbox[kept],
             confidence=self._confidence[kept] if self._confidence is not None else None,
             labels=self._labels[kept] if self._labels is not None else None,
+            shape=self.shape,
+            cache=self._use_cache,
+            compress=self._compress,
+        )
+
+    @override
+    def add_disks(
+        self,
+        positions: torch.Tensor,
+        radius: float | torch.Tensor = 2.0,
+        *,
+        labels: torch.Tensor | None = None,
+        confidence: torch.Tensor | None = None,
+        overwrite: bool = False,
+    ) -> BBoxDetections:
+        length = positions.shape[0]
+        radius = _expand_radius(radius, length, self.dim)
+        positions = positions.to(torch.float32)
+
+        starts = (positions - radius).floor().int()
+        ends = (positions + radius + 1).ceil().int()
+        bbox = torch.cat([starts, ends - starts], dim=1)
+
+        if labels is None:
+            start_label = self.labels.max().item() + 1 if self.length else 0
+            labels = torch.arange(start_label, start_label + length, dtype=torch.int32)
+        else:
+            labels = labels.to(torch.int32)
+
+        confidence = confidence.to(torch.float32) if confidence is not None else torch.ones(length, dtype=torch.float32)
+
+        return BBoxDetections(
+            torch.cat([self._bbox, bbox]),
+            confidence=torch.cat([self.confidence, confidence]),
+            labels=torch.cat([self.labels, labels]),
             shape=self.shape,
             cache=self._use_cache,
             compress=self._compress,

@@ -268,6 +268,58 @@ def test_point_detections_filter_all_false_empty(pos_2d: torch.Tensor) -> None:
     assert filtered.length == 0
 
 
+## add_disks
+
+
+def test_point_detections_add_disks_basic(pos_2d: torch.Tensor) -> None:
+    det = byotrack.PointDetections(pos_2d, radius=2.0)
+    new_positions = torch.tensor([[20.0, 20.0]])
+
+    updated = det.add_disks(new_positions, 3.0, labels=torch.tensor([7]), confidence=torch.tensor([0.5]))
+
+    assert updated.length == det.length + 1
+    assert updated.labels.tolist()[-1] == 7
+    assert updated.confidence.tolist()[-1] == 0.5
+    assert torch.allclose(updated.position[-1], new_positions[0])
+    assert torch.allclose(updated._radius[-1], torch.tensor([3.0, 3.0]))
+
+
+def test_point_detections_add_disks_basic_3d(pos_3d: torch.Tensor) -> None:
+    det = byotrack.PointDetections(pos_3d)
+    new_positions = torch.tensor([[20.0, 20.0, 10.0], [5.0, 5.0, 20.0]])
+
+    updated = det.add_disks(new_positions, labels=torch.tensor([3, 4]))
+
+    assert updated.length == det.length + 2
+    assert updated.labels.tolist()[-2:] == [3, 4]
+    assert torch.allclose(updated.position[-2:], new_positions)
+
+
+def test_point_detections_add_disks_default_labels_and_confidence(pos_2d: torch.Tensor) -> None:
+    det = byotrack.PointDetections(pos_2d)
+    new_positions = torch.tensor([[20.0, 20.0], [25.0, 25.0]])
+
+    updated = det.add_disks(new_positions, 2.0)
+
+    assert updated.length == det.length + 2
+    assert updated.labels.tolist()[-2:] == [det.length, det.length + 1]
+    assert torch.allclose(updated.confidence[-2:], torch.ones(2))
+
+    det = byotrack.PointDetections(pos_2d, labels=torch.tensor([2, 7]))
+    updated = det.add_disks(torch.tensor([[20.0, 20.0]]))
+
+    assert updated.labels.tolist()[-1] == 8
+
+
+def test_point_detections_add_disks_original_unaffected(pos_2d: torch.Tensor) -> None:
+    det = byotrack.PointDetections(pos_2d)
+    original_length = det.length
+
+    det.add_disks(torch.tensor([[20.0, 20.0]]), 2.0)
+
+    assert det.length == original_length
+
+
 ## Save and Load
 
 

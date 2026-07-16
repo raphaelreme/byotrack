@@ -11,9 +11,17 @@ import numpy as np
 import torch
 
 import byotrack
-from byotrack.api.detections.detections import Detections, cached, labels_of, relabel_consecutive
+from byotrack.api.detections.detections import (
+    Detections,
+    cached,
+    draw_disk_2d,
+    draw_disk_3d,
+    labels_of,
+    relabel_consecutive,
+)
 from byotrack.api.detections.detections import compress as compression
 from byotrack.api.detections.detections import decompress as decompression
+from byotrack.api.detections.point_detections import _expand_radius
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -283,6 +291,50 @@ class SegmentationDetections(Detections):
     @override
     def mass(self) -> torch.Tensor:
         return torch.from_numpy(_compute_mass(self.segmentation.numpy()))
+
+    @override
+    def add_disks(
+        self,
+        positions: torch.Tensor,
+        radius: float | torch.Tensor = 2.0,
+        *,
+        labels: torch.Tensor | None = None,
+        confidence: torch.Tensor | None = None,
+        overwrite: bool = False,
+    ) -> SegmentationDetections:
+        length = positions.shape[0]
+        radius = _expand_radius(radius, length, self.dim)
+
+        if labels is None:
+            start_label = self.labels.max().item() + 1 if self.length else 0
+            labels = torch.arange(start_label, start_label + length, dtype=torch.int32)
+        else:
+            labels = labels.to(torch.int32)
+
+        confidence = confidence.to(torch.float32) if confidence is not None else torch.ones(length, dtype=torch.float32)
+
+        segmentation = self._segmentation
+        segmentation = decompression(segmentation).reshape(self.shape) if self._compress else segmentation.clone()
+
+        # Draw disks with temporary consecutive ids continuing after the existing ones.
+        temp_ids = np.arange(self.length, self.length + length)
+        draw_disk = draw_disk_3d if self.dim == 3 else draw_disk_2d  # noqa: PLR2004
+        new_positions = positions.to(torch.float32).numpy()
+        draw_disk(segmentation.numpy(), new_positions, radius.numpy(), temp_ids, overwrite=overwrite)
+
+        detections = SegmentationDetections(
+            segmentation,
+            position_method=self._position_fn,
+            cache=self._use_cache,
+            compress=self._compress,
+        )
+
+        # Some disks may have failed to draw (out of bounds, or occluded), or have occluded previous labels:
+        # `detections.labels` holds the surviving subset of labels, which can be used to filter out dropped labels
+        detections._confidence = torch.cat([self.confidence, confidence])[detections.labels]
+        detections._labels = torch.cat([self.labels, labels])[detections.labels]
+
+        return detections
 
     @override
     def filter(self, kept: torch.Tensor) -> SegmentationDetections:

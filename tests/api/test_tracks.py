@@ -6,7 +6,7 @@ import pytest
 import torch
 
 import byotrack
-from byotrack.api.tracks import update_detection_ids
+from byotrack.api.tracks import _resolve_disk_radii, update_detection_ids, update_detections_from_tracks
 
 if TYPE_CHECKING:
     import pathlib
@@ -683,3 +683,188 @@ def test_update_detection_ids_with_nan_in_track():
 
     assert track.detection_ids[0] == -1
     assert track.detection_ids[1] == 0
+
+
+# _resolve_disk_radii
+
+
+def test_resolve_disk_radii_scalar() -> None:
+    radii = _resolve_disk_radii(5.0, n_tracks=3, n_frames=2, dim=2, anisotropy=(1.0, 1.0, 1.0))
+    assert radii.shape == (2, 3, 2)
+    assert torch.allclose(radii, torch.full((2, 3, 2), 5.0))
+
+
+def test_resolve_disk_radii_anisotropy_2d_uses_last_two_axes() -> None:
+    # anisotropy[-2:] = (ani_y, ani_x) = (2.0, 4.0); depth (first) factor is ignored in 2D
+    radii = _resolve_disk_radii(5.0, n_tracks=1, n_frames=1, dim=2, anisotropy=(1.0, 2.0, 4.0))
+    assert torch.allclose(radii[0, 0], torch.tensor([2.5, 1.25]))
+
+
+def test_resolve_disk_radii_anisotropy_3d_scales_depth_axis() -> None:
+    # The depth (k) axis is the FIRST one (positions are ([k, ]i, j)), and must be scaled by ani_z
+    radii = _resolve_disk_radii(4.0, n_tracks=1, n_frames=1, dim=3, anisotropy=(2.0, 1.0, 1.0))
+    assert torch.allclose(radii[0, 0], torch.tensor([2.0, 4.0, 4.0]))
+
+
+def test_resolve_disk_radii_per_track_tensor() -> None:
+    radius = torch.tensor([[1.0], [5.0]])  # Per-track radius, shape (N, 1)
+    radii = _resolve_disk_radii(radius, n_tracks=2, n_frames=3, dim=2, anisotropy=(1.0, 1.0, 1.0))
+    assert torch.allclose(radii[:, 0], torch.full((3, 2), 1.0))
+    assert torch.allclose(radii[:, 1], torch.full((3, 2), 5.0))
+
+
+# update_detections_from_tracks
+
+
+def test_update_detections_from_tracks_empty_tracks_passthrough() -> None:
+    det = byotrack.PointDetections(torch.rand(2, 2))
+    updated = update_detections_from_tracks([det], [])
+    assert updated == [det]
+
+
+def test_update_detections_from_tracks_empty_sequence_passthrough() -> None:
+    updated = update_detections_from_tracks([], [byotrack.Track(0, torch.randn((3, 2)), identifier=0)])
+    assert updated == []
+
+
+def test_update_detections_from_tracks_relabels_matched() -> None:
+    seg = torch.zeros(20, 20, dtype=torch.int32)
+    seg[3:6, 3:6] = 1
+    det = byotrack.SegmentationDetections(seg)
+
+    det_ids = torch.zeros(1, dtype=torch.int32)
+    track = byotrack.Track(0, torch.tensor([[4.0, 4.0]]), identifier=7, detection_ids=det_ids)
+
+    updated = update_detections_from_tracks([det], [track])
+
+    assert updated[0].labels.tolist() == [7]
+    assert updated[0].labeled_segmentation[4, 4] == 8
+
+
+def test_update_detections_from_tracks_drops_false_positives() -> None:
+    seg = torch.zeros(20, 20, dtype=torch.int32)
+    seg[3:6, 3:6] = 1
+    seg[10:13, 10:13] = 2
+    det = byotrack.SegmentationDetections(seg)
+
+    det_ids = torch.zeros(1, dtype=torch.int32)
+    track = byotrack.Track(0, torch.tensor([[4.0, 4.0]]), identifier=7, detection_ids=det_ids)
+
+    updated = update_detections_from_tracks([det], [track])
+
+    assert updated[0].length == 1  # The unmatched blob is dropped
+    assert updated[0].labels.tolist() == [7]
+    assert updated[0].labeled_segmentation[11, 11] == 0
+
+
+def test_update_detections_from_tracks_keeps_false_positives() -> None:
+    seg = torch.zeros(20, 20, dtype=torch.int32)
+    seg[3:6, 3:6] = 1
+    seg[10:13, 10:13] = 2
+    det = byotrack.SegmentationDetections(seg)
+
+    det_ids = torch.zeros(1, dtype=torch.int32)
+    track = byotrack.Track(0, torch.tensor([[4.0, 4.0]]), identifier=7, detection_ids=det_ids)
+
+    updated = update_detections_from_tracks([det], [track], drop_false_positives=False)
+
+    assert updated[0].length == 2
+    assert set(updated[0].labels.tolist()) == {7, 1}  # Unmatched detection (index 1) keeps its original label
+    assert updated[0].labeled_segmentation[11, 11] == 2
+
+
+def test_update_detections_from_tracks_draws_false_negatives() -> None:
+    seg = torch.zeros(20, 20, dtype=torch.int32)
+    seg[3:6, 3:6] = 1
+    det = byotrack.SegmentationDetections(seg)
+
+    det_ids = torch.zeros(1, dtype=torch.int32)
+    track_linked = byotrack.Track(0, torch.tensor([[4.0, 4.0]]), identifier=1, detection_ids=det_ids)
+    track_missing = byotrack.Track(0, torch.tensor([[14.0, 14.0]]), identifier=2)  # No matching detection
+
+    updated = update_detections_from_tracks([det], [track_linked, track_missing], radius=2.0)
+
+    assert set(updated[0].labels.tolist()) == {1, 2}
+    assert updated[0].labeled_segmentation[14, 14] == 3
+
+
+def test_update_detections_from_tracks_no_false_negatives_when_disabled() -> None:
+    seg = torch.zeros(20, 20, dtype=torch.int32)
+    seg[3:6, 3:6] = 1
+    det = byotrack.SegmentationDetections(seg)
+
+    det_ids = torch.zeros(1, dtype=torch.int32)
+    track_linked = byotrack.Track(0, torch.tensor([[4.0, 4.0]]), identifier=1, detection_ids=det_ids)
+    track_missing = byotrack.Track(0, torch.tensor([[14.0, 14.0]]), identifier=2)
+
+    updated = update_detections_from_tracks([det], [track_linked, track_missing], draw_false_negatives=False)
+
+    assert updated[0].labels.tolist() == [1]
+    assert updated[0].labeled_segmentation[14, 14] == 0
+
+
+def test_update_detections_from_tracks_per_track_radius() -> None:
+    seg = torch.zeros(20, 20, dtype=torch.int32)
+    det = byotrack.SegmentationDetections(seg)
+
+    track_small = byotrack.Track(0, torch.tensor([[4.0, 4.0]]), identifier=1)
+    track_large = byotrack.Track(0, torch.tensor([[14.0, 14.0]]), identifier=2)
+    radius = torch.tensor([[1.0], [4.0]])  # Per-track radius, shape (N, 1)
+
+    updated = update_detections_from_tracks([det], [track_large, track_small], radius=radius)
+
+    small_mass = updated[0].mass[0]  # Labels are sorted so track_small should be first
+    large_mass = updated[0].mass[1]
+    assert large_mass > small_mass
+
+
+def test_update_detections_from_tracks_complete_sequence() -> None:
+    segs = [torch.zeros(20, 20, dtype=torch.int32) for _ in range(3)]
+    segs[0][3:6, 3:6] = 1
+    segs[1][2:5, 2:5] = 1
+    segs[1][11:14, 11:14] = 2
+    segs[2][10:13, 10:13] = 1
+
+    tracks = [
+        byotrack.Track(
+            0,
+            torch.tensor([[4.0, 4.0], [3.0, 3.0]]),
+            identifier=1,
+            detection_ids=torch.tensor([0, 0], dtype=torch.int32),
+        ),
+        byotrack.Track(
+            1,
+            torch.tensor([[12.0, 12.0], [11.0, 11.0]]),
+            identifier=0,
+            detection_ids=torch.tensor([1, 0], dtype=torch.int32),
+        ),
+    ]
+
+    updated = update_detections_from_tracks([byotrack.SegmentationDetections(seg) for seg in segs], tracks)
+
+    assert updated[0].labels.tolist() == [1]
+    assert set(updated[1].labels.tolist()) == {0, 1}
+    assert updated[2].labels.tolist() == [0]
+
+    assert updated[0].labeled_segmentation[4, 4] == 2
+    assert updated[1].labeled_segmentation[3, 3] == 2
+    assert updated[1].labeled_segmentation[12, 12] == 1
+    assert updated[2].labeled_segmentation[11, 11] == 1
+
+
+def test_update_detections_from_tracks_warns_on_nan_gap() -> None:
+    points = torch.tensor([[4.0, 4.0], [float("nan"), float("nan")], [4.0, 4.0]])
+    track = byotrack.Track(0, points, identifier=1)
+    det = byotrack.PointDetections(torch.empty((0, 2)))
+
+    with pytest.warns(UserWarning, match="undefined position"):
+        update_detections_from_tracks([det, det, det], [track])
+
+
+def test_update_detections_from_tracks_warns_when_disk_not_found() -> None:
+    seg = torch.zeros(20, 20, dtype=torch.int32)
+    det = byotrack.SegmentationDetections(seg)
+    track = byotrack.Track(0, torch.tensor([[1000.0, 1000.0]]), identifier=1)  # Outside the frame
+
+    with pytest.warns(UserWarning, match="could not be represented"):
+        update_detections_from_tracks([det], [track], radius=2.0)

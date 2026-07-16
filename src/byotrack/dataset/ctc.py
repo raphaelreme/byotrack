@@ -17,8 +17,9 @@ import tqdm.auto as tqdm
 import byotrack
 import byotrack.utils
 import byotrack.video.reader
-from byotrack.api.detections.detections import draw_disk_2d, draw_disk_3d, fast_relabel, labels_of, relabel_consecutive
-from byotrack.api.detections.segmentation_detections import _position_from_segmentation
+from byotrack.api.detections.detections import labels_of, relabel_consecutive
+from byotrack.api.detections.segmentation_detections import SegmentationDetections, _position_from_segmentation
+from byotrack.api.tracks import update_detections_from_tracks
 
 if TYPE_CHECKING:
     import os
@@ -254,16 +255,7 @@ def _save_metadata(tracks: Collection[byotrack.Track], path: pathlib.Path) -> No
     path.write_text("\n".join(lines))
 
 
-def _build_radii(n: int, dim: int, radius: float, anisotropy: float) -> np.ndarray:
-    """Build a constant radii array accounting for anisotropy."""
-    radii = np.full((n, dim), radius, dtype=np.float32)
-    if dim == 3:  # noqa: PLR2004
-        radii[:, -1] /= anisotropy
-
-    return radii
-
-
-def save_tracks(  # noqa: C901, PLR0912, PLR0913, PLR0915
+def save_tracks(  # noqa: PLR0913
     tracks: Collection[byotrack.Track],
     path: str | os.PathLike,
     *,
@@ -274,7 +266,7 @@ def save_tracks(  # noqa: C901, PLR0912, PLR0913, PLR0915
     last=0,
     shape: tuple[int, ...] | None = None,
     n_digit=4,
-    anisotropy=1.0,
+    anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
     overwrite_detections=False,
 ) -> None:
     """Save tracks in the CTC format [10].
@@ -305,16 +297,16 @@ def save_tracks(  # noqa: C901, PLR0912, PLR0913, PLR0915
             Note that it will also store the meta data to allow reloading the tracks.
             Default: False
         default_radius (float): Radius of drawn disk when no segmentation is available.
-            Default: 5.0 (pixels)
+            Default: 3.0 (pixels)
         last (int): Overwrite last frame to consider (included).
             Default: 0 (Will compute it from the last tracked target)
         shape (tuple[int, ...] | None): Optional shape. Required when no detections_sequence is provided
             Default: None
         n_digit (int): Number of digit used to encode time in file names.
             Default: 4
-        anisotropy (float): Relative size of a pixel along the depth dimension
-            versus height/width dimensions.
-            Default: 1.0
+        anisotropy (tuple[float, float, float]): Anisotropy factors (ani_z, ani_y, ani_x) used to convert
+            `default_radius` into per-axis pixel-space radii.
+            Default: (1.0, 1.0, 1.0) (no scaling)
         overwrite_detections (bool): Overwrite the segmentation of objects with disk.
             Default: False (Disk are only drawn on background)
 
@@ -337,75 +329,24 @@ def save_tracks(  # noqa: C901, PLR0912, PLR0913, PLR0915
     elif shape is None:
         raise ValueError("Without `detections_sequence`, `shape` should be provided")
 
+    # Pad with empty detections up to `last` (inclusive) so every frame gets a segmentation to write.
+    padded_detections_sequence = list(detections_sequence) + [
+        SegmentationDetections(torch.zeros(shape, dtype=torch.int32))
+        for _ in range(last + 1 - len(detections_sequence))
+    ]
+
+    updated_detections_sequence = update_detections_from_tracks(
+        padded_detections_sequence,
+        tracks,
+        radius=default_radius,
+        anisotropy=anisotropy,
+        drop_false_positives=True,
+        draw_false_negatives=True,
+        overwrite=overwrite_detections,
+    )
+
     for frame_id in tqdm.trange(last + 1, desc="Saving tracks to CTC"):
-        has_detections = len(detections_sequence) > frame_id
-
-        disk_positions = []
-        disk_ids = []
-
-        if has_detections:
-            det_to_track_ids = np.zeros(detections_sequence[frame_id].length, dtype=np.uint16) - 1
-
-        for track in tracks:
-            position = track[frame_id]
-
-            if torch.isnan(position).any():  # Track not defined
-                if track.start <= frame_id < track.start + len(track):
-                    warnings.warn(
-                        "Found a missing position inside a track segment. This is not supported by CTC software."
-                        "Consider filling holes with Interpolators.",
-                        stacklevel=2,
-                    )
-                continue
-
-            if has_detections:
-                detection_id = track.detection_ids[frame_id - track.start]
-                if detection_id != -1:
-                    det_to_track_ids[detection_id] = track.identifier
-                    continue
-
-            disk_positions.append(position)
-            disk_ids.append(track.identifier)
-
-        if has_detections:
-            segmentation = detections_sequence[frame_id].segmentation.clone().numpy().astype(np.uint16)
-            fast_relabel(segmentation, det_to_track_ids)
-        else:
-            segmentation = np.zeros(shape, dtype=np.uint16)
-
-        # Add circle to the segmentation
-        if disk_ids:
-            labels = set(labels_of(segmentation).tolist())
-
-            draw_disk = draw_disk_3d if segmentation.ndim == 3 else draw_disk_2d  # noqa: PLR2004
-
-            draw_disk(
-                segmentation,
-                torch.stack(disk_positions).numpy(),
-                _build_radii(len(disk_ids), segmentation.ndim, default_radius, anisotropy=anisotropy),
-                np.array(disk_ids, dtype=np.uint16),
-                overwrite=overwrite_detections,
-            )
-
-            # Safety checks because CTC is quite restrictive
-            new_labels = set(labels_of(segmentation).tolist())
-            diff = labels.difference(new_labels)
-            if diff:
-                warnings.warn(
-                    f"Some tracks were fully occluded: {diff}. This will induce"
-                    " a missing position in the track segment which is not supported by CTC software."
-                    " Consider decreasing the radius of track disks, or adding manually their segmentations.",
-                    stacklevel=2,
-                )
-
-            diff = {identifier for identifier in disk_ids if identifier not in new_labels}
-            if diff:
-                warnings.warn(
-                    f"The disk of some added tracks are not found (outside of image or occluded): {diff}."
-                    " This will induce a missing position in the track segment which is not supported by CTC software."
-                    " Fixing this can be done by changing the radius, or manually dropping/correcting the track.",
-                    stacklevel=2,
-                )
+        segmentation = updated_detections_sequence[frame_id].labeled_segmentation.numpy().astype(np.uint16)
 
         # Save a tiff
         if len(shape) == 2:  # noqa: PLR2004

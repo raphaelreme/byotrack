@@ -301,7 +301,7 @@ def main(  # noqa: C901, PLR0913, PLR0915
         detections_sequence=detections_sequence,
         default_radius=spot_radius * 3,
         n_digit=n_digit,
-        anisotropy=anisotropy,
+        anisotropy=(anisotropy, 1.0, 1.0),
     )
 
     if eval_software is not None:  # Evaluate if the path to the software is given
@@ -312,7 +312,7 @@ def main(  # noqa: C901, PLR0913, PLR0915
             tracks,
             path / f"{seq:02}_GT" / "TRA",
             detections_sequence=detections_sequence,
-            anisotropy=anisotropy,
+            anisotropy=(anisotropy, 1.0, 1.0),
             default_radius=spot_radius * 3,
         )
 

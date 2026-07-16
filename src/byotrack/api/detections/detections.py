@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import functools
 import pathlib
 import sys
@@ -32,12 +33,19 @@ def _check_confidence(confidence: torch.Tensor, length: int) -> None:
     if confidence.shape[0] != length:
         raise ValueError(f"confidence length ({confidence.shape[0]}) do not match detection length ({length})")
 
+    if confidence.numel() and confidence.min() < 0:
+        raise ValueError("confidence should be non-negative.")
+
 
 def _check_labels(labels: torch.Tensor, length: int) -> None:
     if len(labels.shape) != 1:
         raise ValueError("labels is expected to be of shape (N,)")
+
     if labels.shape[0] != length:
         raise ValueError(f"labels length ({labels.shape[0]}) do not match detection length ({length})")
+
+    if labels.numel() and labels.min() < 0:
+        raise ValueError("labels should be non-negative.")
 
 
 @numba.njit(cache=byotrack.NUMBA_CACHE)
@@ -473,14 +481,14 @@ class Detections(ABC):
     @property
     def confidence(self) -> torch.Tensor:  # noqa: D102
         if self._confidence is None:
-            return torch.ones(self.length)
+            return torch.ones(self.length, dtype=torch.float32)
 
         return self._confidence
 
     @property
     def labels(self) -> torch.Tensor:  # noqa: D102
         if self._labels is None:
-            return torch.arange(self.length)
+            return torch.arange(self.length, dtype=torch.int32)
 
         return self._labels
 
@@ -503,6 +511,63 @@ class Detections(ABC):
 
         Returns:
             byotrack.Detections: Filtered detections.
+        """
+
+    def relabel(self, labels: torch.Tensor) -> byotrack.Detections:
+        """Return a copy of the detections with new labels.
+
+        Args:
+            labels (torch.Tensor): New labels for each detection.
+                Shape: (N,), dtype: int32
+
+        Returns:
+            byotrack.Detections: A shallow copy of self with the new labels.
+        """
+        labels = labels.to(torch.int32, copy=True)
+        _check_labels(labels, self.length)
+
+        # Let's use a shallow copy, with a copy of the _cache and the metadata
+        clone = copy.copy(self)
+        clone._cache = dict(self._cache)  # noqa: SLF001
+        clone.metadata = dict(self.metadata)
+        clone._labels = labels  # noqa: SLF001
+        return clone
+
+    @abstractmethod
+    def add_disks(
+        self,
+        positions: torch.Tensor,
+        radius: float | torch.Tensor = 2.0,
+        *,
+        labels: torch.Tensor | None = None,
+        confidence: torch.Tensor | None = None,
+        overwrite: bool = False,
+    ) -> byotrack.Detections:
+        """Return a copy of the detections with additional disk-shaped detections.
+
+        Useful to materialize a detection at a position where none was found (e.g. a track with
+        a known position but no matching detection).
+
+        Args:
+            positions (torch.Tensor): Center positions of the disks to add.
+                Shape: (M, dim), dtype: float32
+            radius (float | torch.Tensor): Per-disk and axis radius. Either a scalar applied to all disks,
+                or a float32 tensor expandable to (M, dim). Follows the same convention as
+                :attr:`PointDetections.radius`.
+                Default: 2.0
+            labels (torch.Tensor | None): Labels for the new disks. Defaults to consecutive labels
+                continuing after the last existing label.
+                Shape: (M,), dtype: int32
+            confidence (torch.Tensor | None): Confidence for the new disks. Defaults to ones.
+                Shape: (M,), dtype: float32
+            overwrite (bool): Only relevant for :class:`SegmentationDetections`: allow disks to overwrite
+                pre-existing detection pixels. Ignored by :class:`PointDetections` and :class:`BBoxDetections`.
+                Default: False
+
+        Returns:
+            byotrack.Detections: A new Detections with the disks added. Note that some disks may not appear
+                in the result (e.g. fully out of frame, or fully occluded with ``overwrite=False`` for
+                :class:`SegmentationDetections`).
         """
 
     def __len__(self) -> int:  # noqa: D105

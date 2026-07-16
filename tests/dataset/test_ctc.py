@@ -11,7 +11,6 @@ import torch
 
 import byotrack
 from byotrack.dataset.ctc import (
-    _build_radii,
     _parse_meta_data,
     _save_metadata,
     load_detections,
@@ -367,33 +366,6 @@ def test_save_metadata_merge_warns(tmp_path: pathlib.Path) -> None:
     assert txt.exists()
 
 
-# --- _build_radii ---
-
-
-def test_build_radii_2d() -> None:
-    radii = _build_radii(3, 2, 5.0, anisotropy=1.0)
-    assert radii.shape == (3, 2)
-    assert np.allclose(radii, 5.0)
-
-
-def test_build_radii_2d_anisotropy_ignored() -> None:
-    # Anisotropy only applies to dim==3; 2D result must be unchanged
-    radii = _build_radii(3, 2, 5.0, anisotropy=2.0)
-    assert np.allclose(radii, 5.0)
-
-
-def test_build_radii_3d_isotropic() -> None:
-    radii = _build_radii(2, 3, 4.0, anisotropy=1.0)
-    assert radii.shape == (2, 3)
-    assert np.allclose(radii, 4.0)
-
-
-def test_build_radii_3d_anisotropic() -> None:
-    radii = _build_radii(2, 3, 4.0, anisotropy=2.0)
-    assert np.allclose(radii[:, :2], 4.0)
-    assert np.allclose(radii[:, 2], 2.0)  # 4.0 / 2.0
-
-
 # --- save_tracks: structure and naming ---
 
 
@@ -448,14 +420,14 @@ def test_save_tracks_missing_position_in_segment_warns(tmp_path: pathlib.Path) -
     points = torch.full((T, 2), 5.0)
     points[2] = float("nan")  # NaN inside segment [0, T)
     track = byotrack.Track(0, points, identifier=1)
-    with pytest.warns(UserWarning, match="missing position inside a track segment"):
+    with pytest.warns(UserWarning, match="undefined position"):
         save_tracks([track], tmp_path, shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
 
 
 def test_save_tracks_disk_outside_image_warns(tmp_path: pathlib.Path) -> None:
     points = torch.full((T, 2), 50.0)  # Outside 20x20 image
     track = byotrack.Track(0, points, identifier=1)
-    with pytest.warns(UserWarning, match="outside of image or occluded"):
+    with pytest.warns(UserWarning, match="could not be represented"):
         save_tracks([track], tmp_path, shape=SHAPE_2D, as_res=True, default_radius=RADIUS)
 
 
@@ -472,7 +444,7 @@ def test_save_tracks_occluded_track_warns(tmp_path: pathlib.Path) -> None:
     # Track 2 has no detection link => draws a disk right at the same position, overwriting the linked track
     track_disk = byotrack.Track(0, torch.full((T, 2), 8.0), identifier=2)
 
-    with pytest.warns(UserWarning, match="fully occluded"):
+    with pytest.warns(UserWarning, match="could not be represented"):
         save_tracks(
             [track_linked, track_disk],
             tmp_path,
