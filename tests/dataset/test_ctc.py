@@ -90,6 +90,14 @@ def _write_seg_tiff(path: pathlib.Path, name: str, label: int) -> None:
     tifffile.imwrite(path / name, seg_imagej, imagej=True, compression="zlib")
 
 
+def _write_seg_tiff_3d(path: pathlib.Path, name: str, label: int) -> None:
+    """Write a minimal 5x20x20 3D tiff (a full volume for one frame) under an arbitrary file name."""
+    seg = np.zeros(SHAPE_3D, dtype=np.uint16)
+    seg[1:4, 3:6, 3:6] = label
+    seg_imagej = seg[None, :, None, ..., None]  # TZCYXS
+    tifffile.imwrite(path / name, seg_imagej, imagej=True, compression="zlib")
+
+
 # --- _parse_meta_data ---
 
 
@@ -151,6 +159,105 @@ def test_load_detections_roundtrip(tmp_path: pathlib.Path, detections_2d) -> Non
     assert len(loaded) == T
     for orig, got in zip(detections_2d, loaded, strict=True):
         assert torch.equal(got.segmentation, orig.segmentation)
+
+
+# --- load_detections: correct_for_missing_frames ---
+
+
+def test_load_detections_correct_for_missing_frames_no_gaps(tmp_path: pathlib.Path) -> None:
+    """Consecutive frames: behaves like the default loading (and exercises the frame-id parsing)."""
+    for i in range(T):
+        _write_tiff_2d(tmp_path, label=1, frame_id=i)  # mask0000.tif, mask0001.tif, ...
+
+    detections = load_detections(tmp_path, correct_for_missing_frames=True)
+
+    assert len(detections) == T
+    for detections_frame in detections:
+        assert detections_frame.shape == SHAPE_2D
+        assert (detections_frame.segmentation[3:6, 3:6] == 1).all()
+
+
+def test_load_detections_correct_for_missing_frames_2d(tmp_path: pathlib.Path) -> None:
+    """Gold GT-style 2D annotations: only a few frames are annotated, gaps filled with empty detections."""
+    _write_seg_tiff(tmp_path, "man_seg0001.tif", label=1)
+    _write_seg_tiff(tmp_path, "man_seg0004.tif", label=1)
+    _write_seg_tiff(tmp_path, "man_seg0006.tif", label=1)
+
+    detections = load_detections(tmp_path, correct_for_missing_frames=True)
+
+    assert len(detections) == 7  # Frames 0 to 6 (inclusive)
+    for i, detections_frame in enumerate(detections):
+        assert detections_frame.shape == SHAPE_2D
+        if i in (1, 4, 6):
+            assert (detections_frame.segmentation[3:6, 3:6] == 1).all()
+        else:
+            assert detections_frame.length == 0
+
+
+def test_load_detections_correct_for_missing_frames_3d_full_volume(tmp_path: pathlib.Path) -> None:
+    """Gold GT-style 3D annotations where each annotated frame provides the full Z-stack (xxxxT.tif)."""
+    _write_seg_tiff_3d(tmp_path, "man_seg0002.tif", label=1)
+    _write_seg_tiff_3d(tmp_path, "man_seg0005.tif", label=1)
+
+    detections = load_detections(tmp_path, correct_for_missing_frames=True)
+
+    assert len(detections) == 6  # Frames 0 to 5 (inclusive)
+    for i, detections_frame in enumerate(detections):
+        assert detections_frame.shape == SHAPE_3D
+        if i in (2, 5):
+            assert (detections_frame.segmentation[1:4, 3:6, 3:6] == 1).all()
+        else:
+            assert detections_frame.length == 0
+
+
+def test_load_detections_correct_for_missing_frames_3d_per_slice(tmp_path: pathlib.Path) -> None:
+    """Gold GT-style 3D annotations where only some Z-planes are annotated (xxxx_T_Z.tif)."""
+    # Frame 1 is annotated on planes 0 and 2 only; frame 3 is annotated on plane 4 only
+    _write_seg_tiff(tmp_path, "man_seg_0001_0000.tif", label=1)
+    _write_seg_tiff(tmp_path, "man_seg_0001_0002.tif", label=1)
+    _write_seg_tiff(tmp_path, "man_seg_0003_0004.tif", label=1)
+
+    detections = load_detections(tmp_path, correct_for_missing_frames=True)
+
+    assert len(detections) == 4  # Frames 0 to 3 (inclusive)
+    assert detections[0].length == 0
+    assert detections[2].length == 0
+
+    frame_1 = detections[1]
+    assert frame_1.shape == (5, *SHAPE_2D)  # Max plane index found (4) + 1
+    assert (frame_1.segmentation[0, 3:6, 3:6] == 1).all()
+    assert (frame_1.segmentation[2, 3:6, 3:6] == 1).all()
+    assert (frame_1.segmentation[1] == 0).all()
+
+    frame_3 = detections[3]
+    assert (frame_3.segmentation[4, 3:6, 3:6] == 1).all()
+    assert (frame_3.segmentation[:4] == 0).all()
+
+
+def test_load_detections_correct_for_missing_frames_mixed_naming_raises(tmp_path: pathlib.Path) -> None:
+    _write_seg_tiff(tmp_path, "man_seg0001.tif", label=1)  # xxxxT.tif
+    _write_seg_tiff(tmp_path, "man_seg_0002_0000.tif", label=1)  # xxxx_T_Z.tif
+
+    with pytest.raises(ValueError, match="mixture"):
+        load_detections(tmp_path, correct_for_missing_frames=True)
+
+
+def test_load_detections_correct_for_missing_frames_bad_naming_raises(tmp_path: pathlib.Path) -> None:
+    _write_seg_tiff(tmp_path, "frame_one.tif", label=1)
+    _write_seg_tiff(tmp_path, "frame_two.tif", label=1)
+
+    with pytest.raises(ValueError, match="Unable to parse"):
+        load_detections(tmp_path, correct_for_missing_frames=True)
+
+
+def test_load_detections_correct_for_missing_frames_requires_folder_raises(tmp_path: pathlib.Path) -> None:
+    seg = np.zeros((T, *SHAPE_2D), dtype=np.uint16)
+    seg_imagej = seg[:, None, None, ..., None]  # TZCYXS
+    tiff_path = tmp_path / "stack.tif"
+    tifffile.imwrite(tiff_path, seg_imagej, imagej=True, compression="zlib")
+
+    with pytest.raises(TypeError, match="one tiff per frame"):
+        load_detections(tiff_path, correct_for_missing_frames=True)
 
 
 # --- load_tracks ---

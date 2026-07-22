@@ -6,6 +6,7 @@ We provide loading and saving functions for detections and tracks.
 from __future__ import annotations
 
 import pathlib
+import re
 import warnings
 from typing import TYPE_CHECKING
 
@@ -37,7 +38,7 @@ def _parse_meta_data(file: pathlib.Path) -> dict[int, tuple[int, int, int]]:
     return meta
 
 
-def load_detections(path: str | os.PathLike) -> list[byotrack.Detections]:
+def load_detections(path: str | os.PathLike, *, correct_for_missing_frames: bool = False) -> list[byotrack.Detections]:
     """Load detections stored in the CTC format [10].
 
     The CTC format for detections consists of one tiff file for each frame
@@ -51,11 +52,82 @@ def load_detections(path: str | os.PathLike) -> list[byotrack.Detections]:
 
     Args:
         path (str | os.PathLike): Path to the detections data
+        correct_for_missing_frames (bool): For gold ground-truth segmentations, not every frame has to be
+            annotated: file names may skip some indices (e.g. seg0001.tif, seg0007.tif, seg0011.tif, ...).
+            For 3D datasets, a frame can even be annotated on a subset of its Z-planes only, with one file
+            per annotated slice (e.g. man_seg_0007_0003.tif for frame 7, plane 3). When True, file names
+            are parsed to recover the true frame (and, for per-slice annotations, depth) index, and the
+            returned sequence is filled with empty detections for every missing frame (and, for 3D, every
+            missing Z-plane within an annotated frame) so that it spans indices 0 to the maximum frame
+            index found in the file names (inclusive). Only supported when `path` is a folder containing
+            one tiff file per frame (or per Z-plane).
+            Default: False
 
     Returns:
-        list[byotrack.Segmentation]: Loaded detections
+        list[byotrack.Detections]: Loaded detections
     """
-    return byotrack.GroundTruthDetector().run(byotrack.Video(path))
+    video = byotrack.Video(path)
+    detections_sequence = byotrack.GroundTruthDetector().run(video)
+
+    if not correct_for_missing_frames or not detections_sequence:
+        return detections_sequence
+
+    if not isinstance(video.reader, byotrack.video.reader.MultiFrameReader):
+        raise TypeError("To correct for missing frames, path is expected to be a folder containing one tiff per frame.")
+
+    frames: list[int] = []
+    depths: list[int] = []
+
+    frame_and_depth_re = re.compile(r"(\d+)_(\d+)$")  # xxxx_T_Z.tif
+    frame_re = re.compile(r"(\d+)$")  # xxxx_T.tif
+
+    for path_, _ in zip(video.reader.paths, detections_sequence, strict=True):
+        match = frame_and_depth_re.search(path_.stem)
+        if match is not None:  # xxxx_T_Z.tif
+            frames.append(int(match.group(1)))
+            depths.append(int(match.group(2)))
+            continue
+
+        match = frame_re.search(path_.stem)
+        if match is None:
+            raise ValueError(f"Unable to parse a frame identifier from file name {path_.name}")
+
+        # xxxx_T.tif
+        frames.append(int(match.group(1)))
+        depths.append(-1)
+
+    max_depth = max(depths)
+
+    if max_depth == -1:  # All are xxxx_T.tif
+        shape = detections_sequence[0].shape
+
+        detections_sequence_: list[byotrack.Detections] = [
+            byotrack.SegmentationDetections(torch.zeros(shape, dtype=torch.int32)) for _ in range(max(frames) + 1)
+        ]
+        for frame, detections in zip(frames, detections_sequence, strict=True):
+            detections_sequence_[frame] = detections
+
+        return detections_sequence_
+
+    # All files should be xxxx_T_Z.tif
+    if min(depths) == -1:
+        raise ValueError(
+            "Found a mixture of per-frame (xxxxT.tif) and per-slice (xxxx_T_Z.tif) file names: "
+            "either every file is annotated on a full frame, or every file is annotated on a single Z-plane, "
+            "but not both within the same folder."
+        )
+
+    shape = (max_depth + 1, *detections_sequence[0].shape)
+    detections_sequence_ = [
+        byotrack.SegmentationDetections(torch.zeros(shape, dtype=torch.int32)) for _ in range(max(frames) + 1)
+    ]
+
+    for frame, depth, detections in zip(frames, depths, detections_sequence, strict=True):
+        segmentation = detections_sequence_[frame].labeled_segmentation
+        segmentation[depth] = detections.labeled_segmentation
+        detections_sequence_[frame] = byotrack.SegmentationDetections(segmentation)
+
+    return detections_sequence_
 
 
 def load_tracks(  # noqa: C901, PLR0912, PLR0915
