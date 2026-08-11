@@ -241,7 +241,8 @@ def add_optical_flow(  # noqa: C901, PLR0913
     *,
     grid_step: int = 20,
     display_grid: bool = True,
-    size: int = 5,
+    node_size: int = 5,
+    edge_width: float = 0.1,
     anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
     forward_flows: Sequence[np.ndarray] = (),
     backward_flows: Sequence[np.ndarray] = (),
@@ -261,18 +262,22 @@ def add_optical_flow(  # noqa: C901, PLR0913
         optflow (byotrack.OpticalFlow): Optical flow algorithm used to (pre)compute and apply the flow.
         grid_step (int): Spacing (in scaled/world units) between two consecutive grid control points.
             Default: 20
-        display_grid (bool): If True, also draw the edges linking the grid points (wireframe).
+        display_grid (bool): If True, also draw the grid edges linking the grid nodes (wireframe).
             Note that this may slow down the visualization with large grids.
             Default: True
-        size (int): Size of the grid points.
+        node_size (int): Size of the grid nodes.
             Default: 5
+        edge_width (float): Width of the grid edges.
+            Default: 0.1
         anisotropy (tuple[float, float, float]): Spatial anisotropy ([Z, ]Y, X) used to scale the layers.
             Default: (1.0, 1.0, 1.0)
         forward_flows (Sequence[np.ndarray]): Precomputed flow maps from frame t to frame t+1, for each
             of the T - 1 consecutive frame pairs. If shorter than `video`, all flows are recomputed.
+            Each flow is expected to have a shape (dim, [D, ]H, W).
             Default: () (Flows are computed from `video`)
         backward_flows (Sequence[np.ndarray]): Precomputed flow maps from frame t+1 to frame t, for each
             of the T - 1 consecutive frame pairs. If shorter than `video`, all flows are recomputed.
+            Each flow is expected to have a shape (dim, [D, ]H, W).
             Default: () (Flows are computed from `video`)
 
     """
@@ -299,6 +304,7 @@ def add_optical_flow(  # noqa: C901, PLR0913
                 shape_type="path",
                 axis_labels=axis_labels,
                 scale=scale,
+                edge_width=edge_width,
             )
         )
 
@@ -306,7 +312,7 @@ def add_optical_flow(  # noqa: C901, PLR0913
         napari.layers.Points(
             grid.copy(),
             name="Optical Flow Deformation Grid (vertices)",
-            size=size,
+            size=node_size,
             axis_labels=axis_labels,
             scale=scale,
             blending="additive",
@@ -449,7 +455,8 @@ def visualize_flow_deformation(  # noqa: PLR0913
     anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
     grid_step: int = 20,
     display_grid: bool = True,
-    size: int = 5,
+    node_size: int = 5,
+    edge_width: float = 0.1,
     forward_flows: Sequence[np.ndarray] = (),
     backward_flows: Sequence[np.ndarray] = (),
     rgb=True,
@@ -463,17 +470,22 @@ def visualize_flow_deformation(  # noqa: PLR0913
         optflow (byotrack.OpticalFlow): Optical flow algorithm used to (pre)compute and apply the flow.
         grid_step (int): Spacing (in scaled/world units) between two consecutive grid control points.
             Default: 20
-        display_grid (bool): If True, also draw the edges linking the grid points (wireframe).
+        display_grid (bool): If True, also draw the grid edges linking the grid nodes (wireframe).
+            Note that this may slow down the visualization with large grids.
             Default: True
-        size (int): Size of the grid points.
+        node_size (int): Size of the grid nodes.
             Default: 5
+        edge_width (float): Width of the grid edges.
+            Default: 0.1
         anisotropy (tuple[float, float, float]): Spatial anisotropy ([Z, ]Y, X) used to scale the layers.
             Default: (1.0, 1.0, 1.0)
         forward_flows (Sequence[np.ndarray]): Precomputed flow maps from frame t to frame t+1, for each
             of the T - 1 consecutive frame pairs. If shorter than `video`, all flows are recomputed.
+            Each flow is expected to have a shape (dim, [D, ]H, W).
             Default: () (Flows are computed from `video`)
         backward_flows (Sequence[np.ndarray]): Precomputed flow maps from frame t+1 to frame t, for each
             of the T - 1 consecutive frame pairs. If shorter than `video`, all flows are recomputed.
+            Each flow is expected to have a shape (dim, [D, ]H, W).
             Default: () (Flows are computed from `video`)
         rgb (bool): If True and the video has 3 or 4 channels, add it as a single RGB(A) layer.
             Otherwise, add one grayscale layer per channel.
@@ -499,7 +511,8 @@ def visualize_flow_deformation(  # noqa: PLR0913
         optflow,
         grid_step=grid_step,
         display_grid=display_grid,
-        size=size,
+        node_size=node_size,
+        edge_width=edge_width,
         anisotropy=anisotropy,
         forward_flows=forward_flows,
         backward_flows=backward_flows,
