@@ -223,6 +223,7 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
         optflow: byotrack.OpticalFlow,
         tracks: Collection[byotrack.Track],
         quantile: float = 0.99993,
+        mini: float = 0.5,
     ) -> None:
         """Estimate `flow_std` based on the errors made by the flow versus ground-truth tracks.
 
@@ -243,6 +244,8 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
                 consider using a RTSSmoother to reduce the annotation noise.
             quantile (float): Quantile to extract the maximum value. Can be reduced to ignore some false positive links.
                 Default: 0.99993
+            mini (float): Clip the estimation to this minimum value.
+                Default: 0.5
         """
         start = min(track.start for track in tracks)
         end = min(max(track.start + len(track) for track in tracks), byotrack.video.video_length(video))
@@ -270,10 +273,27 @@ class KOFTLinkerParameters(KalmanLinkerParameters):
         if n_outliers < 1:
             quantile = max(0.5, 1 - 1 / n_samples)
 
-        self.flow_std = errors.quantile(quantile).item() / scipy.stats.chi.ppf(quantile, points.shape[-1])
+        self.flow_std = errors.quantile(quantile).item() / float(scipy.stats.chi.ppf(quantile, points.shape[-1]))
+        self.flow_std = max(mini, self.flow_std)
 
         # How should anisotropy be handled ? Errors are probably not scaled with anisotropy ?
         # We could check errors per axis but probably not very robust
+
+    @override
+    def estimate_association_threshold(self, dim, mahalanobis_threshold=3):
+        super().estimate_association_threshold(dim, mahalanobis_threshold)
+
+        if self.cost is Cost.LIKELIHOOD:
+            # Let's correct for the fact that velocity is not used for the association cost.
+            kalman_filter = self.build_filter(dim)
+
+            state = torch_kf.GaussianState(
+                torch.zeros(dim, 1),
+                kalman_filter.steady_state_covariance(predicted=True, projected=True)[:dim, :dim],
+            )
+            measure = torch.zeros((dim, 1))
+            measure[0, 0] = state.covariance[0, 0].sqrt() * mahalanobis_threshold
+            self.association_threshold = state.likelihood(measure).item()
 
     @override
     def build_filter(self, dim: int) -> torch_kf.KalmanFilter:
@@ -424,16 +444,11 @@ class KOFTLinker(KalmanLinker):
             )
 
         # Restrict projections onto positions
-        # NOTE: Following KOFT initial implem, we use (cov-1)[:2, :2] instead of (cov[:2, :2])-1 for the precision.
-        #       It works slightly better, but it needs to be investigated.
+        # NOTE: Instead of KOFT initial implem, the precision is (cov[:dim, :dim])-1 instead of (cov-1)[:dim, :dim].
+        #       The consequences seem very limited, and it is more grounded mathematically.
         projections = torch_kf.GaussianState(
             self.projections.mean[:, : detections.dim],
             self.projections.covariance[:, : detections.dim, : detections.dim],
-            (
-                self.projections.precision[:, : detections.dim, : detections.dim]
-                if self.projections.precision is not None
-                else None
-            ),
         )
 
         if self.specs.cost == Cost.MAHALANOBIS:

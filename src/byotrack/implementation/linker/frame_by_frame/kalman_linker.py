@@ -333,7 +333,7 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
             measure[0, 0] = cutoff
             self.association_threshold = state.likelihood(measure).item()
 
-    def estimate_process_std_from_tracks(self, tracks: Collection[byotrack.Track], quantile=0.99993) -> None:
+    def estimate_process_std_from_tracks(self, tracks: Collection[byotrack.Track], quantile=0.99993, mini=0.5) -> None:
         """Estimate `process_std` based on the given tracks.
 
         It modifies in place `process_std` so that it roughly fits the maximum unmodeled motion.
@@ -350,6 +350,8 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
                 If these are manually annotated tracks, consider using a RTSSmoother to reduce the annotation noise.
             quantile (float): Quantile to extract the maximum value. Can be reduced to ignore some false positive links.
                 Default: 0.99993
+            mini (float): Clip the estimation to this minimum value.
+                Default: 0.5
         """
         if any(ani <= 0 for ani in self.anisotropy):
             raise ValueError("`anisotropy` should be greater than 0 to estimate `process_std`.")
@@ -373,6 +375,7 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
             quantile = max(0.9, 1 - 1 / n_samples)
 
         self.process_std = unexpected_motion.quantile(quantile).item() / scipy.stats.chi.ppf(quantile, dim)
+        self.process_std = max(mini, self.process_std)
         self.process_std = torch.tensor([self.process_std / ani for ani in self.anisotropy], dtype=torch.float32)
         self.process_std = self.process_std[-dim:]
 
