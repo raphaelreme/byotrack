@@ -31,9 +31,10 @@ def save_detections(detections_sequence: Sequence[byotrack.Detections], path: st
 
     dim = detections_sequence[0].dim
 
-    segmentations = np.concatenate(
-        [detections.segmentation[None].numpy().astype(np.uint16) for detections in detections_sequence]
-    )
+    segmentations = np.zeros((len(detections_sequence), *detections_sequence[0].shape), dtype=np.uint16)
+    for frame_id, detections in enumerate(detections_sequence):
+        segmentations[frame_id] = detections.segmentation.numpy().astype(np.uint16)
+
     if dim == 2:  # noqa: PLR2004, SIM108
         segmentations = segmentations[:, None, None, ..., None]  # ImageJ tiff format: TZCYXS
     else:
