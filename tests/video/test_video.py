@@ -420,6 +420,59 @@ def test_video_getitem_seek_failure_raises():
         video[0]  # seek(0) raises EOFError -> wrapped as RuntimeError
 
 
+## __array__
+
+
+def test_video_array_2d(video_2d: np.ndarray):
+    video = byotrack.Video(video_2d)
+    array = np.asarray(video)
+
+    assert array.shape == video_2d.shape
+    assert array.dtype == video_2d.dtype
+    assert (array == video_2d).all()
+
+
+def test_video_array_3d(video_3d: np.ndarray):
+    video = byotrack.Video(video_3d)
+    array = np.asarray(video)
+
+    assert array.shape == video_3d.shape
+    assert array.dtype == video_3d.dtype
+    assert (array == video_3d).all()
+
+
+def test_video_array_after_slicing_and_preprocessing(video_2d: np.ndarray):
+    video = byotrack.Video(video_2d)[2:8].normalize()
+    array = np.asarray(video)
+
+    assert array.shape == video.shape
+    assert array.dtype == np.float32
+    for frame_id, frame in enumerate(video):
+        assert (array[frame_id] == frame).all()
+
+
+def test_video_array_with_dtype(video_2d: np.ndarray):
+    video = byotrack.Video(video_2d)
+    array = np.asarray(video, dtype=np.float64)
+
+    assert array.dtype == np.float64
+    assert (array == video_2d.astype(np.float64)).all()
+
+
+def test_video_array_copy_true_or_none_ok(video_2d: np.ndarray):
+    video = byotrack.Video(video_2d)
+
+    assert np.asarray(video, copy=True) is not None
+    assert np.asarray(video, copy=None) is not None
+
+
+def test_video_array_copy_false_raises(video_2d: np.ndarray):
+    video = byotrack.Video(video_2d)
+
+    with pytest.raises(ValueError, match="Unable to avoid copy"):
+        np.asarray(video, copy=False)
+
+
 ## add_preprocessor
 
 

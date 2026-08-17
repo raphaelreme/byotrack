@@ -301,6 +301,35 @@ class Video(Sequence[np.ndarray]):
 
         raise TypeError("Unsupported index for Video. Supports only int, slice and tuple[slice, ...]")
 
+    def __array__(self, dtype: np.dtype | None = None, copy: bool | None = None) -> np.ndarray:  # noqa: FBT001
+        """Convert the video into a numpy array by reading and copying each frame.
+
+        Implemented so that `np.asarray(video)` (or `np.array(video)`) preallocates the
+        output array and fills it frame by frame, rather than falling back to numpy's
+        generic sequence conversion which first collects every frame into a Python list
+        before copying it into the final array (roughly doubling peak memory usage).
+
+        Args:
+            dtype (np.dtype | None): Dtype of the output array. Defaults to `self.dtype`.
+            copy (bool | None): Following numpy's `__array__` protocol, a copy is always
+                required to build the array. `True` and `None` are therefore accepted, but
+                `False` raises as it cannot be honored.
+
+        Returns:
+            np.ndarray: The video loaded as a single array of shape `self.shape`.
+
+        """
+        if copy is False:
+            raise ValueError(
+                "Unable to avoid copy while creating an array from a Video: frames must be read and copied."
+            )
+
+        array = np.empty(self.shape, dtype=dtype or self.dtype)
+        for frame_id, frame in enumerate(self):
+            array[frame_id] = frame
+
+        return array
+
     def _copy(self) -> Video:
         """Create a shallow copy of the video."""
         copy = Video(self.reader)
