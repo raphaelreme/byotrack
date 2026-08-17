@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.3] - 2026-08-17
+
+### Breaking Changes
+
+- **`byotrack.napari`**: `add_detections`/`visualize`'s `color_from_labels`
+  argument is renamed to `color_detections_from_labels`. `add_optical_flow`/
+  `visualize_flow_deformation`'s `size` argument is renamed to `node_size`
+  (and a new `edge_width` argument controls the grid wireframe width, now
+  defaulting to a thinner `0.1`).
+- **`update_detections_from_tracks`**: `radius` no longer accepts a
+  broadcastable `torch.Tensor`. It is now either a scalar, or a mapping from
+  `track.identifier` to a scalar or a per-track-local-frame sequence, so
+  that the radius no longer depends on tracks iteration order.
+
+### Added
+
+- `byotrack.napari.add_tracks`/`visualize`: new `track_features` argument to
+  register additional per-track (or per-track-and-frame) features on the
+  Napari Tracks layer, enabling coloring tracks by arbitrary features (not
+  only by identifier/lineage).
+- `ctc.load_detections`: new `correct_for_missing_frames` argument to
+  support CTC gold ground-truth segmentations where some frames (or, in 3D,
+  some Z-planes) are missing annotation files. Missing frames/planes are
+  filled with empty detections so the returned sequence spans every index
+  up to the maximum frame found.
+- `KalmanLinkerParameters.estimate_process_std_from_tracks` and
+  `KOFTLinkerParameters.estimate_flow_std_from_tracks`: new `mini` argument
+  to clip the estimated std to a minimum value (default: 0.5), avoiding
+  degenerate (too small) estimates.
+
+### Changed
+
+- KOFT now estimates its association threshold using the grounded
+  likelihood `p(z_t^pos | past)` (restricted to the position, since velocity
+  is not used in the association cost), instead of relying on the previous
+  KOFT implementation's projected precision. The association threshold is
+  adjusted accordingly.
+
+### Fixed
+
+- `update_detections_from_tracks` no longer relies on the iteration order
+  of `tracks` to resolve per-track disk radii.
+
 ## [2.0.2] - 2026-07-17
 
 ### Breaking Changes
