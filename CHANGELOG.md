@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.4] - 2026-08-17
+
+### Added
+
+- `byotrack.Video.__array__`: efficient conversion to a numpy array. `np.asarray(video)`/
+  `np.array(video)` now preallocate the output array and fill it frame by frame, instead
+  of falling back to numpy's generic sequence conversion (which first collects every
+  frame into a Python list), roughly halving peak memory usage. Raises `ValueError` if
+  called with `copy=False`, since a copy cannot be avoided.
+
+### Changed
+
+- `TrackingGraph.from_tracks`: reworked to build nodes and edges in batches
+  (`add_nodes_from`/`add_edges_from`) with vectorized NaN filtering instead of a
+  per-point Python loop, significantly reducing computation time on large track sets.
+- `byotrack.fiji.save_detections`: the segmentations array is now preallocated and
+  filled frame by frame instead of built through `np.concatenate`, reducing peak memory
+  usage.
+
 ## [2.0.3] - 2026-08-17
 
 ### Breaking Changes
