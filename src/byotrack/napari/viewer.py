@@ -21,7 +21,7 @@ from byotrack.napari.utils import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Sequence
+    from collections.abc import Collection, Mapping, Sequence
 
 
 def _find_dim(
@@ -131,7 +131,7 @@ def add_detections(
     anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
     detections_mode: Literal["segmentation", "points"] = "segmentation",
     detection_size=10.0,
-    color_from_labels: bool = True,
+    color_detections_from_labels: bool = True,
     lazy: bool = False,
 ) -> None:
     """Add detections to a Napari viewer.
@@ -148,7 +148,7 @@ def add_detections(
             Default: "segmentation"
         detection_size (float): Size of the points, when `detections_mode` is "points".
             Default: 10.0
-        color_from_labels (bool): Use `labels` from `Detections` to assign a color to each segmentation.
+        color_detections_from_labels (bool): Use `labels` from `Detections` to assign a color to each segmentation.
             If False, it will use the detection identifier (0 to N-1).
             Default: True
         lazy (bool): If True in "segmentation" mode, detections are read from `detections_sequence` on demand
@@ -164,14 +164,14 @@ def add_detections(
 
     if detections_mode == "segmentation":
         segmentation = (
-            _LazySegmentationArray(detections_sequence_, color_from_labels=color_from_labels)
+            _LazySegmentationArray(detections_sequence_, color_from_labels=color_detections_from_labels)
             if lazy
-            else detections_to_napari_segmentation(detections_sequence_, color_from_labels=color_from_labels)
+            else detections_to_napari_segmentation(detections_sequence_, color_from_labels=color_detections_from_labels)
         )
         viewer.add_layer(napari.layers.Labels(segmentation, name="Segmentations", axis_labels=axis_labels, scale=scale))
     else:
         points = detections_to_napari_points(detections_sequence_)
-        labels = _detections_to_labels(detections_sequence_, color_from_labels=color_from_labels)
+        labels = _detections_to_labels(detections_sequence_, color_from_labels=color_detections_from_labels)
         viewer.add_layer(
             napari.layers.Points(
                 points,
@@ -191,6 +191,7 @@ def add_tracks(
     *,
     anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
     track_width=5.0,
+    track_features: dict[str, Mapping[int, Sequence[int | float] | int | float]] | None = None,
 ) -> None:
     """Add tracks to a Napari viewer.
 
@@ -204,13 +205,19 @@ def add_tracks(
             Default: (1.0, 1.0, 1.0)
         track_width (float): Size of the tracked points and width of the track trails.
             Default: 5.0
+        track_features (dict[str, Mapping[int, Sequence[int | float] | int | float]] | None): Additional
+            features to register on the Napari Tracks layer (allowing to color by these features),
+            keyed by feature name and then by `track.identifier`. Each per-track value is either a
+            single int/float (constant over the whole track) or a sequence of one value per frame of
+            the track.
+            Default: None (no additional features)
 
     """
     dim = next(iter(tracks)).dim
     axis_labels: tuple[str, ...] = ("Time", "Depth", "Height", "Width") if dim == 3 else ("Time", "Height", "Width")  # noqa: PLR2004
     scale = (1.0, *anisotropy[-dim:])  # Add the temporal scale
 
-    points, parents, lineage_ids = tracks_to_napari_tracks(tracks)
+    points, parents, lineage_ids, features_points = tracks_to_napari_tracks(tracks, track_features)
     viewer.add_layer(
         napari.layers.Points(
             points[:, 1:],
@@ -226,7 +233,7 @@ def add_tracks(
             points,
             name="Tracks",
             graph=parents,
-            features={"time": points[:, 1], "lineage_ids": lineage_ids},
+            features={"time": points[:, 1], "lineage_ids": lineage_ids, **features_points},
             tail_width=track_width,
             axis_labels=axis_labels,
             scale=scale,
@@ -373,8 +380,9 @@ def visualize(  # noqa: PLR0913
     lazy: bool = False,
     detections_mode: Literal["segmentation", "points"] = "segmentation",
     detection_size=10.0,
-    color_from_labels: bool = True,
+    color_detections_from_labels: bool = True,
     track_width=5.0,
+    track_features: dict[str, Mapping[int, Sequence[int | float] | int | float]] | None = None,
     run=True,
 ) -> napari.Viewer:
     """Open a Napari viewer to visualize a video, detections and/or tracks.
@@ -405,11 +413,17 @@ def visualize(  # noqa: PLR0913
             Default: "segmentation"
         detection_size (float): Size of the points, when `detections_mode` is "points".
             Default: 10.0
-        color_from_labels (bool): Use `labels` from `Detections` to assign a color to each segmentation.
+        color_detections_from_labels (bool): Use `labels` from `Detections` to assign a color to each segmentation.
             If False, it will use the detection identifier (0 to N-1).
             Default: True
         track_width (float): Size of the tracked points and width of the track trails.
             Default: 5.0
+        track_features (dict[str, Mapping[int, Sequence[int | float] | int | float]] | None): Additional
+            features to register on the Napari Tracks layer (allowing to color by these features),
+            keyed by feature name and then by `track.identifier`. Each per-track value is either a
+            single int/float (constant over the whole track) or a sequence of one value per frame of
+            the track.
+            Default: None (no additional features)
         run (bool): If True, blocks and starts the Napari Qt event loop (``napari.run()``).
             Default: True
 
@@ -432,12 +446,12 @@ def visualize(  # noqa: PLR0913
             anisotropy=anisotropy,
             detections_mode=detections_mode,
             detection_size=detection_size,
-            color_from_labels=color_from_labels,
+            color_detections_from_labels=color_detections_from_labels,
             lazy=lazy,
         )
 
     if tracks:
-        add_tracks(viewer, tracks, anisotropy=anisotropy, track_width=track_width)
+        add_tracks(viewer, tracks, anisotropy=anisotropy, track_width=track_width, track_features=track_features)
 
     viewer.dims.point = (0.0, *viewer.dims.point[1:])  # Set temporal axis at the initial frame (0)
 

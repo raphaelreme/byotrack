@@ -10,7 +10,7 @@ import byotrack
 import byotrack.video.video
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Sequence
+    from collections.abc import Collection, Mapping, Sequence
 
 
 def detections_to_napari_segmentation(
@@ -98,16 +98,24 @@ def _detections_to_labels(
 # TODO: Detection to bbox? => Shape layer is not very intuitive for 3D bbox...
 
 
-def tracks_to_napari_tracks(tracks: Collection[byotrack.Track]) -> tuple[np.ndarray, dict[int, list[int]], np.ndarray]:
-    """Convert tracks data to Napari tracks layer format (points, graph, lineage_ids).
+def tracks_to_napari_tracks(  # noqa: C901
+    tracks: Collection[byotrack.Track],
+    features: Mapping[str, Mapping[int, Sequence[int | float] | int | float]] | None = None,
+) -> tuple[np.ndarray, dict[int, list[int]], np.ndarray, dict[str, np.ndarray]]:
+    """Convert tracks data to Napari tracks layer format (points, graph, lineage_ids, features).
 
     NaN positions (undetected frames within a track) are dropped from the resulting points.
 
     Args:
         tracks (Collection[byotrack.Track]): Tracks to convert.
+        features (Mapping[str, Mapping[int, Sequence[int | float] | int | float]] | None): Additional
+            per-point features to build, keyed by feature name and then by `track.identifier`.
+            Each per-track value is either a single int/float (constant over the whole track) or a
+            sequence of one value per frame of the track.
+            Default: None (no features)
 
     Returns:
-        tuple: (points, graph, lineage_ids)
+        tuple: (points, graph, lineage_ids, features_points)
             points (np.ndarray): Points with track identifier and frame index prepended to their
                 position ([identifier, t, [k, ]i, j]), as expected by Napari's ``add_tracks``.
                 Shape: (N, dim + 2), dtype: float32
@@ -116,10 +124,16 @@ def tracks_to_napari_tracks(tracks: Collection[byotrack.Track]) -> tuple[np.ndar
             lineage_ids (np.ndarray): Lineage identifier of each point in `points`, shared by all tracks
                 that are connected (through splits/merges) in the same lineage tree.
                 Shape: (N,), dtype: uint16
+            features_points (dict[str, np.ndarray]): For each key of `features`, the corresponding
+                per-point values (same row alignment and NaN-filtering as `points`), as expected by
+                Napari's ``add_tracks`` (``features=...``).
+                Shape: (N,)
 
     """
+    features = features or {}
     dim = next(iter(tracks)).dim
     track_points = np.zeros((sum(len(track) for track in tracks), dim + 2), dtype=np.float32)
+    features_points: dict[str, np.ndarray] = {}
 
     seen = 0
     for track in tracks:
@@ -127,10 +141,20 @@ def tracks_to_napari_tracks(tracks: Collection[byotrack.Track]) -> tuple[np.ndar
         track_points[seen : seen + len(track), 1] = np.arange(track.start, track.start + len(track))
         track_points[seen : seen + len(track), 2:] = track.points.numpy()
 
+        for key in features:
+            values = np.broadcast_to(np.asarray(features[key][track.identifier]), (len(track),))
+            if key not in features_points:
+                features_points[key] = np.zeros((track_points.shape[0],), dtype=values.dtype)
+
+            features_points[key][seen : seen + len(track)] = values
+
         seen += len(track)
 
     # Remove NaNs points if any
-    track_points = track_points[~np.isnan(track_points).any(axis=-1)]  # type: ignore[assignment]
+    valid = ~np.isnan(track_points).any(axis=-1)
+    track_points = track_points[valid]  # type: ignore[assignment]
+    for key in features_points:
+        features_points[key] = features_points[key][valid]
 
     # Extract the "graph" attribute of Napari Tracks layer
     parents: dict[int, list[int]] = {track.identifier: [] for track in tracks}
@@ -153,7 +177,7 @@ def tracks_to_napari_tracks(tracks: Collection[byotrack.Track]) -> tuple[np.ndar
         for track_id in track_ids:
             track_to_lineage[track_id] = lineage_id
 
-    return track_points, parents, track_to_lineage[track_points[:, 0].astype(np.int32)]
+    return track_points, parents, track_to_lineage[track_points[:, 0].astype(np.int32)], features_points
 
 
 def _initialize_grid(spatial_shape: tuple[int, ...], grid_step: int, scale: tuple[float, ...]) -> np.ndarray:
