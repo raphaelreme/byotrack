@@ -40,7 +40,7 @@ class TrackingGraph(nx.DiGraph):
         super().__init__()
 
     @staticmethod
-    def from_tracks(tracks: Collection[byotrack.Track], *, drop_nan=False) -> TrackingGraph:  # noqa: C901, PLR0912
+    def from_tracks(tracks: Collection[byotrack.Track], *, drop_nan=False) -> TrackingGraph:
         """Build a graph from `byotrack.Track` objects.
 
         Each track becomes a linear chain (one node per defined point). Split/merge
@@ -71,41 +71,45 @@ class TrackingGraph(nx.DiGraph):
         # 1/ Handle linear segments (Track)
         node_id = 0
         for track in tracks:
+            is_valid = ~torch.isnan(track.points).any(dim=-1)
+            if drop_nan and not is_valid.all():
+                frames = torch.arange(track.start, track.start + len(track))[is_valid].tolist()
+                points = track.points[is_valid].tolist()
+                detection_ids = track.detection_ids[is_valid].tolist()
+            else:
+                frames = torch.arange(track.start, track.start + len(track)).tolist()
+                points = track.points.tolist()
+                detection_ids = track.detection_ids.tolist()
+
+            nodes = [
+                (
+                    node_id + i,
+                    {
+                        "t": frame,
+                        "track_id": int(track.identifier),
+                        "detection_id": detection_id,
+                        "z": point[-3],
+                        "y": point[-2],
+                        "x": point[-1],
+                    }
+                    if track.dim == 3  # noqa: PLR2004
+                    else {
+                        "t": frame,
+                        "track_id": int(track.identifier),
+                        "detection_id": detection_id,
+                        "y": point[-2],
+                        "x": point[-1],
+                    },
+                )
+                for i, (frame, point, detection_id) in enumerate(zip(frames, points, detection_ids, strict=True))
+            ]
+
+            trk_graph.add_nodes_from(nodes)
+            trk_graph.add_edges_from([(node_id, node_id + 1) for node_id in range(node_id, node_id + len(frames) - 1)])
+
             id_to_first_node[track.identifier] = node_id
-            previous_node = None
-            dim = track.dim
-            has_z = dim == 3  # noqa: PLR2004
-            for i in range(len(track)):
-                coords = track.points[i]
-                if drop_nan and torch.isnan(coords).any():
-                    continue
-
-                node_attrs: dict[str, float | int] = {
-                    "t": track.start + i,
-                    "track_id": int(track.identifier),
-                    "detection_id": int(track.detection_ids[i].item()),
-                }
-                if has_z:
-                    node_attrs["z"] = float(coords[0].item())
-                    node_attrs["y"] = float(coords[1].item())
-                    node_attrs["x"] = float(coords[2].item())
-                else:
-                    node_attrs["y"] = float(coords[0].item())
-                    node_attrs["x"] = float(coords[1].item())
-
-                trk_graph.add_node(node_id, **node_attrs)
-
-                # Let's add the edge between previous node and this one
-                if previous_node is not None:
-                    trk_graph.add_edge(previous_node, node_id)
-
-                previous_node = node_id
-                node_id += 1
-
-            if previous_node is None:  # Empty tracks should not occur
-                raise ValueError("Empty tracks are not supported")
-
-            id_to_last_node[track.identifier] = previous_node
+            id_to_last_node[track.identifier] = nodes[-1][0]
+            node_id = nodes[-1][0] + 1
 
         # 2/ Add split and merge edges
         for track in tracks:

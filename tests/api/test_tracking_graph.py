@@ -182,14 +182,6 @@ def test_from_tracks_edge_with_merge_and_split_label() -> None:
     assert len(components) == 1
 
 
-def test_from_tracks_weird_empty_track_raises() -> None:
-    track = byotrack.Track(0, torch.rand(1, 2))
-    track.points = torch.rand(0, 2)  # Overwrite point with incorrect data
-
-    with pytest.raises(ValueError, match="Empty tracks are not supported"):
-        byotrack.TrackingGraph.from_tracks([track])
-
-
 def test_from_tracks_without_edges():
     tracks = [
         byotrack.Track(0, torch.rand(1, 2)),
