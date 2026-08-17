@@ -6,7 +6,7 @@ import pytest
 import torch
 
 import byotrack
-from byotrack.api.tracks import _resolve_disk_radii, update_detection_ids, update_detections_from_tracks
+from byotrack.api.tracks import _resolve_disk_radius, update_detection_ids, update_detections_from_tracks
 
 if TYPE_CHECKING:
     import pathlib
@@ -685,32 +685,53 @@ def test_update_detection_ids_with_nan_in_track():
     assert track.detection_ids[1] == 0
 
 
-# _resolve_disk_radii
+# _resolve_disk_radius
 
 
-def test_resolve_disk_radii_scalar() -> None:
-    radii = _resolve_disk_radii(5.0, n_tracks=3, n_frames=2, dim=2, anisotropy=(1.0, 1.0, 1.0))
-    assert radii.shape == (2, 3, 2)
-    assert torch.allclose(radii, torch.full((2, 3, 2), 5.0))
+def test_resolve_disk_radius_scalar() -> None:
+    track = byotrack.Track(0, torch.tensor([[0.0, 0.0]]), identifier=1)
+    radius = _resolve_disk_radius(5.0, track, frame_id=0, dim=2, anisotropy=(1.0, 1.0, 1.0))
+    assert torch.allclose(radius, torch.full((2,), 5.0))
 
 
-def test_resolve_disk_radii_anisotropy_2d_uses_last_two_axes() -> None:
+def test_resolve_disk_radius_anisotropy_2d_uses_last_two_axes() -> None:
     # anisotropy[-2:] = (ani_y, ani_x) = (2.0, 4.0); depth (first) factor is ignored in 2D
-    radii = _resolve_disk_radii(5.0, n_tracks=1, n_frames=1, dim=2, anisotropy=(1.0, 2.0, 4.0))
-    assert torch.allclose(radii[0, 0], torch.tensor([2.5, 1.25]))
+    track = byotrack.Track(0, torch.tensor([[0.0, 0.0]]), identifier=1)
+    radius = _resolve_disk_radius(5.0, track, frame_id=0, dim=2, anisotropy=(1.0, 2.0, 4.0))
+    assert torch.allclose(radius, torch.tensor([2.5, 1.25]))
 
 
-def test_resolve_disk_radii_anisotropy_3d_scales_depth_axis() -> None:
+def test_resolve_disk_radius_anisotropy_3d_scales_depth_axis() -> None:
     # The depth (k) axis is the FIRST one (positions are ([k, ]i, j)), and must be scaled by ani_z
-    radii = _resolve_disk_radii(4.0, n_tracks=1, n_frames=1, dim=3, anisotropy=(2.0, 1.0, 1.0))
-    assert torch.allclose(radii[0, 0], torch.tensor([2.0, 4.0, 4.0]))
+    track = byotrack.Track(0, torch.tensor([[0.0, 0.0, 0.0]]), identifier=1)
+    radius = _resolve_disk_radius(4.0, track, frame_id=0, dim=3, anisotropy=(2.0, 1.0, 1.0))
+    assert torch.allclose(radius, torch.tensor([2.0, 4.0, 4.0]))
 
 
-def test_resolve_disk_radii_per_track_tensor() -> None:
-    radius = torch.tensor([[1.0], [5.0]])  # Per-track radius, shape (N, 1)
-    radii = _resolve_disk_radii(radius, n_tracks=2, n_frames=3, dim=2, anisotropy=(1.0, 1.0, 1.0))
-    assert torch.allclose(radii[:, 0], torch.full((3, 2), 1.0))
-    assert torch.allclose(radii[:, 1], torch.full((3, 2), 5.0))
+def test_resolve_disk_radius_per_track_mapping() -> None:
+    track_a = byotrack.Track(0, torch.tensor([[0.0, 0.0]]), identifier=1)
+    track_b = byotrack.Track(0, torch.tensor([[0.0, 0.0]]), identifier=2)
+    radius = {1: 1.0, 2: 5.0}  # Keyed by track.identifier
+
+    assert torch.allclose(
+        _resolve_disk_radius(radius, track_a, frame_id=0, dim=2, anisotropy=(1.0, 1.0, 1.0)), torch.full((2,), 1.0)
+    )
+    assert torch.allclose(
+        _resolve_disk_radius(radius, track_b, frame_id=0, dim=2, anisotropy=(1.0, 1.0, 1.0)), torch.full((2,), 5.0)
+    )
+
+
+def test_resolve_disk_radius_per_track_per_frame_sequence() -> None:
+    # index 0 of the sequence corresponds to track.start, not the global frame index
+    track = byotrack.Track(2, torch.tensor([[0.0, 0.0], [0.0, 0.0]]), identifier=1)
+    radius = {1: [1.0, 5.0]}
+
+    assert torch.allclose(
+        _resolve_disk_radius(radius, track, frame_id=2, dim=2, anisotropy=(1.0, 1.0, 1.0)), torch.full((2,), 1.0)
+    )
+    assert torch.allclose(
+        _resolve_disk_radius(radius, track, frame_id=3, dim=2, anisotropy=(1.0, 1.0, 1.0)), torch.full((2,), 5.0)
+    )
 
 
 # update_detections_from_tracks
@@ -809,13 +830,14 @@ def test_update_detections_from_tracks_per_track_radius() -> None:
 
     track_small = byotrack.Track(0, torch.tensor([[4.0, 4.0]]), identifier=1)
     track_large = byotrack.Track(0, torch.tensor([[14.0, 14.0]]), identifier=2)
-    radius = torch.tensor([[1.0], [4.0]])  # Per-track radius, shape (N, 1)
+    radius = {track_large.identifier: 4.0, track_small.identifier: 1.0}
 
-    updated = update_detections_from_tracks([det], [track_large, track_small], radius=radius)
+    # The result must not depend on the order (or container type) `tracks` is given in.
+    for tracks in ([track_large, track_small], [track_small, track_large], {track_large, track_small}):
+        updated = update_detections_from_tracks([det], tracks, radius=radius)
 
-    small_mass = updated[0].mass[0]  # Labels are sorted so track_small should be first
-    large_mass = updated[0].mass[1]
-    assert large_mass > small_mass
+        mass = dict(zip(updated[0].labels.tolist(), updated[0].mass.tolist(), strict=True))
+        assert mass[track_large.identifier] > mass[track_small.identifier]
 
 
 def test_update_detections_from_tracks_complete_sequence() -> None:
