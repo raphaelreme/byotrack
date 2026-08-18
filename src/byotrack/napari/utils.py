@@ -10,7 +10,7 @@ import byotrack
 import byotrack.video.video
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Mapping, Sequence
+    from collections.abc import Collection, Sequence
 
 
 def detections_to_napari_segmentation(
@@ -100,15 +100,15 @@ def _detections_to_labels(
 
 def tracks_to_napari_tracks(  # noqa: C901
     tracks: Collection[byotrack.Track],
-    features: Mapping[str, Mapping[int, Sequence[int | float] | int | float]] | None = None,
-) -> tuple[np.ndarray, dict[int, list[int]], np.ndarray, dict[str, np.ndarray]]:
-    """Convert tracks data to Napari tracks layer format (points, graph, lineage_ids, features).
+    features: dict[str, dict[int, Sequence[int | float] | int | float]] | None = None,
+) -> tuple[np.ndarray, dict[int, list[int]], dict[str, np.ndarray]]:
+    """Convert tracks data to Napari tracks layer format (points, graph, features).
 
     NaN positions (undetected frames within a track) are dropped from the resulting points.
 
     Args:
         tracks (Collection[byotrack.Track]): Tracks to convert.
-        features (Mapping[str, Mapping[int, Sequence[int | float] | int | float]] | None): Additional
+        features (dict[str, dict[int, Sequence[int | float] | int | float]] | None): Additional
             per-point features to build, keyed by feature name and then by `track.identifier`.
             Each per-track value is either a single int/float (constant over the whole track) or a
             sequence of one value per frame of the track.
@@ -121,17 +121,40 @@ def tracks_to_napari_tracks(  # noqa: C901
                 Shape: (N, dim + 2), dtype: float32
             graph (dict[int, list[int]]): Mapping of each track identifier to the list of its parent
                 track identifiers (split and merge events), as expected by Napari's ``add_tracks``.
-            lineage_ids (np.ndarray): Lineage identifier of each point in `points`, shared by all tracks
-                that are connected (through splits/merges) in the same lineage tree.
-                Shape: (N,), dtype: uint16
             features_points (dict[str, np.ndarray]): For each key of `features`, the corresponding
                 per-point values (same row alignment and NaN-filtering as `points`), as expected by
                 Napari's ``add_tracks`` (``features=...``).
+                A "lineage_ids" feature is added, shared by all tracks that are connected (through
+                splits/merges) in the same lineage tree.
                 Shape: (N,)
 
     """
     features = features or {}
     dim = next(iter(tracks)).dim
+
+    # First, extract the "graph" attribute of Napari Tracks layer
+    parents: dict[int, list[int]] = {track.identifier: [] for track in tracks}
+    for track in tracks:
+        if track.parent_id >= 0:
+            parents[track.identifier].append(track.parent_id)
+
+        if track.merge_id >= 0:
+            parents[track.merge_id].append(track.identifier)
+
+    # Then, let's add lineage to features by finding the connected components
+    if "lineage_ids" not in features:
+        features["lineage_ids"] = {}
+
+        graph: nx.DiGraph = nx.DiGraph()
+        graph.add_nodes_from(parents.keys())
+        for track_id, parents_ in parents.items():
+            for parent_id in parents_:
+                graph.add_edge(parent_id, track_id)
+
+        for lineage_id, track_ids in enumerate(nx.connected_components(graph.to_undirected())):
+            for track_id in track_ids:
+                features["lineage_ids"][track_id] = lineage_id
+
     track_points = np.zeros((sum(len(track) for track in tracks), dim + 2), dtype=np.float32)
     features_points: dict[str, np.ndarray] = {}
 
@@ -156,28 +179,7 @@ def tracks_to_napari_tracks(  # noqa: C901
     for key in features_points:
         features_points[key] = features_points[key][valid]
 
-    # Extract the "graph" attribute of Napari Tracks layer
-    parents: dict[int, list[int]] = {track.identifier: [] for track in tracks}
-    for track in tracks:
-        if track.parent_id >= 0:
-            parents[track.identifier].append(track.parent_id)
-
-        if track.merge_id >= 0:
-            parents[track.merge_id].append(track.identifier)
-
-    # Let's find the connected components to extract a consistent lineage id property
-    graph: nx.DiGraph = nx.DiGraph()
-    graph.add_nodes_from(parents.keys())
-    for track_id, parents_ in parents.items():
-        for parent_id in parents_:
-            graph.add_edge(parent_id, track_id)
-
-    track_to_lineage = np.zeros(max(parents) + 1, dtype=np.uint16)
-    for lineage_id, track_ids in enumerate(nx.connected_components(graph.to_undirected())):
-        for track_id in track_ids:
-            track_to_lineage[track_id] = lineage_id
-
-    return track_points, parents, track_to_lineage[track_points[:, 0].astype(np.int32)], features_points
+    return track_points, parents, features_points
 
 
 def _initialize_grid(spatial_shape: tuple[int, ...], grid_step: int, scale: tuple[float, ...]) -> np.ndarray:

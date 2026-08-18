@@ -21,7 +21,7 @@ from byotrack.napari.utils import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Mapping, Sequence
+    from collections.abc import Collection, Sequence
 
 
 def _find_dim(
@@ -191,7 +191,7 @@ def add_tracks(
     *,
     anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
     track_width=5.0,
-    track_features: dict[str, Mapping[int, Sequence[int | float] | int | float]] | None = None,
+    track_features: dict[str, dict[int, Sequence[int | float] | int | float]] | None = None,
 ) -> None:
     """Add tracks to a Napari viewer.
 
@@ -205,7 +205,7 @@ def add_tracks(
             Default: (1.0, 1.0, 1.0)
         track_width (float): Size of the tracked points and width of the track trails.
             Default: 5.0
-        track_features (dict[str, Mapping[int, Sequence[int | float] | int | float]] | None): Additional
+        track_features (dict[str, dict[int, Sequence[int | float] | int | float]] | None): Additional
             features to register on the Napari Tracks layer (allowing to color by these features),
             keyed by feature name and then by `track.identifier`. Each per-track value is either a
             single int/float (constant over the whole track) or a sequence of one value per frame of
@@ -217,7 +217,7 @@ def add_tracks(
     axis_labels: tuple[str, ...] = ("Time", "Depth", "Height", "Width") if dim == 3 else ("Time", "Height", "Width")  # noqa: PLR2004
     scale = (1.0, *anisotropy[-dim:])  # Add the temporal scale
 
-    points, parents, lineage_ids, features_points = tracks_to_napari_tracks(tracks, track_features)
+    points, parents, features_points = tracks_to_napari_tracks(tracks, track_features)
     viewer.add_layer(
         napari.layers.Points(
             points[:, 1:],
@@ -233,7 +233,7 @@ def add_tracks(
             points,
             name="Tracks",
             graph=parents,
-            features={"time": points[:, 1], "lineage_ids": lineage_ids, **features_points},
+            features={"time": points[:, 1], **features_points},
             tail_width=track_width,
             axis_labels=axis_labels,
             scale=scale,
@@ -382,7 +382,7 @@ def visualize(  # noqa: PLR0913
     detection_size=10.0,
     color_detections_from_labels: bool = True,
     track_width=5.0,
-    track_features: dict[str, Mapping[int, Sequence[int | float] | int | float]] | None = None,
+    track_features: dict[str, dict[int, Sequence[int | float] | int | float]] | None = None,
     run=True,
 ) -> napari.Viewer:
     """Open a Napari viewer to visualize a video, detections and/or tracks.
@@ -418,7 +418,7 @@ def visualize(  # noqa: PLR0913
             Default: True
         track_width (float): Size of the tracked points and width of the track trails.
             Default: 5.0
-        track_features (dict[str, Mapping[int, Sequence[int | float] | int | float]] | None): Additional
+        track_features (dict[str, dict[int, Sequence[int | float] | int | float]] | None): Additional
             features to register on the Napari Tracks layer (allowing to color by these features),
             keyed by feature name and then by `track.identifier`. Each per-track value is either a
             single int/float (constant over the whole track) or a sequence of one value per frame of
