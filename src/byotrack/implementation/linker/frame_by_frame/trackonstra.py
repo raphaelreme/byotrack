@@ -132,7 +132,7 @@ class TrackOnStraParameters(FrameByFrameLinkerParameters):
 
     Attributes:
         association_threshold (float) : Minimum probability to consider a link. We advise to keep the default value.
-            Default: 0.05 (default value from Trackstra)
+            Default: 0.05 (default value from TrackAstra)
         positional_cutoff (float): Remove links based on an Euclidean thresholding.
             We use the default value provided by Trackastra. Tuning it may improve performance.
             Default: 256.0
@@ -233,16 +233,15 @@ class TrackOnStraParameters(FrameByFrameLinkerParameters):
 class TrackOnStraLinker(FrameByFrameLinker):
     """Online TrackAstra.
 
-    It uses a trained TrackAstra model to predict linking costs. But it replaces the graph optimization from TrackAstra
-    by our online FrameByFrame linking. This allows a simple support for false negative detections that TrackAstra
-    do not support by itself.
+    It uses a trained TrackAstra [13] model to predict linking costs. But it replaces the graph optimization
+    from TrackAstra by our online FrameByFrame linking. This allows a simple support for false negative detections
+    that TrackAstra do not support by itself.
 
     Warning: This implementation is not yet Online. Indeed the linker has to be setup with
              the full video and detections_sequence before being usable.
 
     Note:
-        This implementation requires trackastra. (pip install trackastra)
-        trackastra is only available for python >= 3.10
+        This implementation requires trackastra: `pip install trackastra`
 
     See `FrameByFrameLinker` for the other attributes.
 

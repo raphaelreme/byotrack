@@ -14,8 +14,8 @@ ByoTrack defines a **modular tracking API** that can be easily extended to desig
 It also includes implementations of several **state-of-the-art detection and tracking** approaches following this API.
 
 Some components are **implemented natively** in Python (e.g. *WaveletDetector*, *KalmanLinker*, *KOFT*, *RTSSmoother*,
-*EMC2Stitcher*), while others **wrap existing tools** (e.g. *StarDistDetector*, *IcyEMHTLinker*, *TrackMateLinker*),
-integrating with external software.
+*EMC2Stitcher*), while others **wrap existing tools** (e.g. *StarDistDetector*, *IcyEMHTLinker*, *TrackMateLinker*,
+*TrackAstraLinker*), integrating with external software.
 
 In addition, ByoTrack provides utilities for **data loading and preprocessing**, as well
 as **evaluation and visualization** of tracking results.
@@ -66,6 +66,8 @@ References
 * **[10]** M. Maška, V. Ulman, D. Svoboda, P. Matula, et al., "A benchmark for comparison of cell tracking algorithms", in Bioinformatics, 2014.
 * **[11]** R. Reme, A. Newson, E. Angelini, J.-C. Olivo-Marin and T. Lagache, "SINETRA: a Versatile Framework for Evaluating Single Neuron Tracking in Behaving Animals", IEEE ISBI, 2025.
 * **[12]** A. Genovesio, Z. Belhassine, and J.-C. Olivo-Marin, "Adaptive gating in Gaussian Bayesian multi-target tracking", IEEE ICIP, 2004.
+* **[13]** B. Gallusser, and M. Weigert, "Trackastra: Transformer-based cell tracking for live-cell microscopy." ECCV, 2024.
+* **[14]** N. Sofroniew, T. Lambert, G. Bokota, et al., "napari: a multi-dimensional image viewer for Python". Zenodo, 2022.
 
 Contents
 --------

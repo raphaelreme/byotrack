@@ -20,8 +20,8 @@ ByoTrack defines a **modular tracking API** that can be easily extended to desig
 It also includes implementations of several **state-of-the-art detection and tracking** approaches following this API.
 
 Some components are **implemented natively** in Python (e.g. *WaveletDetector*, *KalmanLinker*, *KOFT*, *RTSSmoother*,
-*EMC2Stitcher*), while others **wrap existing tools** (e.g. *StarDistDetector*, *IcyEMHTLinker*, *TrackMateLinker*),
-integrating with external software.
+*EMC2Stitcher*), while others **wrap existing tools** (e.g. *StarDistDetector*, *IcyEMHTLinker*, *TrackMateLinker*,
+*TrackAstraLinker*), integrating with external software.
 
 In addition, ByoTrack provides utilities for **data loading and preprocessing**, as well
 as **evaluation and visualization** of tracking results.
@@ -60,7 +60,7 @@ For these components, you need to install their specific dependencies. Here is t
     - Spot Tracking Blocks plugin: [Install an Icy plugin](https://icy.bioimageanalysis.org/tutorial/how-to-install-an-icy-plugin/)
 - *TrackMateLinker*
     - Fiji: [Download Fiji](https://imagej.net/downloads)
-- *TrackOnStraLinker*
+- *TrackAstraLinker* & *TrackOnStraLinker*
     - TrackAstra: [Install trackastra](https://github.com/weigertlab/trackastra#installation)
 - *byotrack.geff* (io)
     - GEFF: [Install GEFF](https://liveimagetrackingtools.org/geff/latest/)
@@ -175,12 +175,16 @@ Implemented linkers:
     -   Kalman filtering (SKT) \[9\]
     -   KOFT (Kalman + Optical Flow Tracker) \[9\]
     -   optional adaptive gating \[12\]
+    -   TrackAstra extension to support missed detections
 
 -   **EMHT** \[4\]\
     Wrapper around the Icy implementation
 
 -   **TrackMate / u-track** \[7\]\
     Wrapper around Fiji's TrackMate implementation \[6,8\]
+
+-   **TrackAstra** \[13\]\
+    Wrapper around the TrackAstra implementation
 
 ### Track Refinement
 
@@ -326,3 +330,7 @@ If you use ByoTrack in your research, please cite:
        in Behaving Animals", IEEE ISBI, 2025.
 * [12] A. Genovesio, Z. Belhassine, and J.-C. Olivo-Marin, "Adaptive gating
        in Gaussian Bayesian multi-target tracking", IEEE ICIP, 2004.
+* [13] B. Gallusser, and M. Weigert, "Trackastra: Transformer-based cell
+       tracking for live-cell microscopy." ECCV, 2024.
+* [14] N. Sofroniew, T. Lambert, G. Bokota, et al., "napari: a multi-
+       dimensional image viewer for Python". Zenodo, 2022.
