@@ -136,12 +136,13 @@ def test_load_tracks_with_gaps(tmp_path: pathlib.Path):
     assert torch.isnan(tracks[0].points[1]).all()
 
 
-def test_load_tracks_negative_id_abs(tmp_path: pathlib.Path):
+def test_load_tracks_ignores_ids_and_reassigns(tmp_path: pathlib.Path):
     path = tmp_path / "tracks.xml"
-    _write_icy_xml(path, [(-42, [(0, 10.0, 20.0, -1.0)])])
+    _write_icy_xml(path, [(-42, [(0, 10.0, 20.0, -1.0)]), (5, [(0, 10.0, 20.0, -1.0)])])
 
     tracks = load_tracks(path)
-    assert tracks[0].identifier == 42
+    assert tracks[0].identifier == 0
+    assert tracks[1].identifier == 1
 
 
 def test_load_tracks_without_id_assigns(tmp_path: pathlib.Path):
