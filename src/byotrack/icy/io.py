@@ -183,6 +183,8 @@ def load_tracks(path: str | os.PathLike) -> list[byotrack.Track]:
     For each point in each track the frame (time) and position (x, y, z) are given. An additional type precise if
     the detection is real or extrapolated. (Unused in ByoTrack)
 
+    Note: Track identifiers are ignored and reset until we understand better their format.
+
     Args:
         path (str | os.PathLike): Input path
 
@@ -198,10 +200,11 @@ def load_tracks(path: str | os.PathLike) -> list[byotrack.Track]:
 
     tracks = []
 
-    for track in track_group:
-        identifier = None
-        if track.attrib.get("id") is not None:  # XXX: Find why ids have this format
-            identifier = abs(int(track.attrib["id"]))
+    for identifier, track in enumerate(track_group):
+        # XXX: Find why ids have this format. Until then, stop using Icy identifier.
+        # >> identifier = None
+        # >> if track.attrib.get("id") is not None:
+        # >>    identifier = abs(int(track.attrib["id"]))
 
         points = []
         frames = []
