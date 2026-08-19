@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.5] - 2026-08-19
+
+### Breaking Changes
+
+- **`byotrack.napari.tracks_to_napari_tracks`**: no longer returns a separate
+  `lineage_ids` array. It now returns a 3-tuple `(points, graph,
+  features_points)`, with lineage ids folded into
+  `features_points["lineage_ids"]` (computed automatically unless already
+  provided through the `features` argument).
+- **`icy.load_tracks`**: track identifiers are no longer parsed from Icy's
+  XML `id` attribute, whose format turned out to be a badly interpreted
+  value producing large, nonsensical identifiers that broke napari track
+  visualization. Tracks are now assigned sequential identifiers (0 to N-1)
+  in file order until the original format is understood.
+
+### Added
+
+- New `TrackAstraLinker` (`byotrack.implementation.linker.trackastra`):
+  wraps the official TrackAstra graph-optimization solver (ILP or greedy,
+  with or without division support) directly, as an alternative to the
+  existing online `TrackOnStraLinker`. Requires `pip install trackastra`
+  (and the `trackastra[ilp]` extra for the ILP solver).
+
 ## [2.0.4] - 2026-08-17
 
 ### Added
