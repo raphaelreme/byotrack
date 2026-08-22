@@ -17,7 +17,7 @@ else:
 
 
 class IntensityNormalizer(preprocessor.VideoPreprocessor):
-    """Normalize each channel intensity into [0, 1].
+    """Normalize each channel intensity into [0, 1] and optionally apply Gamma correction.
 
     `mini` and `maxi` values are computed using quantile of the video to improve stability.
     The quantiles are computed using only the first `compute_stats_on` frames.
@@ -27,19 +27,21 @@ class IntensityNormalizer(preprocessor.VideoPreprocessor):
     Note: A `smooth_clip` can be performed by log clipping values above `maxi` up until the log max.
 
     Attributes:
-        q_min (float): Quantile of the minimum value to consider
-        q_max (float): Quantile of the maximum value to consider
-        mini (np.ndarray): Minimum value kept (one for each channel)
+        q_min (float): Quantile of the minimum value to consider.
+        q_max (float): Quantile of the maximum value to consider.
+        gamma (float): Gamma correction to apply.
+            Default: 1.0 (Disabled)
+        mini (np.ndarray): Minimum value kept (one for each channel).
             Shape: (C, ), dtype: float32
-        maxi (np.ndarray): Maximum value kept (one for each channel)
+        maxi (np.ndarray): Maximum value kept (one for each channel).
             Shape: (C, ), dtype: float32
-        smooth_clip (float): Smoothness of the clipping process (`a`)
+        smooth_clip (float): Smoothness of the clipping process (`a`).
             If 0, values are clipped on mini/maxi
             Else, values above maxi are log clipped:
             I = 1 + a log((I - 1)/a + 1) for I > 1, with `a` the `smooth_clip` factor
             Typical values are between 0 and 1.
             Default: 0 (hard clipping)
-        max (np.ndarray): True maximum values (one for each channel) when using smooth clipping
+        max (np.ndarray): True maximum values (one for each channel) when using smooth clipping.
             Shape: (C, ), dtype: float32
         compute_stats_on (int): Max number of frames to compute stats on.
             It prevents heavy computations that may occur on large videos.
@@ -47,12 +49,15 @@ class IntensityNormalizer(preprocessor.VideoPreprocessor):
 
     """
 
-    def __init__(self, q_min: float, q_max: float, smooth_clip: float = 0, compute_stats_on: int = 50) -> None:
+    def __init__(
+        self, q_min: float, q_max: float, gamma: float = 1.0, smooth_clip: float = 0, compute_stats_on: int = 50
+    ) -> None:
         super().__init__()
         self._dtype = np.dtype(np.float32)
 
         self.q_min = q_min
         self.q_max = q_max
+        self.gamma = gamma
         self.mini = np.array([0])
         self.maxi = np.array([1])
         self.smooth_clip = smooth_clip
@@ -94,14 +99,41 @@ class IntensityNormalizer(preprocessor.VideoPreprocessor):
             frame -= self.mini
 
             # Divide by one if mini == maxi
-            return frame.astype(np.float32) / (self.maxi - self.mini + (self.maxi == self.mini))
+            frame = frame.astype(np.float32)  # Copy only if needed
+            frame /= self.maxi - self.mini + (self.maxi == self.mini)
+
+            # Gamma correction
+            if self.gamma != 1.0:
+                frame **= self.gamma
+
+            return frame
 
         np.clip(frame, self.mini, None, out=frame)
         frame -= self.mini
-        frame = frame.astype(np.float32) / (self.maxi - self.mini + (self.maxi == self.mini))
+        frame = frame.astype(np.float32)  # Copy only if needed
+        frame /= self.maxi - self.mini + (self.maxi == self.mini)
 
         # Log clipping high values
         mask = frame > 1
         frame[mask] = 1 + self.smooth_clip * np.log((frame[mask] - 1) / self.smooth_clip + 1)
         np.clip(frame, 0, self.max, out=frame)
-        return frame / self.max
+        frame /= self.max
+
+        # Gamma correction
+        if self.gamma != 1.0:
+            frame **= self.gamma
+
+        return frame
+
+    @override
+    def preprocess_video(
+        self, video: Sequence[np.ndarray] | np.ndarray, frame_ids: list[int] | None = None
+    ) -> np.ndarray:
+        if not isinstance(video, np.ndarray):
+            return super().preprocess_video(video)
+
+        # Initialize for this video
+        self.initialize(video)
+
+        # We can directly apply preprocess_frame to the video
+        return self.preprocess_frame(video)

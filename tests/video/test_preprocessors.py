@@ -210,13 +210,55 @@ def test_normalizer_compute_stats_on_limits_frames():
     assert (out == 1).all()  # Clipped
 
 
-def test_normalizer_preprocess_video(video_2d: np.ndarray):
+def test_normalizer_preprocess_video_ndarray_vs_list(video_2d: np.ndarray):
     norm = IntensityNormalizer(q_min=0.0, q_max=1.0)
     result = norm.preprocess_video(video_2d)
     assert result.shape == video_2d.shape
     assert result.dtype == np.float32
     assert result.min() >= 0.0
     assert result.max() <= 1.0
+
+    result_list = norm.preprocess_video(list(video_2d))
+
+    assert np.allclose(result, result_list)
+
+
+def test_normalizer_gamma_hard_clip_matches_formula():
+    video = np.array([[[[0], [64], [128], [255]]]], dtype=np.uint8)
+    norm = IntensityNormalizer(q_min=0.0, q_max=1.0, gamma=2.0)
+    norm.initialize(video)
+    out = norm.preprocess_frame(video[0].copy())
+
+    expected = (video[0].astype(np.float32) / 255.0) ** 2.0
+    assert np.allclose(out, expected)
+
+
+def test_normalizer_gamma_hard_clip_applied_after_clipping(video_2d: np.ndarray):
+    norm_no_gamma = IntensityNormalizer(q_min=0.1, q_max=0.9)
+    out_no_gamma = norm_no_gamma.preprocess_video(video_2d.copy())
+
+    norm_gamma = IntensityNormalizer(q_min=0.1, q_max=0.9, gamma=0.5)
+    out_gamma = norm_gamma.preprocess_video(video_2d.copy())
+
+    assert np.allclose(out_gamma, out_no_gamma**0.5)
+
+
+def test_normalizer_gamma_smooth_clip_applied_after_clipping(video_2d: np.ndarray):
+    norm_no_gamma = IntensityNormalizer(q_min=0.0, q_max=0.8, smooth_clip=0.5)
+    out_no_gamma = norm_no_gamma.preprocess_video(video_2d.copy())
+
+    norm_gamma = IntensityNormalizer(q_min=0.0, q_max=0.8, smooth_clip=0.5, gamma=2.0)
+    out_gamma = norm_gamma.preprocess_video(video_2d.copy())
+
+    assert np.allclose(out_gamma, out_no_gamma**2.0)
+
+
+def test_normalizer_gamma_output_range_bounded(video_2d: np.ndarray):
+    for gamma in (0.3, 1.0, 3.0):
+        norm = IntensityNormalizer(q_min=0.0, q_max=1.0, gamma=gamma)
+        out = norm.preprocess_video(video_2d.copy())
+        assert out.min() >= 0.0
+        assert out.max() <= 1.0
 
 
 ## Intensity temporal equalization

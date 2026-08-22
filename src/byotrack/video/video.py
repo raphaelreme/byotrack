@@ -155,7 +155,12 @@ class Video(Sequence[np.ndarray]):
         return self
 
     def normalize(
-        self, q_min: float = 0.0, q_max: float = 1.0, smooth_clip: float = 0, compute_stats_on: int = 50
+        self,
+        q_min: float = 0.0,
+        q_max: float = 1.0,
+        gamma: float = 1.0,
+        smooth_clip: float = 0,
+        compute_stats_on: int = 50,
     ) -> Video:
         """Normalize each channel of the video into [0, 1].
 
@@ -166,7 +171,9 @@ class Video(Sequence[np.ndarray]):
                 Default: 0.0 (min value)
             q_max (float): Quantile of the maximum value to consider.
                 Default: 1.0 (max value)
-            smooth_clip (float): Smoothness of the clipping process (`a`)
+            gamma (float): Gamma correction to apply.
+                Default: 1.0 (Disabled)
+            smooth_clip (float): Smoothness of the clipping process (`a`).
                 If 0, values are clipped on the quantiles
                 Else, values above the maximum quantile are log clipped:
                 I = 1 + a log((I - 1)/a + 1) for I > 1, with `a` the `smooth_clip` factor
@@ -185,7 +192,7 @@ class Video(Sequence[np.ndarray]):
                     "The video is already normalized. Consider removing this second normalization.", stacklevel=2
                 )
 
-        return self._copy().add_preprocessor(IntensityNormalizer(q_min, q_max, smooth_clip, compute_stats_on))
+        return self._copy().add_preprocessor(IntensityNormalizer(q_min, q_max, gamma, smooth_clip, compute_stats_on))
 
     def _preprocess(self, frame: np.ndarray, frame_id: int) -> np.ndarray:
         for preprocessor in self._preprocessors:
