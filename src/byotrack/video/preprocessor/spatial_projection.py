@@ -62,7 +62,7 @@ class SpatialProjection(preprocessor.VideoPreprocessor):
         self.selected = selected
 
     @override
-    def initialize(self, video: Sequence[np.ndarray] | np.ndarray) -> None:
+    def initialize(self, video: Sequence[np.ndarray] | np.ndarray, frame_ids: list[int] | None = None) -> None:
         """Initialize the preprocessor for the given video.
 
         This will set the `shape` attribute correctly, or raise if not 3D.
@@ -70,6 +70,8 @@ class SpatialProjection(preprocessor.VideoPreprocessor):
         Args:
             video (Sequence[np.ndarray] | np.ndarray): The video to preprocess.
                 Sequence of T frames (array). Each array is expected to have a shape ([D, ]H, W, C).
+            frame_ids (list[int]): Optional indices of the frames in the video. Unused.
+                Default: None
 
         """
         super().initialize(video)
@@ -96,9 +98,14 @@ class SpatialProjection(preprocessor.VideoPreprocessor):
         return frame[tuple(slices)]
 
     @override
-    def preprocess_video(self, video: Sequence[np.ndarray] | np.ndarray) -> np.ndarray:
+    def preprocess_video(
+        self, video: Sequence[np.ndarray] | np.ndarray, frame_ids: list[int] | None = None
+    ) -> np.ndarray:
         if not isinstance(video, np.ndarray):
             return super().preprocess_video(video)
+
+        # Initialize for this video
+        self.initialize(video)
 
         # Let's do it directly on the global np.ndarray
         axis = self.axis + 1

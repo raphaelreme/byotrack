@@ -77,7 +77,7 @@ class Registrator(preprocessor.VideoPreprocessor):
         self.padding_mode = padding_mode
 
     @override
-    def initialize(self, video: Sequence[np.ndarray] | np.ndarray) -> None:
+    def initialize(self, video: Sequence[np.ndarray] | np.ndarray, frame_ids: list[int] | None = None) -> None:
         """Initialize the preprocessor for the given video.
 
         This will take the first frame as reference if ``self.reference_frame`` is None, and raise if
@@ -86,6 +86,8 @@ class Registrator(preprocessor.VideoPreprocessor):
         Args:
             video (Sequence[np.ndarray] | np.ndarray): The video to preprocess.
                 Sequence of T frames (array). Each array is expected to have a shape ([D, ]H, W, C).
+            frame_ids (list[int]): Optional indices of the frames in the video. Unused.
+                Default: None
 
         """
         super().initialize(video)

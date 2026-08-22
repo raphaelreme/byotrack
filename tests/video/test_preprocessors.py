@@ -12,6 +12,7 @@ from byotrack.video.preprocessor.preprocessor import VideoPreprocessor
 from byotrack.video.preprocessor.registrator import Registrator
 from byotrack.video.preprocessor.slicer import FrameSlicer
 from byotrack.video.preprocessor.spatial_projection import SpatialProjection
+from byotrack.video.preprocessor.temporal_equalization import TemporalEqualizer
 
 if sys.version_info < (3, 12):
     from typing_extensions import override
@@ -216,6 +217,70 @@ def test_normalizer_preprocess_video(video_2d: np.ndarray):
     assert result.dtype == np.float32
     assert result.min() >= 0.0
     assert result.max() <= 1.0
+
+
+## Intensity temporal equalization
+
+
+def _linear_drift_video(num_frames: int, frame_ids: list[int] | None = None) -> np.ndarray:
+    """Build a video where a fixed base pattern is scaled by a factor linear in `frame_id`."""
+    frame_ids = frame_ids if frame_ids is not None else list(range(num_frames))
+    mean = 50.0 + 5 * np.array(frame_ids, dtype=np.float32)
+    return mean[:, None, None, None] + np.random.randn(num_frames, 10, 10, 1)
+
+
+def test_temporal_equalization_corrects_known_linear_drift():
+    video = _linear_drift_video(10)
+
+    proc = TemporalEqualizer(quantile=0.5, frame_step=1, alpha=0.0)
+    proc.initialize(video)
+
+    for i, frame in enumerate(video):
+        out = proc.preprocess_frame(frame.copy(), i)
+        assert np.isclose(np.quantile(out, 0.5), 1.0, atol=1e-5)
+
+
+def test_temporal_equalization_output_dtype_is_float32(video_3d: np.ndarray):
+    proc = TemporalEqualizer(quantile=0.5, frame_step=1)
+    proc.initialize(video_3d)
+    out = proc.preprocess_frame(video_3d[0].copy(), 0)
+
+    assert out.dtype == np.float32
+    assert proc.dtype == np.float32
+    assert proc._ratios.shape == (video_3d.shape[0], video_3d.shape[-1])  # T, C
+
+
+def test_temporal_equalization_frame_step_subsamples():
+    video = _linear_drift_video(10)
+
+    proc = TemporalEqualizer(quantile=0.5, frame_step=2, alpha=0.0)
+    proc.initialize(video)
+
+    assert proc._quantiles.shape[0] == len(video) // 2
+    assert proc._ratios.shape[0] == len(video)
+
+
+def test_temporal_equalization_custom_frame_ids():
+    frame_ids = list(range(10, 30, 2))
+    video = _linear_drift_video(10, frame_ids)
+
+    proc = TemporalEqualizer(quantile=0.5, frame_step=1, alpha=0.0)
+    proc.initialize(video, frame_ids)
+
+    for i, frame in enumerate(video):
+        out = proc.preprocess_frame(frame.copy(), frame_ids[i])
+        assert np.isclose(np.quantile(out, 0.5), 1.0, atol=1e-3)
+
+
+def test_temporal_equalization_preprocess_video_ndarray_vs_list(video_2d: np.ndarray):
+    proc = TemporalEqualizer(quantile=0.5, frame_step=1)
+    out_array = proc.preprocess_video(video_2d)
+
+    frames = [video_2d[i] for i in range(len(video_2d))]
+    out_list = proc.preprocess_video(frames)
+
+    assert out_array.shape == out_list.shape
+    assert np.allclose(out_array, out_list)
 
 
 ## ChannelProjection

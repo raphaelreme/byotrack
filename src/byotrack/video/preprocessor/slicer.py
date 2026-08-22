@@ -29,7 +29,7 @@ class FrameSlicer(preprocessor.VideoPreprocessor):
         self.slices = slices
 
     @override
-    def initialize(self, video: Sequence[np.ndarray] | np.ndarray) -> None:
+    def initialize(self, video: Sequence[np.ndarray] | np.ndarray, frame_ids: list[int] | None = None) -> None:
         """Initialize the preprocessor for the given video.
 
         This will update the `shape` attribute to reflect the output shape after slicing.
@@ -37,6 +37,8 @@ class FrameSlicer(preprocessor.VideoPreprocessor):
         Args:
             video (Sequence[np.ndarray] | np.ndarray): The video to preprocess.
                 Sequence of T frames (array). Each array is expected to have a shape ([D, ]H, W, C).
+            frame_ids (list[int]): Optional indices of the frames in the video. Unused.
+                Default: None
 
         """
         super().initialize(video)
@@ -57,9 +59,14 @@ class FrameSlicer(preprocessor.VideoPreprocessor):
         return frame[self.slices]
 
     @override
-    def preprocess_video(self, video: Sequence[np.ndarray] | np.ndarray) -> np.ndarray:
+    def preprocess_video(
+        self, video: Sequence[np.ndarray] | np.ndarray, frame_ids: list[int] | None = None
+    ) -> np.ndarray:
         if not isinstance(video, np.ndarray):
             return super().preprocess_video(video)
+
+        # Initialize for this video
+        self.initialize(video)
 
         slices = (slice(None), *self.slices)
         return video[slices]

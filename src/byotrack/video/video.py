@@ -147,7 +147,8 @@ class Video(Sequence[np.ndarray]):
         Returns:
             byotrack.Video: self
         """
-        preprocessor.initialize(self)
+        start, _, step = self._temporal_slice.indices(self.reader.length)
+        preprocessor.initialize(self, [start + key * step for key in range(len(self))])
 
         self._preprocessors.append(preprocessor)
 

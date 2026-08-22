@@ -42,7 +42,7 @@ class VideoPreprocessor(ABC):
     def dtype(self) -> np.dtype:  # noqa: D102
         return self._dtype
 
-    def initialize(self, video: Sequence[np.ndarray] | np.ndarray) -> None:
+    def initialize(self, video: Sequence[np.ndarray] | np.ndarray, frame_ids: list[int] | None = None) -> None:  # noqa: ARG002
         """Initialize the preprocessor for the given video.
 
         The default implementation preserve the video `shape` and `dtype`.
@@ -51,6 +51,8 @@ class VideoPreprocessor(ABC):
         Args:
             video (Sequence[np.ndarray] | np.ndarray): The video to preprocess.
                 Sequence of T frames (array). Each array is expected to have a shape ([D, ]H, W, C).
+            frame_ids (list[int]): Optional indices of the frames in the video.
+                Default: None (default to [0, ...,T-1])
 
         """
         self._shape = byotrack.video.video_shape(video)[1:]
@@ -63,6 +65,9 @@ class VideoPreprocessor(ABC):
     def preprocess_frame(self, frame: np.ndarray, frame_id=0) -> np.ndarray:
         """Preprocess the given frame.
 
+        Warning: Some preprocessors (IntensityNormalizer, Registrator, TemporalEqualizer)
+                 may modify inplace the input.
+
         Args:
             frame (np.ndarray): Frame to be preprocessed.
                 Shape: ([D, ]H, W, C)
@@ -74,7 +79,9 @@ class VideoPreprocessor(ABC):
                 Shape ([D', ]H', W', C')
         """
 
-    def preprocess_video(self, video: Sequence[np.ndarray] | np.ndarray) -> np.ndarray:
+    def preprocess_video(
+        self, video: Sequence[np.ndarray] | np.ndarray, frame_ids: list[int] | None = None
+    ) -> np.ndarray:
         """Preprocess the given video directly.
 
         It will re-initialize the preprocessor at each call.
@@ -82,21 +89,25 @@ class VideoPreprocessor(ABC):
         Warning: Consider using the online version, which is integrated into the Video class.
                  This will requires much more memory than its online counterpart.
 
-        Warning: Some preprocessors (IntensityNormalizer, Registrator) will modify inplace
-                 the input.
+        Warning: Some preprocessors (IntensityNormalizer, Registrator, TemporalEqualizer)
+                 may modify inplace the input.
 
         Args:
             video (Sequence[np.ndarray] | np.ndarray): The video to preprocess.
                 Sequence of T frames (array). Each array is expected to have a shape ([D, ]H, W, C).
+            frame_ids (list[int]): Optional indices of the frames in the video.
+                Default: None (default to [0, ...,T-1])
 
         Returns:
             np.ndarray: The preprocessed video loaded as a np.ndarray.
         """
+        frame_ids = frame_ids or list(range(len(video)))
+
         # Initialize for this video
-        self.initialize(video)
+        self.initialize(video, frame_ids)
 
         output = np.empty((len(video), *self.shape), dtype=self.dtype)
-        for frame_id, frame in enumerate(video):
+        for frame_id, frame in zip(frame_ids, video, strict=True):
             output[frame_id] = self.preprocess_frame(frame, frame_id)
 
         return output

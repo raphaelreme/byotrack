@@ -60,7 +60,7 @@ class IntensityNormalizer(preprocessor.VideoPreprocessor):
         self.compute_stats_on = compute_stats_on
 
     @override
-    def initialize(self, video: Sequence[np.ndarray] | np.ndarray) -> None:
+    def initialize(self, video: Sequence[np.ndarray] | np.ndarray, frame_ids: list[int] | None = None) -> None:
         """Initialize the preprocessor for the given video.
 
         It computes `mini` and `maxi` values based on the first frames of the video.
@@ -68,6 +68,9 @@ class IntensityNormalizer(preprocessor.VideoPreprocessor):
         Args:
             video (Sequence[np.ndarray] | np.ndarray): The video to preprocess.
                 Sequence of T frames (array). Each array is expected to have a shape ([D, ]H, W, C).
+            frame_ids (list[int]): Optional indices of the frames in the video. Unused.
+                Default: None
+
         """
         super().initialize(video)
 
