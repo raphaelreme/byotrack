@@ -76,6 +76,20 @@ def _find_dim(
     return dim
 
 
+def _set_image_maximum_value(image_layer: napari.layers.Image) -> None:
+    """Get the maximum value for napari `Image.contrast_limits`."""
+    if isinstance(image_layer.data, np.ndarray):
+        maxi = float(image_layer.data.max())
+    else:  # Get max only from the first frame
+        maxi = float(np.asarray(image_layer.data[0]).max())
+
+    if np.issubdtype(image_layer.dtype, np.floating):
+        # Probably normalized -> 1 is max. (But if we find higher values, then let's take maxi)
+        image_layer.contrast_limits = (0.0, max(1, maxi))
+    else:
+        image_layer.contrast_limits = (0.0, maxi)
+
+
 def add_video(
     viewer: napari.Viewer,
     video: Sequence[np.ndarray] | np.ndarray,
@@ -116,12 +130,15 @@ def add_video(
     axis_labels: tuple[str, ...] = ("Time", "Depth", "Height", "Width") if dim == 3 else ("Time", "Height", "Width")  # noqa: PLR2004
     scale = (1.0, *anisotropy[-dim:])  # Add the temporal scale
 
+    layer: napari.layers.Image
     if rgb and video_.shape[-1] in (3, 4):  # RGB only supports 3 or 4 channels
-        viewer.add_image(video_, name="Video (RGB)", axis_labels=axis_labels, scale=scale, rgb=True)
+        layer = viewer.add_image(video_, name="Video (RGB)", axis_labels=axis_labels, scale=scale, rgb=True)
+        _set_image_maximum_value(layer)
     else:
         layers = viewer.add_image(video_, channel_axis=-1, axis_labels=axis_labels, scale=scale)
         for i, layer in enumerate(layers):
             layer.name = f"Video (Ch. {i})"
+            _set_image_maximum_value(layer)
 
 
 def add_detections(
