@@ -67,7 +67,8 @@ class ChannelProjection(preprocessor.VideoPreprocessor):
         if self.method == "min":
             return frame.min(-1, keepdims=True)
         if self.method == "mean":
-            return frame.mean(-1, keepdims=True).astype(frame.dtype)  # Note: using dtype overflows
+            # Note: dtype parameter of mean may cause overflows for uint8/16
+            return frame.astype(np.float32, copy=False).mean(-1, keepdims=True).astype(frame.dtype, copy=False)
 
         return frame[..., self.selected : self.selected + 1]
 
@@ -78,6 +79,9 @@ class ChannelProjection(preprocessor.VideoPreprocessor):
         if not isinstance(video, np.ndarray):
             return super().preprocess_video(video)
 
+        if self.method == "mean" and np.issubdtype(video.dtype, np.integer):
+            return super().preprocess_video(video)  # Video would have been converted to float and then back to int...
+
         # Initialize for this video
         self.initialize(video)
 
@@ -87,6 +91,6 @@ class ChannelProjection(preprocessor.VideoPreprocessor):
         if self.method == "min":
             return video.min(-1, keepdims=True)
         if self.method == "mean":
-            return video.mean(-1, keepdims=True).astype(video.dtype)  # Note: using dtype overflows
+            return video.mean(-1, keepdims=True).astype(video.dtype, copy=False)
 
         return video[..., self.selected : self.selected + 1]

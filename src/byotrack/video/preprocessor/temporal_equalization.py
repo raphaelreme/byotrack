@@ -85,7 +85,7 @@ class TemporalEqualizer(preprocessor.VideoPreprocessor):
                     video[:: self.frame_step], desc="IntensityTemporalEqualization - Computing quantiles..."
                 )
             ]
-        ).astype(np.float32)
+        ).astype(np.float32, copy=False)
 
         self.tps.fit(
             torch.tensor(frame_ids, dtype=torch.float32)[:: self.frame_step], torch.from_numpy(self._quantiles)
@@ -94,7 +94,7 @@ class TemporalEqualizer(preprocessor.VideoPreprocessor):
 
     @override
     def preprocess_frame(self, frame: np.ndarray, frame_id=0) -> np.ndarray:
-        frame = frame.astype(np.float32)  # Copy only if needed
+        frame = frame.astype(np.float32, copy=False)
         frame /= self._ratios[frame_id]
         return frame
 
@@ -110,6 +110,6 @@ class TemporalEqualizer(preprocessor.VideoPreprocessor):
         # Initialize for this video
         self.initialize(video, frame_ids)
 
-        video = video.astype(np.float32)  # Copy only if needed
+        video = video.astype(np.float32, copy=False)
         video /= self._ratios[frame_ids][(slice(None),) + (None,) * (video.ndim - 2)]
         return video

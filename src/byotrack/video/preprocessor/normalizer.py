@@ -85,11 +85,11 @@ class IntensityNormalizer(preprocessor.VideoPreprocessor):
 
         axis = tuple(range(frames.ndim - 1))
         frames = frames[: self.compute_stats_on]
-        self.mini = np.quantile(frames, self.q_min, axis=axis).astype(frames.dtype)
-        self.maxi = np.quantile(frames, self.q_max, axis=axis).astype(frames.dtype)
+        self.mini = np.quantile(frames, self.q_min, axis=axis).astype(frames.dtype, copy=False)
+        self.maxi = np.quantile(frames, self.q_max, axis=axis).astype(frames.dtype, copy=False)
 
         if self.smooth_clip > 0:
-            ratio = frames.max(axis=axis).astype(np.float32) / (self.maxi + (self.maxi == 0))
+            ratio = frames.max(axis=axis).astype(np.float32, copy=False) / (self.maxi + (self.maxi == 0))
             self.max = 1 + 0.5 * np.log(np.maximum(1, 1 + (ratio - 1) / 0.5))
 
     @override
@@ -99,7 +99,7 @@ class IntensityNormalizer(preprocessor.VideoPreprocessor):
             frame -= self.mini
 
             # Divide by one if mini == maxi
-            frame = frame.astype(np.float32)  # Copy only if needed
+            frame = frame.astype(np.float32, copy=False)
             frame /= self.maxi - self.mini + (self.maxi == self.mini)
 
             # Gamma correction
@@ -110,7 +110,7 @@ class IntensityNormalizer(preprocessor.VideoPreprocessor):
 
         np.clip(frame, self.mini, None, out=frame)
         frame -= self.mini
-        frame = frame.astype(np.float32)  # Copy only if needed
+        frame = frame.astype(np.float32, copy=False)
         frame /= self.maxi - self.mini + (self.maxi == self.mini)
 
         # Log clipping high values

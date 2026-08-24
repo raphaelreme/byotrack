@@ -121,13 +121,6 @@ def test_normalizer_hard_clip_output_range_3d(video_3d: np.ndarray):
     assert (norm.max == 1.0).all()
 
 
-def test_normalizer_output_dtype_is_float32(video_2d: np.ndarray):
-    norm = IntensityNormalizer(q_min=0.0, q_max=1.0)
-    norm.initialize(video_2d)
-    out = norm.preprocess_frame(video_2d[0])
-    assert out.dtype == norm.dtype == np.float32
-
-
 def test_normalizer_uniform_channel_no_division_by_zero():
     # All pixels in a channel are identical → mini == maxi
     uniform = np.full((5, 10, 10, 1), 128, dtype=np.uint8)
@@ -261,6 +254,21 @@ def test_normalizer_gamma_output_range_bounded(video_2d: np.ndarray):
         assert out.max() <= 1.0
 
 
+def test_normalizer_dtype_and_shape_attributes(video_2d: np.ndarray, video_3d: np.ndarray):
+    for video in [video_2d, video_3d, video_2d.astype(np.float32), video_3d.astype(np.float64)]:
+        norm = IntensityNormalizer(q_min=0.0, q_max=1.0)
+        norm.initialize(video)
+        out_frame = norm.preprocess_frame(video[0])
+        out_video = norm.preprocess_video(video)
+
+        assert out_frame.dtype == out_video.dtype == norm.dtype == np.float32
+        assert out_frame.shape == norm.shape == video.shape[1:]
+        assert out_video.shape == video.shape
+
+        assert out_video.min() >= 0.0
+        assert out_video.max() <= 1.0
+
+
 ## Intensity temporal equalization
 
 
@@ -280,16 +288,6 @@ def test_temporal_equalization_corrects_known_linear_drift():
     for i, frame in enumerate(video):
         out = proc.preprocess_frame(frame.copy(), i)
         assert np.isclose(np.quantile(out, 0.5), 1.0, atol=1e-5)
-
-
-def test_temporal_equalization_output_dtype_is_float32(video_3d: np.ndarray):
-    proc = TemporalEqualizer(quantile=0.5, frame_step=1)
-    proc.initialize(video_3d)
-    out = proc.preprocess_frame(video_3d[0].copy(), 0)
-
-    assert out.dtype == np.float32
-    assert proc.dtype == np.float32
-    assert proc._ratios.shape == (video_3d.shape[0], video_3d.shape[-1])  # T, C
 
 
 def test_temporal_equalization_frame_step_subsamples():
@@ -323,6 +321,24 @@ def test_temporal_equalization_preprocess_video_ndarray_vs_list(video_2d: np.nda
 
     assert out_array.shape == out_list.shape
     assert np.allclose(out_array, out_list)
+
+
+def test_temporal_equalization_dtype_and_shape_attributes(video_2d: np.ndarray, video_3d: np.ndarray):
+    for video in [video_2d, video_3d, video_2d.astype(np.float32), video_3d.astype(np.float64)]:
+        proc = TemporalEqualizer(quantile=0.5, frame_step=2)
+        proc.initialize(video)
+        out_frame = proc.preprocess_frame(video[0])
+        out_video = proc.preprocess_video(video)
+
+        assert out_frame.dtype == out_video.dtype == proc.dtype == np.float32
+        assert out_frame.shape == proc.shape == video.shape[1:]
+        assert out_video.shape == video.shape
+
+        assert out_video.min() >= 0.0
+        assert out_video.max() >= 1.0  # quantile 0.5 is around 1.0 -> many values should be above
+
+        assert proc._ratios.shape == (video.shape[0], video.shape[-1])  # T, C
+        assert proc._quantiles.shape == (video.shape[0] // 2, video.shape[-1])  # T / 2, C
 
 
 ## ChannelProjection
@@ -406,6 +422,18 @@ def test_channel_projection_do_no_overflow():
     assert (out == 200).all()
 
 
+def test_channel_projection_dtype_and_shape_attributes(video_2d: np.ndarray, video_3d: np.ndarray):
+    for video in [video_2d, video_3d, video_2d.astype(np.float32), video_3d.astype(np.float64)]:
+        proc = ChannelProjection(method="mean")
+        proc.initialize(video)
+        out_frame = proc.preprocess_frame(video[0])
+        out_video = proc.preprocess_video(video)
+
+        assert out_frame.dtype == out_video.dtype == proc.dtype == video.dtype
+        assert out_frame.shape == proc.shape == (*video.shape[1:-1], 1)
+        assert out_video.shape == (*video.shape[:-1], 1)
+
+
 ## FrameSlicer
 
 
@@ -451,6 +479,19 @@ def test_frame_slicer_preprocess_video_ndarray_vs_list(video_2d: np.ndarray):
 
     assert out_array.shape == (10, 10, 10, 3)
     assert (out_array == out_list).all()
+
+
+def test_frame_slicer_dtype_and_shape_attributes(video_2d: np.ndarray, video_3d: np.ndarray):
+    slices = (slice(1, 2), slice(5, 15))
+    for video in [video_2d, video_3d, video_2d.astype(np.float32), video_3d.astype(np.float64)]:
+        proc = FrameSlicer(slices)
+        proc.initialize(video)
+        out_frame = proc.preprocess_frame(video[0])
+        out_video = proc.preprocess_video(video)
+
+        assert out_frame.dtype == out_video.dtype == proc.dtype == video.dtype
+        assert out_frame.shape == proc.shape == video[0][slices].shape
+        assert out_video.shape == video[(slice(None), *slices)].shape
 
 
 ## SpatialProjection
@@ -596,6 +637,18 @@ def test_spatial_projection_do_no_overflow():
     assert (out == 200).all()
 
 
+def test_spatial_projection_dtype_and_shape_attributes(video_3d: np.ndarray):
+    for video in [video_3d, video_3d.astype(np.float64)]:
+        proc = SpatialProjection("Z", method="mean")
+        proc.initialize(video)
+        out_frame = proc.preprocess_frame(video[0])
+        out_video = proc.preprocess_video(video)
+
+        assert out_frame.dtype == out_video.dtype == proc.dtype == video.dtype
+        assert out_frame.shape == proc.shape == video[0, 0].shape
+        assert out_video.shape == video[:, 0].shape
+
+
 ## Registrator
 
 
@@ -626,22 +679,6 @@ def test_registrator_preprocess_before_init_raises(video_2d: np.ndarray):
     reg = Registrator()
     with pytest.raises(ValueError, match="not initialized"):
         reg.preprocess_frame(video_2d[0])
-
-
-def test_registrator_preprocess_video_shape_and_dtype_2d(video_2d: np.ndarray):
-    reg = Registrator()
-    out = reg.preprocess_video(video_2d)
-
-    assert out.shape == video_2d.shape
-    assert out.dtype == video_2d.dtype
-
-
-def test_registrator_preprocess_video_shape_and_dtype_3d(video_3d: np.ndarray):
-    reg = Registrator()
-    out = reg.preprocess_video(video_3d)
-
-    assert out.shape == video_3d.shape
-    assert out.dtype == video_3d.dtype
 
 
 def test_registrator_recovers_known_integer_shift():
@@ -678,3 +715,15 @@ def test_registrator_applies_same_shift_to_all_channels():
 
     assert np.allclose(out[..., 0], reference_frame[..., 0])
     assert np.allclose(out[..., 1], reference_frame[..., 1])
+
+
+def test_registrator_dtype_and_shape_attributes(video_2d: np.ndarray, video_3d: np.ndarray):
+    for video in [video_2d, video_3d, video_2d.astype(np.float32), video_3d.astype(np.float64)]:
+        proc = Registrator()
+        proc.initialize(video)
+        out_frame = proc.preprocess_frame(video[5])
+        out_video = proc.preprocess_video(video)
+
+        assert out_frame.dtype == out_video.dtype == proc.dtype == video.dtype
+        assert out_frame.shape == proc.shape == video[0].shape
+        assert out_video.shape == video.shape

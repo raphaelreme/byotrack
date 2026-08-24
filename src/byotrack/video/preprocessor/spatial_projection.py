@@ -50,7 +50,8 @@ class SpatialProjection(preprocessor.VideoPreprocessor):
         selected: int = 0,
     ):
         super().__init__()
-        self.axis = self.axes_to_int.get(axis, 100) if isinstance(axis, str) else axis
+        _not_an_axis = 100
+        self.axis = self.axes_to_int.get(axis, _not_an_axis) if isinstance(axis, str) else axis
 
         if self.axis < 0:
             self.axis = 3 + self.axis
@@ -92,7 +93,8 @@ class SpatialProjection(preprocessor.VideoPreprocessor):
         if self.method == "min":
             return frame.min(self.axis)
         if self.method == "mean":
-            return frame.mean(self.axis).astype(frame.dtype)  # Note: using dtype overflows
+            # Note: dtype parameter of mean may cause overflows for uint8/16
+            return frame.astype(np.float32, copy=False).mean(self.axis).astype(frame.dtype, copy=False)
 
         slices = [slice(None)] * self.axis + [self.selected]
         return frame[tuple(slices)]
@@ -103,6 +105,9 @@ class SpatialProjection(preprocessor.VideoPreprocessor):
     ) -> np.ndarray:
         if not isinstance(video, np.ndarray):
             return super().preprocess_video(video)
+
+        if self.method == "mean" and np.issubdtype(video.dtype, np.integer):
+            return super().preprocess_video(video)  # Video would have been converted to float and then back to int...
 
         # Initialize for this video
         self.initialize(video)
@@ -115,7 +120,7 @@ class SpatialProjection(preprocessor.VideoPreprocessor):
         if self.method == "min":
             return video.min(axis)
         if self.method == "mean":
-            return video.mean(axis).astype(video.dtype)  # Note: using dtype overflows
+            return video.mean(axis).astype(video.dtype, copy=False)
 
         slices = [slice(None)] * (axis) + [self.selected]
         return video[tuple(slices)]
