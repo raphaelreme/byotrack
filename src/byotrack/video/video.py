@@ -4,17 +4,18 @@ import dataclasses
 import os
 import warnings
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import numpy as np
 
-from byotrack.video import ChannelProjection, FrameSlicer, IntensityNormalizer, SpatialProjection
+from byotrack.video import ChannelProjection, FrameSlicer, IntensityNormalizer, SpatialProjection, Zoom
 from byotrack.video.reader import ArrayVideoReader, VideoReader, slice_length
 
 if TYPE_CHECKING:
     from types import EllipsisType
 
     from byotrack.video import VideoPreprocessor
+    from byotrack.video.preprocessor.zoom import ZoomMode, ZoomOrder
 
 
 @dataclasses.dataclass
@@ -193,6 +194,134 @@ class Video(Sequence[np.ndarray]):
                 )
 
         return self._copy().add_preprocessor(IntensityNormalizer(q_min, q_max, gamma, smooth_clip, compute_stats_on))
+
+    def rescale(
+        self,
+        scale_factors: tuple[float, ...],
+        *,
+        order: ZoomOrder = 1,
+        mode: ZoomMode = "reflect",
+        cval: float = 0.0,
+        anti_aliasing: bool = False,
+    ) -> Video:
+        """Rescale the video with the given spatial scales.
+
+        Copy the video and adds the `Zoom` preprocessor with the given arguments.
+
+        Note: For pure integer down-scaling by local averaging, see `LocalMeanDownscaler`,
+            usable directly through `add_preprocessor`.
+
+        Args:
+            scale_factors (tuple[float, ...]): Zoom factor for each spatial axis ([D, ]H, W).
+                Values above 1 up-scale, values below 1 down-scale.
+            order (ZoomOrder): Spline interpolation order used by `scipy.ndimage.zoom`
+                (0: nearest neighbor, 1: linear, up to 5: quintic spline).
+                Default: 1
+            mode (ZoomMode): Boundary handling mode used by `scipy.ndimage`, used both by the
+                optional anti-aliasing filter and by the zoom itself.
+                Default: "reflect"
+            cval (float): Constant value used when `mode` is "constant" (or "grid-constant").
+                Default: 0.0
+            anti_aliasing (bool): Whether to Gaussian-blur each frame before zooming, to reduce
+                aliasing artifacts when down-scaling.
+                Default: False
+
+        Returns:
+            byotrack.Video: the rescaled video
+        """
+        return self._copy().add_preprocessor(
+            Zoom(scale_factors, order=order, mode=mode, cval=cval, anti_aliasing=anti_aliasing)
+        )
+
+    def resize(
+        self,
+        size: tuple[int, ...],
+        *,
+        order: ZoomOrder = 1,
+        mode: ZoomMode = "reflect",
+        cval: float = 0.0,
+        anti_aliasing: bool = False,
+    ) -> Video:
+        """Resize the video to the given spatial size.
+
+        Copy the video and adds the `Zoom` preprocessor with the scale factors required to reach
+        the given `size`.
+
+        Args:
+            size (tuple[int, ...]): Target size for each spatial axis ([D, ]H, W).
+            order (ZoomOrder): Spline interpolation order used by `scipy.ndimage.zoom`
+                (0: nearest neighbor, 1: linear, up to 5: quintic spline).
+                Default: 1
+            mode (ZoomMode): Boundary handling mode used by `scipy.ndimage`, used both by the
+                optional anti-aliasing filter and by the zoom itself.
+                Default: "reflect"
+            cval (float): Constant value used when `mode` is "constant" (or "grid-constant").
+                Default: 0.0
+            anti_aliasing (bool): Whether to Gaussian-blur each frame before zooming, to reduce
+                aliasing artifacts when down-scaling.
+                Default: False
+
+        Returns:
+            byotrack.Video: the resized video
+        """
+        return self.rescale(
+            tuple(out_size / in_size for out_size, in_size in zip(size, self.shape[1:-1], strict=True)),
+            order=order,
+            mode=mode,
+            cval=cval,
+            anti_aliasing=anti_aliasing,
+        )
+
+    def isotrope(
+        self,
+        anisotropy: tuple[float, float, float],
+        target: Literal["min", "max", "same"],
+        *,
+        order: ZoomOrder = 1,
+        mode: ZoomMode = "reflect",
+        cval: float = 0.0,
+        anti_aliasing: bool = False,
+    ) -> Video:
+        """Rescale the video into an isotrope one.
+
+        Copy the video and adds the `Zoom` preprocessor with the scale factors required to make
+        every spatial axis span the same physical pixel size, given the current `anisotropy`.
+
+        Args:
+            anisotropy (tuple[float, float, float]): Physical pixel size for each spatial axis
+                (Z, Y, X). Only the last `ndim - 2` values are used (Y, X for 2D videos).
+            target (Literal["min", "max", "same"]): How to pick the common physical pixel size.
+                "min": use the largest physical pixel size (shrinks the video).
+                "max": use the smallest physical pixel size (grows the video).
+                "same": use the geometric mean physical pixel size (roughly preserves the pixel count).
+            order (ZoomOrder): Spline interpolation order used by `scipy.ndimage.zoom`
+                (0: nearest neighbor, 1: linear, up to 5: quintic spline).
+                Default: 1
+            mode (ZoomMode): Boundary handling mode used by `scipy.ndimage`, used both by the
+                optional anti-aliasing filter and by the zoom itself.
+                Default: "reflect"
+            cval (float): Constant value used when `mode` is "constant" (or "grid-constant").
+                Default: 0.0
+            anti_aliasing (bool): Whether to Gaussian-blur each frame before zooming, to reduce
+                aliasing artifacts when down-scaling.
+                Default: False
+
+        Returns:
+            byotrack.Video: the isotropic video
+        """
+        anisotropy_ = anisotropy[-(self.ndim - 2) :]
+
+        if target == "min":  # min video size => use the largest pixel size
+            pixel_size = max(anisotropy_)
+        elif target == "max":
+            pixel_size = min(anisotropy_)
+        else:
+            # We keep roughly the same number of pixels
+            pixel_size = float(np.prod(anisotropy_)) ** (1 / len(anisotropy_))
+
+        scale_factors = tuple(ani / pixel_size for ani in anisotropy_)
+
+        return self.rescale(scale_factors, order=order, mode=mode, cval=cval, anti_aliasing=anti_aliasing)
 
     def _preprocess(self, frame: np.ndarray, frame_id: int) -> np.ndarray:
         for preprocessor in self._preprocessors:

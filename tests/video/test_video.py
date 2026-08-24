@@ -557,6 +557,118 @@ def test_video_normalize_do_not_warns_with_other_preprocessor(video_2d: np.ndarr
     assert normalized.dtype == np.float32
 
 
+## Rescale
+
+
+def test_video_rescale_basic(video_2d: np.ndarray):
+    video = byotrack.Video(video_2d)
+    rescaled = video.rescale((2.0, 0.5))
+
+    assert rescaled is not video
+    assert rescaled.shape == (10, 40, 15, 3)
+    assert rescaled.dtype == video_2d.dtype
+    assert video.shape == video_2d.shape  # Unchanged as rescale returns a copy
+
+
+def test_video_rescale_3d(video_3d: np.ndarray):
+    video = byotrack.Video(video_3d)
+    rescaled = video.rescale((1.0, 0.5, 0.5))
+
+    assert rescaled.shape == (8, 5, 10, 15, 2)
+
+
+def test_video_rescale_forwards_zoom_params(video_2d: np.ndarray):
+    video = byotrack.Video(video_2d)
+    rescaled = video.rescale((0.5, 0.5), order=0, mode="constant", cval=1.0, anti_aliasing=True)
+
+    zoom = rescaled._preprocessors[-1]
+    assert isinstance(zoom, byotrack.video.Zoom)
+    assert zoom.order == 0
+    assert zoom.mode == "constant"
+    assert zoom.cval == 1.0
+    assert zoom.anti_aliasing is True
+
+
+## Resize
+
+
+def test_video_resize_basic(video_2d: np.ndarray):
+    video = byotrack.Video(video_2d)
+    resized = video.resize((40, 45))
+
+    assert resized.shape == (10, 40, 45, 3)
+
+
+def test_video_resize_forwards_zoom_params(video_2d: np.ndarray):
+    video = byotrack.Video(video_2d)
+    resized = video.resize((10, 15), order=0, mode="nearest")
+
+    zoom = resized._preprocessors[-1]
+    assert isinstance(zoom, byotrack.video.Zoom)
+    assert zoom.order == 0
+    assert zoom.mode == "nearest"
+
+
+## Isotrope
+
+
+def test_video_isotrope_min_reduces_video_size(video_2d: np.ndarray):
+    video = byotrack.Video(video_2d)
+    out = video.isotrope((1.0, 1.0, 2.0), "min")
+
+    assert np.prod(out.shape) <= np.prod(video_2d.shape)
+
+    assert out.shape == (10, 10, 30, 3)  # Y halved (pixel size 1 vs 2), X unchanged
+
+
+def test_video_isotrope_max_increases_video_size(video_2d: np.ndarray):
+    video = byotrack.Video(video_2d)
+    out = video.isotrope((1.0, 1.0, 2.0), "max")
+
+    assert np.prod(out.shape) >= np.prod(video_2d.shape)
+    assert out.shape == (10, 20, 60, 3)  # Y unchanged, X doubled (pixel size 2 vs 1)
+
+
+def test_video_isotrope_same_approximates_pixel_count(video_2d: np.ndarray):
+    video = byotrack.Video(video_2d)
+    out = video.isotrope((1.0, 4.0, 1.0), "same")  # Go to anisotropy (1, 2, 2)
+
+    assert np.prod(out.shape) == np.prod(video_2d.shape)  # In that case, approximation is exact
+    assert out.shape == (10, 40, 15, 3)
+
+
+def test_video_isotrope_3d(video_3d: np.ndarray):
+    video = byotrack.Video(video_3d)
+
+    assert video.isotrope((2.0, 1.0, 1.0), "min").shape == (8, 5, 10, 15, 2)
+    assert video.isotrope((2.0, 1.0, 1.0), "max").shape == (8, 10, 20, 30, 2)
+    assert video.isotrope((4.0, 2.0, 1.0), "same").shape == (8, 10, 20, 15, 2)
+
+
+def test_video_isotrope_is_no_op_for_isotrope_video(video_2d: np.ndarray, video_3d: np.ndarray):
+    video = byotrack.Video(video_2d)
+
+    assert video.isotrope((1.0, 1.0, 1.0), "min").shape == video.shape
+    assert video.isotrope((1.0, 1.0, 1.0), "max").shape == video.shape
+    assert video.isotrope((1.0, 1.0, 1.0), "same").shape == video.shape
+
+    video = byotrack.Video(video_3d)
+
+    assert video.isotrope((0.425, 0.425, 0.425), "min").shape == video.shape
+    assert video.isotrope((2.0, 2.0, 2.0), "max").shape == video.shape
+    assert video.isotrope((1.0, 1.0, 1.0), "same").shape == video.shape
+
+
+def test_video_isotrope_forwards_zoom_params(video_2d: np.ndarray):
+    video = byotrack.Video(video_2d)
+    resized = video.isotrope((1.0, 2.0, 1.0), "min", order=3, mode="mirror")
+
+    zoom = resized._preprocessors[-1]
+    assert isinstance(zoom, byotrack.video.Zoom)
+    assert zoom.order == 3
+    assert zoom.mode == "mirror"
+
+
 ## set_transform (deprecated)
 
 

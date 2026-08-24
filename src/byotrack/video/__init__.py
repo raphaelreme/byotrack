@@ -11,6 +11,7 @@ from byotrack.video.preprocessor.registrator import Registrator
 from byotrack.video.preprocessor.slicer import FrameSlicer
 from byotrack.video.preprocessor.spatial_projection import SpatialProjection
 from byotrack.video.preprocessor.temporal_equalization import TemporalEqualizer
+from byotrack.video.preprocessor.zoom import LocalMeanDownscaler, Zoom
 from byotrack.video.reader import ArrayVideoReader, OpenCVVideoReader, TiffVideoReader, VideoReader
 from byotrack.video.video import Video, VideoTransformConfig, video_dtype, video_length, video_shape
 
@@ -19,6 +20,7 @@ __all__ = [
     "ChannelProjection",
     "FrameSlicer",
     "IntensityNormalizer",
+    "LocalMeanDownscaler",
     "OpenCVVideoReader",
     "Registrator",
     "SpatialProjection",
@@ -28,6 +30,7 @@ __all__ = [
     "VideoPreprocessor",
     "VideoReader",
     "VideoTransformConfig",
+    "Zoom",
     "video_dtype",
     "video_length",
     "video_shape",

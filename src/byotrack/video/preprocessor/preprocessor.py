@@ -65,7 +65,7 @@ class VideoPreprocessor(ABC):
     def preprocess_frame(self, frame: np.ndarray, frame_id=0) -> np.ndarray:
         """Preprocess the given frame.
 
-        Warning: Some preprocessors (IntensityNormalizer, Registrator, TemporalEqualizer)
+        Warning: Some preprocessors (IntensityNormalizer, Registrator, TemporalEqualizer, Zoom)
                  may modify inplace the input.
 
         Args:
@@ -89,7 +89,7 @@ class VideoPreprocessor(ABC):
         Warning: Consider using the online version, which is integrated into the Video class.
                  This will requires much more memory than its online counterpart.
 
-        Warning: Some preprocessors (IntensityNormalizer, Registrator, TemporalEqualizer)
+        Warning: Some preprocessors (IntensityNormalizer, Registrator, TemporalEqualizer, Zoom)
                  may modify inplace the input.
 
         Args:

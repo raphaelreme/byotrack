@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import sys
 
 import numpy as np
@@ -13,6 +14,7 @@ from byotrack.video.preprocessor.registrator import Registrator
 from byotrack.video.preprocessor.slicer import FrameSlicer
 from byotrack.video.preprocessor.spatial_projection import SpatialProjection
 from byotrack.video.preprocessor.temporal_equalization import TemporalEqualizer
+from byotrack.video.preprocessor.zoom import LocalMeanDownscaler, Zoom
 
 if sys.version_info < (3, 12):
     from typing_extensions import override
@@ -727,3 +729,141 @@ def test_registrator_dtype_and_shape_attributes(video_2d: np.ndarray, video_3d: 
         assert out_frame.dtype == out_video.dtype == proc.dtype == video.dtype
         assert out_frame.shape == proc.shape == video[0].shape
         assert out_video.shape == video.shape
+
+
+## Zoom
+
+
+def test_zoom_2d(video_2d: np.ndarray):
+    zoom = Zoom((2.0, 0.5))
+    zoom.initialize(video_2d)
+
+    assert zoom.shape == (40, 15, 3)
+
+    out = zoom.preprocess_frame(video_2d[0])
+
+    assert out.shape == (40, 15, 3)
+
+
+def test_zoom__3d(video_3d: np.ndarray):
+    zoom = Zoom((2.0, 1.0, 0.5))
+    zoom.initialize(video_3d)
+
+    assert zoom.shape == (10, 20, 15, 2)
+
+    out = zoom.preprocess_frame(video_3d[0])
+
+    assert out.shape == (10, 20, 15, 2)
+
+
+def test_zoom_mismatched_length_raises(video_2d: np.ndarray):
+    zoom = Zoom((2.0,))
+    with pytest.raises(ValueError, match="one zoom factor per spatial axis"):
+        zoom.initialize(video_2d)
+
+
+def test_zoom_order_0_integer_upscale_matches_repeat():
+    pattern = np.arange(16).reshape(1, 4, 4, 1).astype(np.float32)
+
+    zoom = Zoom((2.0, 2.0), order=0)
+    zoom.initialize(pattern)
+    out = zoom.preprocess_frame(pattern[0].copy())
+
+    expected = np.repeat(np.repeat(pattern[0], 2, axis=0), 2, axis=1)
+    assert np.array_equal(out, expected)
+
+
+def test_zoom_no_anti_aliasing_does_not_mutate_input_frame(video_2d: np.ndarray):
+    zoom = Zoom((0.5, 0.5), anti_aliasing=False)
+    zoom.initialize(video_2d)
+
+    frame = video_2d[0].copy()
+    original = frame.copy()
+    zoom.preprocess_frame(frame)
+
+    assert np.array_equal(frame, original)
+
+
+def test_zoom_anti_aliasing_mutates_input_frame(video_2d: np.ndarray):
+    # Intentional: filtering in place avoids a second large allocation (see Zoom's docstring).
+    zoom = Zoom((0.5, 0.5), anti_aliasing=True)
+    zoom.initialize(video_2d)
+
+    frame = video_2d[0].astype(np.float32)
+    original = frame.copy()
+    zoom.preprocess_frame(frame)
+
+    assert not np.array_equal(frame, original)
+
+
+def test_zoom_dtype_and_shape_attributes(video_2d: np.ndarray, video_3d: np.ndarray):
+    for video in [video_2d, video_3d, video_2d.astype(np.float32), video_3d.astype(np.float64)]:
+        zoom = Zoom((2,) * (video.ndim - 2))
+        zoom.initialize(video)
+        out_frame = zoom.preprocess_frame(video[0])
+        out_video = zoom.preprocess_video(video)
+
+        assert out_frame.dtype == out_video.dtype == zoom.dtype == video.dtype
+        assert out_frame.shape[:-1] == zoom.shape[:-1] == tuple(shape * 2 for shape in video[0].shape[:-1])
+        assert out_frame.shape[-1] == zoom.shape[-1] == video.shape[-1]
+        assert out_video.shape[1:-1] == tuple(shape * 2 for shape in video.shape[1:-1])
+        assert out_video.shape[0] == video.shape[0]
+        assert out_video.shape[-1] == video.shape[-1]
+
+
+## LocalMeanDownscaler
+
+
+def test_local_mean_downscaler_2d(video_2d: np.ndarray):
+    down = LocalMeanDownscaler((3, 4))
+    down.initialize(video_2d)
+
+    assert down.shape == (7, 8, 3)  # ceil(20 / 3), ceil(30 / 4)
+
+    out = down.preprocess_frame(video_2d[0])
+
+    assert out.shape == (7, 8, 3)
+
+
+def test_local_mean_downscaler_shape_3d(video_3d: np.ndarray):
+    down = LocalMeanDownscaler((2, 3, 4))
+    down.initialize(video_3d)
+
+    assert down.shape == (3, 7, 8, 2)  # ceil(5 / 2), ceil(20 / 3), ceil(30 / 4)
+
+    out = down.preprocess_frame(video_3d[0])
+
+    assert out.shape == (3, 7, 8, 2)
+
+
+def test_local_mean_downscaler_mismatched_length_raises(video_2d: np.ndarray):
+    down = LocalMeanDownscaler((2,))
+    with pytest.raises(ValueError, match="one downscale factor per spatial axis"):
+        down.initialize(video_2d)
+
+
+def test_local_mean_downscaler_matches_manual_block_mean():
+    frame = np.arange(24).reshape(1, 4, 6, 1).astype(np.uint8)
+
+    down = LocalMeanDownscaler((2, 2))
+    down.initialize(frame)
+    out = down.preprocess_frame(frame[0].copy())
+
+    expected = frame[0].reshape(2, 2, 3, 2, 1).astype(np.float32).mean(axis=(1, 3))
+    assert out.shape == (2, 3, 1)
+    assert np.allclose(out, expected)
+
+
+def test_local_mean_dtype_and_shape_attributes(video_2d: np.ndarray, video_3d: np.ndarray):
+    for video in [video_2d, video_3d, video_2d.astype(np.float32), video_3d.astype(np.float64)]:
+        zoom = LocalMeanDownscaler((2,) * (video.ndim - 2))
+        zoom.initialize(video)
+        out_frame = zoom.preprocess_frame(video[0])
+        out_video = zoom.preprocess_video(video)
+
+        assert out_frame.dtype == out_video.dtype == zoom.dtype == np.float32
+        assert out_frame.shape[:-1] == zoom.shape[:-1] == tuple(math.ceil(shape / 2) for shape in video[0].shape[:-1])
+        assert out_frame.shape[-1] == zoom.shape[-1] == video.shape[-1]
+        assert out_video.shape[1:-1] == tuple(math.ceil(shape / 2) for shape in video.shape[1:-1])
+        assert out_video.shape[0] == video.shape[0]
+        assert out_video.shape[-1] == video.shape[-1]

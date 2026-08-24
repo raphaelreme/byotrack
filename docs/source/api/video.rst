@@ -28,3 +28,7 @@ Video Preprocessors
 .. automodule:: byotrack.video.preprocessor.slicer
 
 .. automodule:: byotrack.video.preprocessor.registrator
+
+.. automodule:: byotrack.video.preprocessor.temporal_equalization
+
+.. automodule:: byotrack.video.preprocessor.zoom
