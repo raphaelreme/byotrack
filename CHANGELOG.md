@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.6] - 2026-08-25
+
+### Added
+
+- New video rescaling preprocessors, `Zoom` and `LocalMeanDownscaler`
+  (`byotrack.video.preprocessor.zoom`), along with `Video.rescale`,
+  `Video.resize` and `Video.isotrope` convenience methods to spatially
+  rescale/resize a video or bring an anisotropic (typically 3D) video to an
+  isotropic voxel size.
+- New `TemporalEqualizer` video preprocessor
+  (`byotrack.video.preprocessor.temporal_equalization`) to correct slow
+  temporal illumination drift (bleaching, light source drift, ...): it
+  tracks a reference intensity quantile through time, smooths/interpolates
+  it with a thin-plate spline, and rescales each frame so that this
+  quantile stays ~1.0 across the video.
+- `IntensityNormalizer`/`Video.normalize`: new `gamma` argument to apply
+  gamma correction after intensity normalization.
+
+### Changed
+
+- `VideoPreprocessor.initialize`/`preprocess_video`: now accept an
+  optional `frame_ids` argument (indices of the frames being processed),
+  used by `TemporalEqualizer` to know each frame's temporal position when
+  preprocessing a slice/subset of a video rather than the whole sequence.
+- `ChannelProjection`, `SpatialProjection`, `IntensityNormalizer` and
+  `TemporalEqualizer`: preprocessors now consistently use
+  `np.ndarray.astype(..., copy=False)`, avoiding array copies that were
+  previously made despite existing "copy only if needed" comments.
+- `ChannelProjection`/`SpatialProjection`: `"mean"` projection of
+  integer-typed videos now falls back to the frame-by-frame path instead
+  of converting the whole video to a large `float64` array and back,
+  reducing peak memory usage.
+
+### Fixed
+
+- `byotrack.napari.add_video`: fixed the computation of image layers'
+  `contrast_limits` upper bound, which previously relied on napari's
+  default and could leave videos poorly contrasted when displayed
+  (notably for lazily-loaded videos, where napari cannot infer the range
+  from the full data).
+
 ## [2.0.5] - 2026-08-19
 
 ### Breaking Changes
