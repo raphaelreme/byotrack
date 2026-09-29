@@ -456,7 +456,7 @@ def visualize(  # noqa: PLR0913
     if byotrack.video.video_length(video):
         add_video(viewer, video, anisotropy=anisotropy, rgb=rgb, lazy=lazy)
 
-    if detections_sequence:
+    if len(detections_sequence) != 0:
         add_detections(
             viewer,
             detections_sequence,

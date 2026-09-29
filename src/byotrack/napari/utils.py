@@ -135,10 +135,10 @@ def tracks_to_napari_tracks(  # noqa: C901
     # First, extract the "graph" attribute of Napari Tracks layer
     parents: dict[int, list[int]] = {track.identifier: [] for track in tracks}
     for track in tracks:
-        if track.parent_id >= 0:
+        if track.parent_id >= 0 and track.parent_id in parents:
             parents[track.identifier].append(track.parent_id)
 
-        if track.merge_id >= 0:
+        if track.merge_id >= 0 and track.merge_id in parents:
             parents[track.merge_id].append(track.identifier)
 
     # Then, let's add lineage to features by finding the connected components
