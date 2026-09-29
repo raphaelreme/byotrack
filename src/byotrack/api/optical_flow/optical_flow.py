@@ -80,6 +80,9 @@ class OpticalFlow(ABC):
                 Shape: ([D', ]H', W', C), dtype: float32
 
         """
+        if isinstance(self.downscale, float) and self.downscale == 1 and self.blur is None:
+            return frame  # Let's skip preprocessing in such case
+
         downscale = np.ones(frame.ndim, np.float32)
         downscale[:-1] = self.downscale  # Do not downscale channels
 
@@ -199,6 +202,10 @@ class OpticalFlow(ABC):
 
 class DummyOpticalFlow(OpticalFlow):
     """Dummy optical flow which predict no displacement for each pixel."""
+
+    @override
+    def __init__(self, downscale=1.0, blur=None):
+        super().__init__(downscale, blur)
 
     @override
     def compute(self, reference: np.ndarray, moving: np.ndarray) -> np.ndarray:
