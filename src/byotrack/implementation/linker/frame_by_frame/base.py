@@ -625,7 +625,10 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
                         # This invalidate some mappings for both 'track' and 'other', but it is fine.
                         # If 2nd branch is first to be executed this way, the 1st branch will not be executed
                         track_to_det[det_to_track[track_to_det_merge[i]]] = -1
+                        det_to_track[track_to_det_merge[i]] = i
                         track_to_det[i] = track_to_det_merge[i]
+                        track_to_det_merge[i] = -1
+                        det_to_track_merge[track_to_det[i]] = -1
                     else:  # Merge (as this is the second track, the track is just dropped)
                         track.merge_id = int(track_to_det_merge[i])  # This is not merge id yet
                         merges_to_ref.append(track)  # It will be updated once all tracks has been processed
@@ -893,11 +896,25 @@ class FrameByFrameLinker(byotrack.OnlineLinker):
             # We simply do a 2nd association between unassociated VALID tracks with associated detections
             tracks_mask = unmatched_tracks & valid_tracks
 
-            # TODO: Mass factor
-            # >> self.active_mass[tracks_mask]
+            unassigned_track_mass = self.active_mass[tracks_mask]
+            assigned_track_mass = self.active_mass[self._links[:, 0]]
+            assigned_detections_mass = detections.mass[self._links[:, 1]]
+
+            # Merge mass factor
+            # We increase the distance if the merge tracks mass do not sum to the detections mass
+            # and if the merge tracks are unevenly weighted
+            even_factor = torch.maximum(unassigned_track_mass[:, None], assigned_track_mass[None, :]) / torch.minimum(
+                unassigned_track_mass[:, None], assigned_track_mass[None, :]
+            )
+
+            sum_ = unassigned_track_mass[:, None] + assigned_track_mass[None, :]
+            mass_factor = torch.maximum(assigned_detections_mass[None, :], sum_) / torch.minimum(
+                assigned_detections_mass[None, :None], sum_
+            )
 
             self._merge_links = self.specs.association_method.solve(
-                cost[tracks_mask][:, ~self._unmatched_detections], threshold * self.specs.merge_factor
+                cost[tracks_mask][:, ~self._unmatched_detections] * even_factor * mass_factor,
+                threshold * self.specs.merge_factor,
             )
 
             # Relabel
