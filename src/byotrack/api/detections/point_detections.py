@@ -8,7 +8,6 @@ from typing import Any
 import numpy as np
 import torch
 
-import byotrack
 from byotrack.api.detections.detections import Detections, cached, draw_disk_2d, draw_disk_3d
 
 if sys.version_info < (3, 12):
@@ -61,7 +60,7 @@ class PointDetections(Detections):
         labels: torch.Tensor | None = None,
         shape: tuple[int, ...] | None = None,
         cache: bool = True,
-        compress: bool = byotrack.ZSTD_SEG,
+        compress: bool | None = None,
     ) -> None:
         """Create PointDetections.
 
@@ -80,8 +79,8 @@ class PointDetections(Detections):
             shape (tuple[int, ...] | None): Image shape ([D, ]H, W).
                 Inferred from ``ceil(max(position) + radius) + 1`` if not given.
             cache (bool): Cache lazily-computed properties. Default: True.
-            compress (bool): Compress the segmentation mask in memory using ZSTD.
-                Defaults to the ``ZSTD_SEG`` environment variable value.
+            compress (bool | None): Compress the segmentation mask in memory using ZSTD.
+                Defaults to byotrack.ZSTD_SEG (``ZSTD_SEG`` environment variable).
 
         """
         self._position = position.to(torch.float32, copy=True)
@@ -201,8 +200,9 @@ class PointDetections(Detections):
             compress=self._compress,
         )
 
-    def _to_dict(self) -> dict[str, Any]:
-        d = super()._to_dict()
+    @override
+    def _to_dict(self, compress=None) -> dict[str, Any]:
+        d = super()._to_dict(compress=compress)
         d["_type"] = "point"
         d["position"] = self._position
 
@@ -217,7 +217,7 @@ class PointDetections(Detections):
         return d
 
     @staticmethod
-    def _from_dict(data: dict[str, Any], *, cache: bool = True, compress: bool = byotrack.ZSTD_SEG) -> PointDetections:
+    def _from_dict(data: dict[str, Any], *, cache: bool = True, compress: bool | None = None) -> PointDetections:
         position = data["position"]
         radius = data.get("radius", 2.0)
         confidence = data.get("confidence")

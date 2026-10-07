@@ -427,7 +427,7 @@ class Detections(ABC):
         confidence: torch.Tensor | None = None,
         labels: torch.Tensor | None = None,
         cache: bool = True,
-        compress: bool = byotrack.ZSTD_SEG,
+        compress: bool | None = None,
     ) -> None:
         """Create a Detections.
 
@@ -439,8 +439,8 @@ class Detections(ABC):
                 on segmentation start at 1 (off-by-one).
                 Shape: (N,), dtype: int32.
             cache (bool): Cache lazily-computed properties. Default: True.
-            compress (bool): Compress the segmentation mask in memory using ZSTD.
-                Defaults to the ``ZSTD_SEG`` environment variable value.
+            compress (bool | None): Compress the segmentation mask in memory using ZSTD.
+                Defaults to byotrack.ZSTD_SEG (``ZSTD_SEG`` environment variable).
 
         """
         self._confidence = None if confidence is None else confidence.to(torch.float32, copy=True)
@@ -453,7 +453,7 @@ class Detections(ABC):
             _check_labels(self._labels, self.length)
 
         self._use_cache = cache
-        self._compress = compress
+        self._compress = byotrack.ZSTD_SEG if compress is None else compress
 
         self._cache: dict[str, torch.Tensor] = {}
         self.metadata: dict[str, torch.Tensor] = {}
@@ -573,7 +573,7 @@ class Detections(ABC):
     def __len__(self) -> int:  # noqa: D105
         return self.length
 
-    def _to_dict(self) -> dict[str, Any]:
+    def _to_dict(self, *, compress: bool | None = None) -> dict[str, Any]:  # noqa: ARG002
         """Serialize primary data to a dict.
 
         Child class should overwrite this method and include a ``"type"`` key.
@@ -587,17 +587,19 @@ class Detections(ABC):
 
         return d
 
-    def save(self, path: str | os.PathLike) -> None:
+    def save(self, path: str | os.PathLike, *, compress: bool | None = None) -> None:
         """Save detections to a file using ``torch.save``.
 
         Args:
             path (str | os.PathLike): Output path (expected ``.pt`` extension).
+            compress (bool | None): Compress the segmentation mask saved using ZSTD.
+                Overwrites ``detections._compress``.
 
         """
-        torch.save(self._to_dict(), path)
+        torch.save(self._to_dict(compress=compress), path)
 
     @staticmethod
-    def load(path: str | os.PathLike, *, cache: bool = True, compress: bool = byotrack.ZSTD_SEG) -> Detections:
+    def load(path: str | os.PathLike, *, cache: bool = True, compress: bool | None = None) -> Detections:
         """Load detections from a file written by :meth:`save`.
 
         Dispatches to the appropriate subclass based on the ``"_type"`` key.
@@ -605,8 +607,8 @@ class Detections(ABC):
         Args:
             path (str | os.PathLike): Input path.
             cache (bool): Cache lazily-computed properties. Default: True.
-            compress (bool): Compress the segmentation mask in memory using ZSTD.
-                Defaults to the ``ZSTD_SEG`` environment variable value.
+            compress (bool | None): Compress the segmentation mask in memory using ZSTD.
+                Defaults to byotrack.ZSTD_SEG (``ZSTD_SEG`` environment variable).
 
         Returns:
             Detections: The loaded detections object.
@@ -632,28 +634,37 @@ class Detections(ABC):
         return dispatch[detection_type](data, cache=cache, compress=compress)
 
     @staticmethod
-    def save_multi_frames_detections(detections_sequence: Sequence[Detections], path: str | os.PathLike) -> None:
+    def save_multi_frames_detections(
+        detections_sequence: Sequence[Detections], path: str | os.PathLike, *, compress: bool | None = None
+    ) -> None:
         """Save a sequence of per-frame detections as ``{path}/0.pt``, ``1.pt``, ...
 
         Args:
             detections_sequence (Sequence[Detections]): Detections for each frame.
             path (str | os.PathLike): Output folder (created if absent).
+            compress (bool | None): Compress the segmentation mask saved using ZSTD.
+                Overwrites ``detections._compress``.
 
         """
         path = pathlib.Path(path)
         path.mkdir(parents=True)
 
         for i, detections in enumerate(detections_sequence):
-            detections.save(path / f"{i}.pt")
+            detections.save(path / f"{i}.pt", compress=compress)
 
     @staticmethod
-    def load_multi_frames_detections(path: str | os.PathLike) -> list[Detections]:
+    def load_multi_frames_detections(
+        path: str | os.PathLike, *, cache: bool = True, compress: bool | None = None
+    ) -> list[Detections]:
         """Load a sequence of per-frame detections from a folder.
 
         Expects files named ``0.pt``, ``1.pt``, ..., ``N.pt`` in *path*.
 
         Args:
             path (str | os.PathLike): Input folder.
+            cache (bool): Cache lazily-computed properties. Default: True.
+            compress (bool | None): Compress the segmentation mask in memory using ZSTD.
+                Defaults to byotrack.ZSTD_SEG (``ZSTD_SEG`` environment variable).
 
         Returns:
             list[Detections]: Detections for each frame (ordered by index).
@@ -665,7 +676,7 @@ class Detections(ABC):
         for i, file in enumerate(f for f in files if f.suffix == ".pt"):
             if file.stem != f"{i}":
                 raise KeyError(f"The {i}th file is not '{i}.pt'")
-            detections_sequence.append(Detections.load(file))
+            detections_sequence.append(Detections.load(file, cache=cache, compress=compress))
         return detections_sequence
 
 

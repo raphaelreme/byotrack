@@ -82,7 +82,7 @@ class BBoxDetections(Detections):
         labels: torch.Tensor | None = None,
         shape: tuple[int, ...] | None = None,
         cache: bool = True,
-        compress: bool = byotrack.ZSTD_SEG,
+        compress: bool | None = None,
     ) -> None:
         """Create BBoxDetections.
 
@@ -98,8 +98,8 @@ class BBoxDetections(Detections):
             shape (tuple[int, ...] | None): Image shape ([D, ]H, W).
                 Inferred from ``max(bbox_end)`` if not given.
             cache (bool): Cache lazily-computed properties. Default: True.
-            compress (bool): Compress the segmentation mask in memory using ZSTD.
-                Defaults to the ``ZSTD_SEG`` environment variable value.
+            compress (bool | None): Compress the segmentation mask in memory using ZSTD.
+                Defaults to byotrack.ZSTD_SEG (``ZSTD_SEG`` environment variable).
 
         """
         self._bbox = bbox.to(torch.int32)
@@ -206,8 +206,9 @@ class BBoxDetections(Detections):
             compress=self._compress,
         )
 
-    def _to_dict(self) -> dict[str, Any]:
-        d = super()._to_dict()
+    @override
+    def _to_dict(self, *, compress=None) -> dict[str, Any]:
+        d = super()._to_dict(compress=compress)
         d["_type"] = "bbox"
         d["bbox"] = self._bbox
 
@@ -217,7 +218,7 @@ class BBoxDetections(Detections):
         return d
 
     @staticmethod
-    def _from_dict(data: dict[str, Any], *, cache: bool = True, compress: bool = byotrack.ZSTD_SEG) -> BBoxDetections:
+    def _from_dict(data: dict[str, Any], *, cache: bool = True, compress: bool | None = None) -> BBoxDetections:
         bbox = data["bbox"]
         confidence = data.get("confidence")
         labels = data.get("labels")

@@ -224,7 +224,7 @@ class SegmentationDetections(Detections):
         confidence: torch.Tensor | None = None,
         position_method: str | Callable = "median",
         cache: bool = True,
-        compress: bool = byotrack.ZSTD_SEG,
+        compress: bool | None = None,
     ) -> None:
         """Create SegmentationDetections.
 
@@ -240,8 +240,8 @@ class SegmentationDetections(Detections):
             shape (tuple[int, ...] | None): Image shape ([D, ]H, W).
                 Inferred from ``ceil(max(position) + radius) + 1`` if not given.
             cache (bool): Cache lazily-computed properties. Default: True.
-            compress (bool): Compress the segmentation mask in memory using ZSTD.
-                Defaults to the ``ZSTD_SEG`` environment variable value.
+            compress (bool | None): Compress the segmentation mask in memory using ZSTD.
+                Defaults to byotrack.ZSTD_SEG (``ZSTD_SEG`` environment variable).
 
         """
         self._segmentation = segmentation.to(torch.int32)
@@ -361,14 +361,17 @@ class SegmentationDetections(Detections):
 
         return detections
 
-    def _to_dict(self) -> dict[str, object]:
-        d = super()._to_dict()
+    def _to_dict(self, *, compress=None) -> dict[str, object]:
+        d = super()._to_dict(compress=compress)
         d["_type"] = "segmentation"
 
-        d["segmentation"] = self._segmentation
+        compress = compress if compress is not None else self._compress
 
-        if self._compress:
+        if compress:
             d["shape"] = self.shape
+            d["segmentation"] = self._segmentation if self._compress else compression(self._segmentation)
+        else:
+            d["segmentation"] = self.segmentation
 
         if self._position_fn.__name__ == "_position_from_segmentation":
             d["position_method"] = "mean"
@@ -383,9 +386,7 @@ class SegmentationDetections(Detections):
         return d
 
     @staticmethod
-    def _from_dict(
-        data: dict[str, Any], *, cache: bool = True, compress: bool = byotrack.ZSTD_SEG
-    ) -> SegmentationDetections:
+    def _from_dict(data: dict[str, Any], *, cache: bool = True, compress: bool | None = None) -> SegmentationDetections:
         segmentation: torch.Tensor = data["segmentation"]
         labels = data.get("labels")
         confidence = data.get("confidence")
