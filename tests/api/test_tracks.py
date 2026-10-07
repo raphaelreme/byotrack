@@ -350,6 +350,22 @@ def test_track_tensorize_det_ids_empty_raises():
         byotrack.Track._tensorize_det_ids([])
 
 
+def test_track_tensorize_det_ids_restricted_frame_range():
+    tracks = [
+        byotrack.Track(7, torch.rand(3, 2), detection_ids=torch.tensor([70, 71, 72], dtype=torch.int32)),  # 7, 8, 9
+        byotrack.Track(
+            2, torch.rand(7, 2), detection_ids=torch.tensor([20, 21, 22, 23, 24, 25, 26], dtype=torch.int32)
+        ),  # 2, ..., 8
+        byotrack.Track(20, torch.rand(2, 2), detection_ids=torch.tensor([200, 201], dtype=torch.int32)),  # 20, 21
+    ]
+    ids = byotrack.Track._tensorize_det_ids(tracks, (4, 9))  # frames 4, 5, 6, 7, 8
+
+    assert ids.shape == (5, 3)
+    assert ids[:, 0].tolist() == [-1, -1, -1, 70, 71]  # 1st track (7, 8, 9) clipped to 7, 8
+    assert ids[:, 1].tolist() == [22, 23, 24, 25, 26]  # 2nd track (2, ..., 8) clipped to 4, ..., 8
+    assert (ids[:, 2] == -1).all()  # 3rd track (20, 21) fully outside the range
+
+
 ## Check tracks
 
 
@@ -604,6 +620,161 @@ def test_track_reverse_detection_ids_reversed():
     reversed_tracks = byotrack.Track.reverse([track])
     expected = torch.tensor([2, 1, 0], dtype=torch.int32)
     assert torch.equal(reversed_tracks[0].detection_ids, expected)
+
+
+## temporal_slice_filter
+
+
+def test_temporal_slice_step_zero_raises():
+    track = byotrack.Track(0, torch.ones(3, 2))
+    with pytest.raises(ValueError, match="Slice step cannot be zero"):
+        byotrack.Track.temporal_slice_filter([track], step=0)
+
+
+def test_temporal_slice_empty_tracks():
+    assert byotrack.Track.temporal_slice_filter([]) == []
+
+
+def test_temporal_slice_identity():
+    tracks = [
+        byotrack.Track(0, torch.rand(3, 2), identifier=1),  # 0, 1, 2
+        byotrack.Track(2, torch.rand(4, 2), identifier=2),  # 2, 3, 4, 5
+    ]
+    # Default (full) slice: the video length is inferred and tracks are left untouched.
+    sliced = byotrack.Track.temporal_slice_filter(tracks)
+    by_id = {track.identifier: track for track in sliced}
+
+    assert set(by_id) == {1, 2}
+    assert by_id[1].start == 0
+    assert by_id[2].start == 2
+    assert torch.allclose(by_id[1].points, tracks[0].points)
+    assert torch.allclose(by_id[2].points, tracks[1].points)
+
+
+def test_temporal_slice_window_restriction():
+    tracks = [
+        byotrack.Track(0, torch.arange(10).reshape(5, 2).float(), identifier=1),  # 0, 1, 2, 3, 4
+        byotrack.Track(5, torch.arange(6).reshape(3, 2).float(), identifier=2),  # 5, 6, 7
+        byotrack.Track(8, torch.ones(2, 2), identifier=3),  # 8, 9 (fully outside [2, 6))
+    ]
+    sliced = byotrack.Track.temporal_slice_filter(tracks, start=2, stop=6)  # frames 2, 3, 4, 5
+    by_id = {track.identifier: track for track in sliced}
+
+    assert set(by_id) == {1, 2}  # 3rd track is dropped
+
+    # 1st track (0, ..., 4) clipped to 2, 3, 4 -> compressed indices 0, 1, 2
+    assert by_id[1].start == 0
+    assert torch.allclose(by_id[1].points, tracks[0].points[2:5])
+
+    # 2nd track (5, 6, 7) clipped to 5 -> compressed index 3
+    assert by_id[2].start == 3
+    assert torch.allclose(by_id[2].points, tracks[1].points[0:1])
+
+
+def test_temporal_slice_step_two_non_multiple_start():
+    # Track starts at frame 1, but the slice grid is 0, 2, 4, 6, 8 (start not a multiple of step).
+    points = torch.arange(20).reshape(10, 2).float()  # frames 1, ..., 10
+    track = byotrack.Track(1, points, identifier=1)
+
+    sliced = byotrack.Track.temporal_slice_filter([track], start=0, stop=9, step=2, video_length=11)
+
+    assert len(sliced) == 1
+    new = sliced[0]
+
+    # Selected grid frames in [0, 9): 0, 2, 4, 6, 8; track covers 1, ..., 10 -> selected 2, 4, 6, 8
+    # -> compressed indices 1, 2, 3, 4 (frame 0 is empty for this track)
+    assert new.start == 1
+    assert torch.allclose(new.points, points[[1, 3, 5, 7]])  # local indices of frames 2, 4, 6, 8
+
+
+def test_temporal_slice_detection_ids():
+    det_ids = torch.tensor([10, 11, 12, 13, 14, 15], dtype=torch.int32)
+    track = byotrack.Track(2, torch.rand(6, 2), detection_ids=det_ids, identifier=1)  # frames 2, ..., 7
+
+    sliced = byotrack.Track.temporal_slice_filter([track], start=0, stop=8, step=2, video_length=8)
+
+    new = sliced[0]
+    # Grid frames 0, 2, 4, 6; track covers 2, ..., 7 -> selected 2, 4, 6 -> local indices 0, 2, 4
+    assert new.start == 1
+    assert new.detection_ids.tolist() == [10, 12, 14]
+
+
+def test_temporal_slice_negative_step_full_reverse():
+    points_a = torch.arange(6).reshape(3, 2).float()  # frames 0, 1, 2
+    track_a = byotrack.Track(0, points_a, identifier=1, merge_id=2)
+    track_b = byotrack.Track(3, torch.ones(2, 2), identifier=2)  # frames 3, 4
+
+    sliced = byotrack.Track.temporal_slice_filter([track_a, track_b], step=-1)
+    by_id = {track.identifier: track for track in sliced}
+
+    assert set(by_id) == {1, 2}
+
+    # video_length = 5; a negative step reverses time (frame f -> 4 - f)
+    assert torch.allclose(by_id[1].points, torch.flip(points_a, (0,)))
+    assert by_id[1].start == 5 - (0 + 3)  # frames 0, 1, 2 -> reversed 4, 3, 2
+    assert by_id[2].start == 5 - (3 + 2)  # frames 3, 4 -> reversed 1, 0
+
+    # A merge becomes a parent (as in Track.reverse)
+    assert by_id[1].parent_id == 2
+    assert by_id[1].merge_id == -1
+
+
+def test_temporal_slice_negative_step_window():
+    points = torch.arange(20).reshape(10, 2).float()  # frames 0, ..., 9
+    track = byotrack.Track(0, points, identifier=1)
+
+    sliced = byotrack.Track.temporal_slice_filter([track], start=8, stop=2, step=-2, video_length=10)
+
+    new = sliced[0]
+    # Frames visited going down from 8 (excluding 2): 8, 6, 4 -> compressed indices 0, 1, 2
+    assert new.start == 0
+    assert torch.allclose(new.points, points[[8, 6, 4]])
+
+
+def test_temporal_slice_empty_window():
+    track = byotrack.Track(0, torch.ones(5, 2), identifier=1)
+    # Forward slice with start >= stop selects nothing
+    assert byotrack.Track.temporal_slice_filter([track], start=4, stop=2) == []
+
+
+def test_temporal_slice_drops_merge_and_parent_outside_window():
+    track_a = byotrack.Track(0, torch.ones(5, 2), identifier=1, merge_id=3)  # 0, ..., 4
+    track_c = byotrack.Track(5, torch.ones(3, 2), identifier=3)  # 5, 6, 7 (merge target)
+    track_d = byotrack.Track(0, torch.ones(3, 2), identifier=4)  # 0, 1, 2 (parent)
+    track_b = byotrack.Track(3, torch.ones(4, 2), identifier=2, parent_id=4)  # 3, 4, 5, 6
+
+    sliced = byotrack.Track.temporal_slice_filter([track_a, track_c, track_d, track_b], start=3, stop=5)
+    by_id = {track.identifier: track for track in sliced}
+
+    # Window frames 3, 4: track 3 (merge target) and track 4 (parent) fall outside and are dropped
+    assert set(by_id) == {1, 2}
+    assert by_id[1].merge_id == -1  # merge target dropped
+    assert by_id[2].parent_id == -1  # parent dropped
+
+
+def test_temporal_slice_keeps_merge_and_parent_inside_window():
+    track_a = byotrack.Track(0, torch.ones(6, 2), identifier=1, merge_id=3)  # 0, ..., 5
+    track_c = byotrack.Track(6, torch.ones(3, 2), identifier=3)  # 6, 7, 8 (merge target)
+    track_b = byotrack.Track(6, torch.ones(3, 2), identifier=2, parent_id=3)  # 6, 7, 8 (child of 3)
+
+    sliced = byotrack.Track.temporal_slice_filter([track_a, track_c, track_b], start=0, stop=9)
+    by_id = {track.identifier: track for track in sliced}
+
+    assert set(by_id) == {1, 2, 3}
+    assert by_id[1].merge_id == 3  # target survives -> link kept
+    assert by_id[2].parent_id == 3  # parent survives -> link kept
+
+
+def test_temporal_slice_explicit_video_length():
+    track = byotrack.Track(0, torch.ones(3, 2), identifier=1)  # frames 0, 1, 2
+
+    # With no stop, video_length controls the end of the slice.
+    sliced = byotrack.Track.temporal_slice_filter([track], start=1, video_length=10)
+
+    new = sliced[0]
+    # Frames 1, ..., 9 intersect the track on 1, 2 -> compressed indices 0, 1
+    assert new.start == 0
+    assert len(new) == 2
 
 
 # update_detection_ids

@@ -227,11 +227,13 @@ class Track:
         return points
 
     @staticmethod
-    def _tensorize_det_ids(tracks: Collection[Track]) -> torch.Tensor:
-        """Build a detection identifiers tensor for multiple tracks.
+    def _tensorize_det_ids(tracks: Collection[Track], frame_range: tuple[int, int] | None = None) -> torch.Tensor:
+        """Build a detection identifiers tensor for multiple tracks on a given frame_range.
 
         Args:
             tracks (Collection[Track]): A collection of tracks (usually from the same video)
+            frame_range (tuple[int, int] | None): Frame range (start included, end excluded)
+                If None, the minimal range to hold all detection ids is computed
 
         Returns:
             torch.Tensor: Detection identifiers in a single tensor
@@ -244,12 +246,23 @@ class Track:
         starts = [track.start for track in tracks]
         ends = [track.start + len(track) for track in tracks]
 
-        start = min(starts)
-        end = max(ends)
+        if frame_range is None:
+            start = min(starts)
+            end = max(ends)
+        else:
+            start, end = frame_range
+
         ids = torch.full((end - start, len(tracks)), -1, dtype=torch.int32)
 
         for i, (track_start, track_end, track) in enumerate(zip(starts, ends, tracks, strict=True)):
-            ids[track_start - start : track_end - start, i] = track.detection_ids
+            if track_end <= start or track_start >= end:
+                continue
+
+            track_end = min(end, track_end)  # noqa: PLW2901
+
+            ids[max(0, track_start - start) : track_end - start, i] = track.detection_ids[
+                max(0, start - track_start) : track_end - track_start
+            ]
 
         return ids
 
@@ -388,6 +401,94 @@ class Track:
             )
             for track in tracks
         ]
+
+    @staticmethod
+    def temporal_slice_filter(  # noqa: C901
+        tracks: Collection[Track],
+        start: int | None = None,
+        stop: int | None = None,
+        step: int = 1,
+        video_length: int = -1,
+    ) -> list[Track]:
+        """Restrict a collection of tracks to a temporal slice ``[start:stop:step]``.
+
+        Follows Python/NumPy slice semantics on the video's time axis: frames
+        ``start, start + step, ...`` (excluding ``stop``) are kept and re-indexed onto a
+        compressed timeline where the first selected frame becomes frame ``0`` (like
+        ``video[start:stop:step]``). A negative ``step`` reverses time; as in `Track.reverse`,
+        merges then become splits and vice versa.
+
+        Tracks with no selected frame are dropped. A ``merge_id`` / ``parent_id`` pointing to a
+        track outside the window is reset to ``-1``. Merge/split contiguity is not re-validated
+        (see `Track.check_tracks`); with ``abs(step) > 1`` such links may no longer be contiguous.
+
+        Args:
+            tracks (Collection[Track]): Collection of tracks to slice.
+            start (int | None): First frame of the slice.
+                Default: None
+            stop (int | None): End of the slice (excluded).
+                Default: None
+            step (int): Step of the slice (cannot be 0).
+                Default: 1
+            video_length (int): Video length, to resolve None/negative start & stop.
+                Default: -1 (inferred from the last tracked frame)
+
+        Returns:
+            list[Track]: Sliced tracks on the compressed timeline (possibly empty).
+
+        """
+        if step == 0:
+            raise ValueError("Slice step cannot be zero")
+
+        tracks = list(tracks)
+        if not tracks:
+            return []
+
+        if video_length == -1:
+            video_length = max(track.start + len(track) for track in tracks)
+
+        # Resolve None/negative start & stop into concrete indices
+        start, stop, step = slice(start, stop, step).indices(video_length)
+
+        if step < 0:  # Reverse time, then slice with a positive step in reversed coordinates
+            tracks = Track.reverse(tracks, video_length)
+            start, stop, step = video_length - 1 - start, video_length - 1 - stop, -step
+
+        if start >= stop:  # Empty window
+            return []
+
+        # Index k on the compressed timeline <-> global frame start + k * step
+        points = Track.tensorize(tracks, (start, stop))[::step]
+        det_ids = Track._tensorize_det_ids(tracks, (start, stop))[::step]
+
+        filtered: dict[int, Track] = {}
+        for i, track in enumerate(tracks):
+            lo = max(0, track.start - start)
+            hi = min(track.start + len(track), stop) - start
+            track_start = -(-lo // step)  # exact ceil(lo / step), step > 0
+            track_stop = -(-hi // step)  # exact ceil(hi / step)
+
+            if track_stop <= track_start:  # No frame selected for this track
+                continue
+
+            filtered[track.identifier] = Track(
+                track_start,
+                points[track_start:track_stop, i],
+                track.identifier,
+                det_ids[track_start:track_stop, i],
+                merge_id=track.merge_id,
+                parent_id=track.parent_id,
+            )
+
+        # Drop merge/split links whose partner fell outside the window
+        for track in filtered.values():
+            if track.parent_id != -1 and track.parent_id not in filtered:
+                track.parent_id = -1
+
+            if track.merge_id != -1 and track.merge_id not in filtered:
+                track.merge_id = -1
+
+        return list(filtered.values())
 
 
 def update_detection_ids(
