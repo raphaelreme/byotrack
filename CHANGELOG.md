@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.7] - 2026-10-08
+
+### Added
+
+- `Track.temporal_slice_filter`: restrict a collection of tracks to a
+  temporal slice `[start:stop:step]`, following Python/NumPy slice semantics
+  on the time axis (selected frames are re-indexed onto a compressed
+  timeline). A negative `step` reverses time (merges then become splits and
+  vice versa), tracks with no selected frame are dropped, and merge/split
+  links pointing outside the window are reset to `-1`.
+- `Detections.save` and `Detections.save_multi_frames_detections`: new
+  `compress` argument to force (or disable) ZSTD compression of the
+  segmentation mask when writing, overriding the object's own `_compress`.
+- `Detections.load_multi_frames_detections`: now accepts `cache` and
+  `compress` arguments, like `Detections.load`.
+
+### Changed
+
+- ZSTD segmentation compression is no longer marked experimental. The
+  `compress` argument across the `Detections` API now defaults to `None` and
+  is resolved to `byotrack.ZSTD_SEG` at call time, so overriding
+  `byotrack.ZSTD_SEG` after import now takes effect (previously the default
+  was bound at import time).
+- `OpticalFlow`: frame preprocessing is now skipped entirely when
+  `downscale == 1.0` and `blur is None`, avoiding a needless
+  resample/blur round-trip at scale 1.0. `DummyOpticalFlow` gained explicit
+  `downscale`/`blur` constructor arguments.
+- Frame-by-frame linker: merge association now uses a mass-based cost factor
+  (previously a TODO). The association cost is increased when the two merging
+  tracks' masses do not sum to the candidate detection's mass or are unevenly
+  weighted.
+
+### Fixed
+
+- `byotrack.napari.tracks_to_napari_tracks`: guard against `parent_id` /
+  `merge_id` referencing a track absent from the collection, which could
+  raise or build an incorrect lineage graph.
+- `byotrack.napari.visualize`: correctly handle an empty
+  `detections_sequence` by testing its length explicitly instead of relying
+  on truthiness (which is ambiguous for array-like sequences).
+
 ## [2.0.6] - 2026-08-25
 
 ### Added
