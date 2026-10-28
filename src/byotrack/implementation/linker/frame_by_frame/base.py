@@ -36,7 +36,9 @@ class AssociationMethod(enum.Enum):
         Hard threshold the association matrix with the cost limit eta.
         Use the sparse version to increase speed with numerous targets.
     * OPT_SMOOTH | SPARSE_OPT_SMOOTH
-        Solve a cost_limit extended association problem (see `pylapy`)
+        DEPRECATED. Renamed into OPT_ALT | SPARSE_OPT_ALT
+    * OPT_ALT | SPARSE_OPT_ALT
+        Solve an extended association problem with an alternative cost eta (see `pylapy`)
         It relaxes the linear association problem, allowing to not link a node
         for the cost limit eta.
         Use the sparse version to increase speed with numerous targets.
@@ -45,8 +47,10 @@ class AssociationMethod(enum.Enum):
     GREEDY = "greedy"
     OPT_HARD = "opt_hard"
     OPT_SMOOTH = "opt_smooth"
+    OPT_ALT = "opt_alt"
     SPARSE_OPT_HARD = "sparse_opt_hard"
     SPARSE_OPT_SMOOTH = "sparse_opt_smooth"
+    SPARSE_OPT_ALT = "sparse_opt_alt"
 
     def solve(self, cost: torch.Tensor, eta: float = np.inf) -> torch.Tensor:
         """Solve tracks-to-detections association.
@@ -61,18 +65,24 @@ class AssociationMethod(enum.Enum):
             torch.Tensor: Links (i, j)
                 Shape: (L, 2), dtype: int32
         """
-        if self == AssociationMethod.SPARSE_OPT_HARD:
-            return torch.tensor(pylapy.LapSolver().sparse_solve(cost.numpy(), eta, hard=True).astype(np.int32))
+        if self in (AssociationMethod.SPARSE_OPT_SMOOTH, AssociationMethod.OPT_SMOOTH):
+            warnings.warn(
+                "`[SPARSE_]OPT_SMOOTH` is deprecated: use `[SPARSE_]OPT_ALT` instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
-        if self == AssociationMethod.SPARSE_OPT_SMOOTH:
-            return torch.tensor(pylapy.LapSolver().sparse_solve(cost.numpy(), eta, hard=False).astype(np.int32))
+        if self == AssociationMethod.SPARSE_OPT_HARD:
+            return torch.tensor(pylapy.LapSolver().sparse_solve(cost.numpy(), cost_limit=eta).astype(np.int32))
+
+        if self in (AssociationMethod.SPARSE_OPT_SMOOTH, AssociationMethod.SPARSE_OPT_ALT):
+            return torch.tensor(pylapy.LapSolver().sparse_solve(cost.numpy(), alternative_cost=eta).astype(np.int32))
 
         if self == AssociationMethod.OPT_HARD:
-            cost[cost > eta] = np.inf
-            return torch.tensor(pylapy.LapSolver().solve(cost.numpy()).astype(np.int32))
+            return torch.tensor(pylapy.LapSolver().solve(cost.numpy(), cost_limit=eta).astype(np.int32))
 
-        if self == AssociationMethod.OPT_SMOOTH:
-            return torch.tensor(pylapy.LapSolver().solve(cost.numpy(), eta).astype(np.int32))
+        if self in (AssociationMethod.OPT_SMOOTH, AssociationMethod.OPT_ALT):
+            return torch.tensor(pylapy.LapSolver().solve(cost.numpy(), cost_limit=eta).astype(np.int32))
 
         return torch.tensor(greedy_assignment_solver(cost.numpy(), eta).astype(np.int32))
 
@@ -248,8 +258,8 @@ class FrameByFrameLinkerParameters:
             Higher values allow to support larger gaps in the track, but may lead to wrong assignments.
             Default: 3
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
-            It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_SMOOTH, SPARSE_OPT_HARD, SPARSE_OPT_SMOOTH)
-            Default: SPARSE_OPT_SMOOTH
+            It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_ALT, SPARSE_OPT_HARD, SPARSE_OPT_ALT)
+            Default: SPARSE_OPT_ALT
         anisotropy (tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
             for each axis, depth first). This will be used to scale distances.
             Default: (1., 1., 1.)
@@ -268,7 +278,7 @@ class FrameByFrameLinkerParameters:
         *,
         n_valid=3,
         n_gap=3,
-        association_method: str | AssociationMethod = AssociationMethod.SPARSE_OPT_SMOOTH,
+        association_method: str | AssociationMethod = AssociationMethod.SPARSE_OPT_ALT,
         anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
         split_factor: float = 0.0,
         merge_factor: float = 0.0,
@@ -285,10 +295,17 @@ class FrameByFrameLinkerParameters:
         self.split_factor = split_factor
         self.merge_factor = merge_factor
 
+        if self.association_method in (AssociationMethod.SPARSE_OPT_SMOOTH, AssociationMethod.OPT_SMOOTH):
+            warnings.warn(
+                "`[SPARSE_]OPT_SMOOTH` is deprecated: use `[SPARSE_]OPT_ALT` instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
     association_threshold: float = -1.0
     n_valid: int = 3
     n_gap: int = 3
-    association_method: AssociationMethod = AssociationMethod.SPARSE_OPT_SMOOTH
+    association_method: AssociationMethod = AssociationMethod.SPARSE_OPT_ALT
     anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0)
     split_factor: float = 0.0
     merge_factor: float = 0.0

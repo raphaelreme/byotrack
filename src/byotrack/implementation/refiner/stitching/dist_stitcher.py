@@ -44,7 +44,7 @@ class DistStitcher(byotrack.Refiner):
             raise ValueError("video is required for DistSticher.")
 
         dist = self.dist(video, tracks)
-        links = self.lap_solver.solve(dist, self.eta)
+        links = self.lap_solver.solve(dist, alternative_cost=self.eta)
         tracks = self.merge(tracks, links)
 
         # Check produced tracks

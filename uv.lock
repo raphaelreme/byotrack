@@ -390,7 +390,7 @@ dependencies = [
     { name = "opencv-python" },
     { name = "pillow" },
     { name = "platformdirs" },
-    { name = "pylapy", extra = ["scipy"] },
+    { name = "pylapy" },
     { name = "scikit-image", version = "0.25.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-image", version = "0.26.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -460,7 +460,7 @@ requires-dist = [
     { name = "opencv-python", specifier = "<4.13" },
     { name = "pillow" },
     { name = "platformdirs" },
-    { name = "pylapy", extras = ["scipy"] },
+    { name = "pylapy", specifier = ">=1.2.0" },
     { name = "scikit-image" },
     { name = "scipy" },
     { name = "stardist", marker = "python_full_version < '3.14' and extra == 'full'" },
@@ -4912,21 +4912,15 @@ wheels = [
 
 [[package]]
 name = "pylapy"
-version = "1.1.0"
+version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2b/1f/f1449f2039b83d2dd338b5d9921f7fb1bdf6343271c7e3ea4791bd1086ce/pylapy-1.1.0.tar.gz", hash = "sha256:51dbdb9d1726d878e14fa0e3d0000bde8aa5f0de883b7e042f7af0f77c2f681e", size = 16888, upload-time = "2025-10-17T09:11:40.878Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/cd/1d3151e1e62be280320f4acf492f0f05bf5b7f59a4ab1c5ddde03e8acb0c/pylapy-1.2.0.tar.gz", hash = "sha256:600ea7c06f6a770820302080175a812f0b914be0a53c2704bda11e5cc74ee8d9", size = 21696, upload-time = "2026-10-28T09:54:44.405Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/d4/83e083412a041105355901393fd73d471ae952883a82e098b56012fb6aaa/pylapy-1.1.0-py3-none-any.whl", hash = "sha256:f3797057ef43428e3992cdea09ec74b5fdd6e6b18e49846b3d3d3a17de689b05", size = 15560, upload-time = "2025-10-17T09:11:39.77Z" },
-]
-
-[package.optional-dependencies]
-scipy = [
-    { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { url = "https://files.pythonhosted.org/packages/b6/61/caeb5dcb56a2a3db385d0e9462e6c7df031331eca20002a4fb2a7ef842f3/pylapy-1.2.0-py3-none-any.whl", hash = "sha256:e04da40e998a7f4c2ddf60461fa5c7843f8cbf019ba8914e65cf24c717758ee4", size = 23344, upload-time = "2026-10-28T09:54:43.191Z" },
 ]
 
 [[package]]
