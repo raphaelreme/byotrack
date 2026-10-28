@@ -116,8 +116,8 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
             Higher values allow to support larger gaps in the track, but may lead to wrong assignments.
             Default: 3
         association_method (AssociationMethod): The frame-by-frame association to use. See `AssociationMethod`.
-            It can be provided as a string. Choice: GREEDY, OPT_HARD, OPT_SMOOTH, SPARSE_OPT_HARD, SPARSE_OPT_SMOOTH.
-            Default: SPARSE_OPT_SMOOTH
+            It can be provided as a string. (Choice: GREEDY, OPT_HARD, OPT_ALT, SPARSE_OPT_HARD, SPARSE_OPT_ALT)
+            Default: SPARSE_OPT_ALT
         anisotropy (tuple[float, float, float]): Anisotropy of images (Ratio of the pixel sizes
             for each axis, depth first). This will be used to scale distances. Note that it will only impact
             EUCLIDEAN[_SQ] costs; for probabilistic cost, anisotropy should be already integrated
@@ -163,7 +163,7 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
         kalman_order: int = 1,
         n_valid=3,
         n_gap=3,
-        association_method: str | AssociationMethod = AssociationMethod.SPARSE_OPT_SMOOTH,
+        association_method: str | AssociationMethod = AssociationMethod.SPARSE_OPT_ALT,
         anisotropy: tuple[float, float, float] = (1.0, 1.0, 1.0),
         cost: str | Cost = Cost.LIKELIHOOD,
         track_building: str | TrackBuilding = TrackBuilding.SMOOTHED,
@@ -203,6 +203,13 @@ class KalmanLinkerParameters(FrameByFrameLinkerParameters):
             track_building if isinstance(track_building, TrackBuilding) else TrackBuilding[track_building.upper()]
         )
         self.online_process_std = online_process_std
+
+        if self.association_method in (AssociationMethod.SPARSE_OPT_SMOOTH, AssociationMethod.OPT_SMOOTH):
+            warnings.warn(
+                "`[SPARSE_]OPT_SMOOTH` is deprecated: use `[SPARSE_]OPT_ALT` instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
     detection_std: float | torch.Tensor = 0.0
     process_std: float | torch.Tensor = 0.0
