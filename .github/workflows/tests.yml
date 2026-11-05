@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - rreme/*
   pull_request:
     branches:
       - "**"
@@ -62,6 +63,8 @@ jobs:
         run: |
           git config --global core.autocrlf false
           git config --global core.eol lf
+      # - name: Setup building required for numcodecs?  # Why only here?
+      #   run: sudo apt install build-essential python3-dev
       - uses: actions/checkout@v6
       - name: Install uv and set the Python version
         uses: astral-sh/setup-uv@v7
