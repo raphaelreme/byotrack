@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import tqdm.auto as tqdm
 import zarr  # type: ignore[import-untyped]
+from packaging import version
 
 import byotrack
 
@@ -217,13 +218,23 @@ def save_tracks_to_geff(
         executors.append(_delay_execution(save_detections_to_zarr)(detections_sequence, path / "segmentation"))
         related_objects.append(geff_spec.RelatedObject(type="labels", path="segmentation"))
 
-    metadata = geff.GeffMetadata(
-        directed=True,
-        node_props_metadata={},
-        edge_props_metadata={},
-        related_objects=related_objects,
-        track_node_props={"tracklet": "track_id"},
-    )
+    if version.parse(geff.__version__) > version.parse("1.4.0.1.3"):  # pragma: no cover
+        # Fix available from https://github.com/live-image-tracking-tools/geff/pull/471
+        metadata = geff.GeffMetadata(
+            directed=True,
+            node_props_metadata={"track_id": geff_spec.PropMetadata(identifier="track_id", dtype="uint32")},
+            edge_props_metadata={},
+            related_objects=related_objects,
+            track_node_props={"tracklet": "track_id"},
+        )
+    else:  # Quick fix following https://github.com/live-image-tracking-tools/geff/issues/470
+        metadata = geff.GeffMetadata(
+            directed=True,
+            node_props_metadata={},
+            edge_props_metadata={},
+            related_objects=related_objects,
+            track_node_props={"tracklet": "track_id"} if len(tracks) else {},
+        )
 
     geff.write(
         graph,
