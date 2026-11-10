@@ -24,7 +24,7 @@ cd byotrack
 ### 2. Create the development environment
 
 ```bash
-uv sync --extra full
+uv sync --all-extras --dev
 ```
 
 This will create a local virtual environment and install all required dependencies (including dev ones and extra ones).
@@ -67,9 +67,17 @@ Tests are written using **pytest**.
 Run the test suite with:
 
 ```bash
-uv run pytest
-# OR
-uv run pytest --cov  # To see test coverage
+uv run pytest tests/
+```
+
+### Coverage and numba
+
+Part of the sparse code (`src/pylapy/sparse.py`) is JIT-compiled with **numba** (`@numba.njit`).
+Coverage cannot trace inside compiled functions, so a plain run under-reports their coverage. To
+measure the real coverage, disable the JIT so the Python source runs directly:
+
+```bash
+NUMBA_DISABLE_JIT=1 uv run pytest tests/ --cov --cov-branch --cov-report=term-missing
 ```
 
 We use **codecov** in CI to monitor test coverage.
