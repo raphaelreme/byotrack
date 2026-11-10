@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.8] - 2026-11-10
+
+### Deprecated
+
+- `AssociationMethod.OPT_SMOOTH` / `SPARSE_OPT_SMOOTH` are renamed to
+  `OPT_ALT` / `SPARSE_OPT_ALT` ("alternative" cost thresholding, matching
+  `pylapy`'s terminology). The old names still work but now emit a
+  `DeprecationWarning`. The default association method of the frame-by-frame
+  linkers (`NearestNeighbor`, `KalmanLinker`, `KOFT`, `TrackOnStraLinker`) is
+  now `SPARSE_OPT_ALT` (same behavior, new name).
+
+### Changed
+
+- Migrated to `pylapy` v2 (now requires `pylapy >= 1.2.0`) and dropped the
+  `[scipy]` extra. The LAP solver is now called with the new `cost_limit` /
+  `alternative_cost` keyword arguments (in `AssociationMethod.solve` and
+  `DistStitcher`), instead of manually thresholding the cost matrix.
+- Bumped the `geff` dependency (now resolves to `geff` 1.3.1 on Python < 3.11
+  and 1.4.0 on Python >= 3.11).
+
+### Fixed
+
+- `byotrack.geff.save_tracks_to_geff`: fixed saving of empty track
+  collections, which previously wrote invalid geff metadata (referencing a
+  `track_id` node property that no graph node carried). See
+  [geff#470](https://github.com/live-image-tracking-tools/geff/issues/470).
+
 ## [2.0.7] - 2026-10-08
 
 ### Added
